@@ -7,5 +7,9 @@ lazy val root = project
     libraryDependencies ++= Seq(
       "co.fs2" %% "fs2-io" % "1.0.0",
       "org.tpolecat" %% "atto-refined" % "0.6.3",
-    )
+      "io.estatico" %% "newtype" % "0.4.2",
+      "org.scalatest" %% "scalatest" % "3.0.5"
+    ),
+    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.8"),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)
   )
