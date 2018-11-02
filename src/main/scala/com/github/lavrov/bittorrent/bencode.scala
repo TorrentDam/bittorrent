@@ -1,4 +1,4 @@
-package com.github.lavrov.whirpool
+package com.github.lavrov.bittorrent
 
 import atto._, Atto._, syntax.refined._
 import eu.timepit.refined.numeric._
