@@ -1,5 +1,7 @@
 package com.github.lavrov.bittorrent.decoder
-import com.github.lavrov.bittorrent.Info
+
+import atto.ParseResult
+import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import com.github.lavrov.bittorrent.Info.{File, MultipleFileInfo, SingleFileInfo}
 import com.github.lavrov.bittorrent.bencode.Bencode
 import org.scalatest.FlatSpec
@@ -10,14 +12,13 @@ class BencodeDecoderSpec extends FlatSpec {
   it should "decode dictionary" in {
     val input = Bencode.Dictionary(
       Map(
-        "pieceLength" -> Bencode.Integer(10),
-        "pieces" -> Bencode.Integer(10),
+        "piece length" -> Bencode.Integer(10),
+        "pieces" -> Bencode.String("10"),
         "length" -> Bencode.Integer(10),
-        "md5sum" -> Bencode.String("tadam"),
       )
     )
 
-    Info.SingleFileInfoDecoder.decode(input) mustBe Right(SingleFileInfo(10, 10, 10, "tadam"))
+    Info.SingleFileInfoDecoder.decode(input) mustBe Right(SingleFileInfo(10, "10", 10, None))
   }
 
   it should "decode list" in {
@@ -33,14 +34,13 @@ class BencodeDecoderSpec extends FlatSpec {
   it should "decode either a or b" in {
     val input = Bencode.Dictionary(
       Map(
-        "pieceLength" -> Bencode.Integer(10),
-        "pieces" -> Bencode.Integer(10),
+        "piece length" -> Bencode.Integer(10),
+        "pieces" -> Bencode.String("10"),
         "length" -> Bencode.Integer(10),
-        "md5sum" -> Bencode.String("tadam"),
       )
     )
 
-    Info.InfoDecoder.decode(input) mustBe Right(SingleFileInfo(10, 10, 10, "tadam"))
+    Info.InfoDecoder.decode(input) mustBe Right(SingleFileInfo(10, "10", 10, None))
 
     val input1 = Bencode.Dictionary(
       Map(
@@ -49,8 +49,8 @@ class BencodeDecoderSpec extends FlatSpec {
             Map(
               "info" -> Bencode.Dictionary(
                 Map(
-                  "pieceLength" -> Bencode.Integer(10),
-                  "pieces" -> Bencode.Integer(10),
+                  "piece length" -> Bencode.Integer(10),
+                  "pieces" -> Bencode.String("10"),
                   "length" -> Bencode.Integer(10),
                   "md5sum" -> Bencode.String("tadam"),
                 )
@@ -62,6 +62,13 @@ class BencodeDecoderSpec extends FlatSpec {
       )
     )
 
-    Info.InfoDecoder.decode(input1) mustBe Right(MultipleFileInfo(File(SingleFileInfo(10, 10, 10, "tadam"), "/root") :: Nil))
+    Info.InfoDecoder.decode(input1) mustBe Right(MultipleFileInfo(File(SingleFileInfo(10, "10", 10, Some("tadam")), "/root") :: Nil))
+  }
+
+  it should "decode ubuntu torrent" in {
+    val source = getClass.getClassLoader.getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent").readAllBytes()
+    val ParseResult.Done(_, result) = com.github.lavrov.bittorrent.bencode.parse(source)
+    val decodeResult = MetaInfo.MetaInfoDecoder.decode(result)
+    decodeResult.map(_.announce) mustBe Right("http://torrent.ubuntu.com:6969/announce")
   }
 }

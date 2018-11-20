@@ -1,6 +1,8 @@
 package com.github.lavrov.bittorrent
 
-import atto._, Atto._, syntax.refined._
+import atto._
+import Atto._
+import syntax.refined._
 import eu.timepit.refined.numeric._
 import cats.syntax.functor._
 
@@ -14,7 +16,7 @@ object bencode {
     case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode
   }
 
-  val parser: Parser[Bencode] = {
+  private val parser: Parser[Bencode] = {
 
     val stringParser: Parser[Bencode.String] = int.refined[Positive] <~ char(':') flatMap {
       number => manyN(number.value, anyChar).map(_.mkString).map(Bencode.String)
@@ -36,5 +38,7 @@ object bencode {
 
     stringParser.widen[Bencode] | integerParser.widen | listParser.widen | dictionaryParser.widen
   }
+
+  def parse(source: Array[Byte]): ParseResult[Bencode] = parser parseOnly source.map(_.toChar).mkString
 
 }

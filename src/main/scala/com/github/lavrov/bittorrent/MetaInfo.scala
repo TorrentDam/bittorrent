@@ -29,9 +29,9 @@ sealed trait Info
 object Info {
   case class SingleFileInfo(
     pieceLength: Long,
-    pieces: Long,
+    pieces: String,
     length: Long,
-    md5sum: String
+    md5sum: Option[String]
   )
   extends Info
 
@@ -47,10 +47,10 @@ object Info {
 
   implicit val SingleFileInfoDecoder: BencodeDecoder[SingleFileInfo] =
     (
-      BencodeDecoder.field[Long]("pieceLength"),
-      BencodeDecoder.field[Long]("pieces"),
+      BencodeDecoder.field[Long]("piece length"),
+      BencodeDecoder.field[String]("pieces"),
       BencodeDecoder.field[Long]("length"),
-      BencodeDecoder.field[String]("md5sum")
+      BencodeDecoder.optField[String]("md5sum")
     )
     .mapN(SingleFileInfo)
 
