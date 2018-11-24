@@ -1,7 +1,7 @@
 lazy val root = project
   .in(file("."))
   .settings(
-    name := "whirpool",
+    name := "bittorrent",
     version := "0.1.0",
     scalaVersion := "2.12.7",
     libraryDependencies ++= Seq(
