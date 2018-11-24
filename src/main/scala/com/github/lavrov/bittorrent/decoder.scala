@@ -5,6 +5,7 @@ import cats.data.ReaderT
 import cats.instances.either.{catsStdInstancesForEither, catsStdSemigroupKForEither}
 import com.github.lavrov.bittorrent.bencode.Bencode
 import io.estatico.newtype.macros.newtype
+import scodec.bits.ByteVector
 
 package object decoder {
 
@@ -44,8 +45,15 @@ package object decoder {
 
     implicit val StringDecoder: BencodeDecoder[String] = BencodeDecoder(
       ReaderT {
+        case Bencode.String(v) => v.decodeAscii.left.map(_.getMessage)
+        case _ => Left("String is expected")
+      }
+    )
+
+    implicit val ByteVectorDecoder: BencodeDecoder[ByteVector] = BencodeDecoder(
+      ReaderT {
         case Bencode.String(v) => Right(v)
-        case _ => Left("Integer is expected")
+        case _ => Left("String is expected")
       }
     )
 

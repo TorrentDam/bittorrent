@@ -1,44 +1,95 @@
 package com.github.lavrov.bittorrent
 
-import atto._
-import Atto._
-import syntax.refined._
-import eu.timepit.refined.numeric._
-import cats.syntax.functor._
+import java.nio.charset.Charset
+
+import scodec._
+import codecs._
+import scodec.Attempt.{Failure, Successful}
+import scodec.bits.{BitVector, ByteVector}
 
 object bencode {
+  implicit private val charset = Charset.forName("US-ASCII")
 
   sealed trait Bencode
   object Bencode {
-    case class String(value: java.lang.String) extends Bencode
+    case class String(value: ByteVector) extends Bencode
+    object String {
+      def apply(string: java.lang.String): String = new String(ByteVector.encodeString(string).right.get)
+      val Emtpy = new String(ByteVector.empty)
+    }
     case class Integer(value: scala.Long) extends Bencode
     case class List(values: collection.immutable.List[Bencode]) extends Bencode
     case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode
   }
 
-  private val parser: Parser[Bencode] = {
+  private val codec: Codec[Bencode] = {
 
-    val stringParser: Parser[Bencode.String] = int.refined[Positive] <~ char(':') flatMap {
-      number => manyN(number.value, anyChar).map(_.mkString).map(Bencode.String)
-    }
+    val valueCodec = lazily(codec)
 
-    val integerParser: Parser[Bencode.Integer] = char('i') ~> long <~ char('e') map {
-      number => Bencode.Integer(number)
-    }
+    val asciiNumber = byte.exmap[Char](
+      b => if (b.toChar.isDigit) Successful(b.toChar) else Failure(Err("not a digit")),
+      c => Successful(c.toByte)
+    )
 
-    val listParser: Parser[Bencode.List] = char('l') ~> many(delay(parser)) <~ char('e') map {
-      elems => Bencode.List(elems)
-    }
+    def positiveNumber(delimiter: Char) = variableSizeDelimited(constant(delimiter), list(asciiNumber), 8).xmap[Long](
+      chars => java.lang.Long.parseLong(chars.mkString),
+      integer => integer.toString.toList
+    )
 
-    val keyValueParser = stringParser ~ delay(parser) map { case (Bencode.String(key), value) => (key, value) }
+    val stringParser: Codec[Bencode.String] =
+      positiveNumber(':')
+        .consume(
+          number =>
+            bytes(number.toInt).xmap[Bencode.String](
+              bv => Bencode.String(bv),
+              bs => bs.value
+            )
+        )(
+          _.value.size.toInt
+        )
 
-    val dictionaryParser: Parser[Bencode.Dictionary]  = char('d') ~> many(keyValueParser) <~ char('e') map {
-      elems => Bencode.Dictionary(elems.toMap)
-    }
+    val integerParser: Codec[Bencode.Integer] = (constant('i') ~> positiveNumber('e')).xmap[Bencode.Integer](
+      number => Bencode.Integer(number),
+      integer => integer.value
+    )
 
-    stringParser.widen[Bencode] | integerParser.widen | listParser.widen | dictionaryParser.widen
+    def varLengthList[A](codec: Codec[A]): Codec[List[A]] = fallback(constant('e'), codec)
+      .consume[List[A]]{
+        case Left(_) => provide(Nil)
+        case Right(bc) => varLengthList(codec).xmap(
+          tail => bc :: tail,
+          list => list.tail
+        )
+      }{
+        case Nil => Left(())
+        case head :: _ => Right(head)
+      }
+
+    val listParser: Codec[Bencode.List] = (constant('l') ~> varLengthList(valueCodec)).xmap[Bencode.List](
+        elems => Bencode.List(elems),
+        list => list.values
+      )
+
+    val keyValueParser = (stringParser ~ valueCodec).xmap[String ~ Bencode](
+      { case (Bencode.String(key), value) => (key.decodeAscii.right.get, value) },
+      { case (key, value) => (Bencode.String(ByteVector.encodeString(key).right.get), value) }
+    )
+
+    val dictionaryParser: Codec[Bencode.Dictionary] = (constant('d') ~> varLengthList(keyValueParser))
+      .xmap[Bencode.Dictionary](
+        elems => Bencode.Dictionary(elems.toMap),
+        dict => dict.values.toList
+      )
+
+    choice(
+      stringParser.upcast[Bencode],
+      integerParser.upcast[Bencode],
+      listParser.upcast[Bencode],
+      dictionaryParser.upcast[Bencode]
+    )
   }
 
-  def parse(source: Array[Byte]): ParseResult[Bencode] = parser parseOnly source.map(_.toChar).mkString
+  def decode(source: BitVector): Either[Err, DecodeResult[Bencode]] = codec.decodeOnly.decode(source).toEither
 
+  def decode(source: Array[Byte]): Either[Err, DecodeResult[Bencode]] = decode(BitVector(source))
 }

@@ -3,10 +3,10 @@ package com.github.lavrov.bittorrent
 import java.time.Instant
 
 import com.github.lavrov.bittorrent.decoder.BencodeDecoder
-
 import cats.syntax.apply._
 import cats.syntax.functor._
 import cats.syntax.semigroupk._
+import scodec.bits.ByteVector
 
 case class MetaInfo(
   info: Info,
@@ -29,9 +29,9 @@ sealed trait Info
 object Info {
   case class SingleFileInfo(
     pieceLength: Long,
-    pieces: String,
+    pieces: ByteVector,
     length: Long,
-    md5sum: Option[String]
+    md5sum: Option[ByteVector]
   )
   extends Info
 
@@ -48,9 +48,9 @@ object Info {
   implicit val SingleFileInfoDecoder: BencodeDecoder[SingleFileInfo] =
     (
       BencodeDecoder.field[Long]("piece length"),
-      BencodeDecoder.field[String]("pieces"),
+      BencodeDecoder.field[ByteVector]("pieces"),
       BencodeDecoder.field[Long]("length"),
-      BencodeDecoder.optField[String]("md5sum")
+      BencodeDecoder.optField[ByteVector]("md5sum")
     )
     .mapN(SingleFileInfo)
 

@@ -6,7 +6,7 @@ lazy val root = project
     scalaVersion := "2.12.7",
     libraryDependencies ++= Seq(
       "co.fs2" %% "fs2-io" % "1.0.0",
-      "org.tpolecat" %% "atto-refined" % "0.6.3",
+      "org.scodec" %% "core" % "1.10.4",
       "io.estatico" %% "newtype" % "0.4.2",
       "org.scalatest" %% "scalatest" % "3.0.5"
     ),
