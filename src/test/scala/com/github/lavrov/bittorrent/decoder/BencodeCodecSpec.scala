@@ -1,5 +1,7 @@
 package com.github.lavrov.bittorrent.decoder
 
+import java.nio.charset.Charset
+
 import com.github.lavrov.bittorrent.bencode.Bencode
 import com.github.lavrov.bittorrent.{MetaInfo, bencode}
 import org.scalatest.FlatSpec
@@ -8,6 +10,8 @@ import scodec.DecodeResult
 import scodec.bits.BitVector
 
 class BencodeCodecSpec extends FlatSpec {
+
+  implicit val charset = Charset.forName("UTF-8")
 
   it should "decode integer" in {
     bencode.decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(
@@ -27,6 +31,14 @@ class BencodeCodecSpec extends FlatSpec {
   it should "decode dictionary" in {
     bencode.decode(BitVector.encodeAscii("d1:ai6ee").right.get) mustBe Right(
       DecodeResult(Bencode.Dictionary(Map("a" -> Bencode.Integer(6))), BitVector.empty))
+  }
+
+  it should "encode string value" in {
+    bencode.encode(Bencode.String("test")) mustBe BitVector.encodeString("4:test")
+  }
+
+  it should "encode list value" in {
+    bencode.encode(Bencode.List(Bencode.String("test") :: Bencode.Integer(10) :: Nil)) mustBe BitVector.encodeString("l4:testi10ee")
   }
 
   it should "decode ubuntu torrent" in {

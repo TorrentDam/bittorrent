@@ -92,4 +92,6 @@ object bencode {
   def decode(source: BitVector): Either[Err, DecodeResult[Bencode]] = codec.decodeOnly.decode(source).toEither
 
   def decode(source: Array[Byte]): Either[Err, DecodeResult[Bencode]] = decode(BitVector(source))
+
+  def encode(value: Bencode): Either[Err, BitVector] = codec.encode(value).toEither
 }
