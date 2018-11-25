@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent
 
 import java.time.Instant
 
-import com.github.lavrov.bittorrent.decoder.BencodeDecoder
+import com.github.lavrov.bencode.reader.BencodeReader
 import cats.syntax.apply._
 import cats.syntax.functor._
 import cats.syntax.semigroupk._
@@ -15,12 +15,12 @@ case class MetaInfo(
 )
 
 object MetaInfo {
-  implicit val InstantDecoder: BencodeDecoder[Instant] = BencodeDecoder.LongDecoder.map(Instant.ofEpochMilli)
-  implicit val MetaInfoDecoder: BencodeDecoder[MetaInfo] =
+  implicit val InstantReader: BencodeReader[Instant] = BencodeReader.LongReader.map(Instant.ofEpochMilli)
+  implicit val MetaInfoReader: BencodeReader[MetaInfo] =
     (
-      BencodeDecoder.field[Info]("info"),
-      BencodeDecoder.field[String]("announce"),
-      BencodeDecoder.optField[Instant]("creationDate")
+      BencodeReader.field[Info]("info"),
+      BencodeReader.field[String]("announce"),
+      BencodeReader.optField[Instant]("creationDate")
     )
     .mapN(MetaInfo.apply)
 }
@@ -45,26 +45,26 @@ object Info {
     path: String
   )
 
-  implicit val SingleFileInfoDecoder: BencodeDecoder[SingleFileInfo] =
+  implicit val SingleFileInfoReader: BencodeReader[SingleFileInfo] =
     (
-      BencodeDecoder.field[Long]("piece length"),
-      BencodeDecoder.field[ByteVector]("pieces"),
-      BencodeDecoder.field[Long]("length"),
-      BencodeDecoder.optField[ByteVector]("md5sum")
+      BencodeReader.field[Long]("piece length"),
+      BencodeReader.field[ByteVector]("pieces"),
+      BencodeReader.field[Long]("length"),
+      BencodeReader.optField[ByteVector]("md5sum")
     )
     .mapN(SingleFileInfo)
 
-  implicit val FileDecoder: BencodeDecoder[File] =
+  implicit val FileReader: BencodeReader[File] =
     (
-      BencodeDecoder.field[SingleFileInfo]("info"),
-      BencodeDecoder.field[String]("path")
+      BencodeReader.field[SingleFileInfo]("info"),
+      BencodeReader.field[String]("path")
     )
     .mapN(File)
 
-  implicit val MultipleFileInfoDecoder: BencodeDecoder[MultipleFileInfo] =
-    BencodeDecoder.field[List[File]]("files").map(MultipleFileInfo)
+  implicit val MultipleFileInfoReader: BencodeReader[MultipleFileInfo] =
+    BencodeReader.field[List[File]]("files").map(MultipleFileInfo)
 
-  implicit val InfoDecoder: BencodeDecoder[Info] =
-    SingleFileInfoDecoder.widen[Info] <+> MultipleFileInfoDecoder.widen
+  implicit val InfoReader: BencodeReader[Info] =
+    SingleFileInfoReader.widen[Info] <+> MultipleFileInfoReader.widen
 
 }

@@ -1,30 +1,15 @@
-package com.github.lavrov.bittorrent
+package com.github.lavrov.bencode
 
-import java.nio.charset.Charset
-
-import scodec._
-import codecs._
+import scodec.{Codec, Err}
 import scodec.Attempt.{Failure, Successful}
-import scodec.bits.{BitVector, ByteVector}
+import scodec.bits.ByteVector
+import scodec.codecs.{byte, bytes, choice, constant, fallback, lazily, list, provide, variableSizeDelimited, ~}
 
-object bencode {
-  implicit private val charset = Charset.forName("US-ASCII")
+object BencodeCodec {
 
-  sealed trait Bencode
-  object Bencode {
-    case class String(value: ByteVector) extends Bencode
-    object String {
-      def apply(string: java.lang.String): String = new String(ByteVector.encodeString(string).right.get)
-      val Emtpy = new String(ByteVector.empty)
-    }
-    case class Integer(value: scala.Long) extends Bencode
-    case class List(values: collection.immutable.List[Bencode]) extends Bencode
-    case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode
-  }
+  val instance: Codec[Bencode] = {
 
-  private val codec: Codec[Bencode] = {
-
-    val valueCodec = lazily(codec)
+    val valueCodec = lazily(instance)
 
     val asciiNumber = byte.exmap[Char](
       b => if (b.toChar.isDigit) Successful(b.toChar) else Failure(Err("not a digit")),
@@ -55,20 +40,20 @@ object bencode {
 
     def varLengthList[A](codec: Codec[A]): Codec[List[A]] = fallback(constant('e'), codec)
       .consume[List[A]]{
-        case Left(_) => provide(Nil)
-        case Right(bc) => varLengthList(codec).xmap(
-          tail => bc :: tail,
-          list => list.tail
-        )
-      }{
-        case Nil => Left(())
-        case head :: _ => Right(head)
-      }
+      case Left(_) => provide(Nil)
+      case Right(bc) => varLengthList(codec).xmap(
+        tail => bc :: tail,
+        list => list.tail
+      )
+    }{
+      case Nil => Left(())
+      case head :: _ => Right(head)
+    }
 
     val listParser: Codec[Bencode.List] = (constant('l') ~> varLengthList(valueCodec)).xmap[Bencode.List](
-        elems => Bencode.List(elems),
-        list => list.values
-      )
+      elems => Bencode.List(elems),
+      list => list.values
+    )
 
     val keyValueParser = (stringParser ~ valueCodec).xmap[String ~ Bencode](
       { case (Bencode.String(key), value) => (key.decodeAscii.right.get, value) },
@@ -77,9 +62,9 @@ object bencode {
 
     val dictionaryParser: Codec[Bencode.Dictionary] = (constant('d') ~> varLengthList(keyValueParser))
       .xmap[Bencode.Dictionary](
-        elems => Bencode.Dictionary(elems.toMap),
-        dict => dict.values.toList
-      )
+      elems => Bencode.Dictionary(elems.toMap),
+      dict => dict.values.toList
+    )
 
     choice(
       stringParser.upcast[Bencode],
@@ -89,9 +74,4 @@ object bencode {
     )
   }
 
-  def decode(source: BitVector): Either[Err, DecodeResult[Bencode]] = codec.decodeOnly.decode(source).toEither
-
-  def decode(source: Array[Byte]): Either[Err, DecodeResult[Bencode]] = decode(BitVector(source))
-
-  def encode(value: Bencode): Either[Err, BitVector] = codec.encode(value).toEither
 }
