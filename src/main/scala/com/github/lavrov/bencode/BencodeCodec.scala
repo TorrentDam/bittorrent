@@ -11,7 +11,7 @@ object BencodeCodec {
 
     val valueCodec = lazily(instance)
 
-    val asciiNumber = byte.exmap[Char](
+    val asciiNumber: Codec[Char] = byte.exmap(
       b => if (b.toChar.isDigit) Successful(b.toChar) else Failure(Err("not a digit")),
       c => Successful(c.toByte)
     )
@@ -33,7 +33,7 @@ object BencodeCodec {
           _.value.size.toInt
         )
 
-    val integerParser: Codec[Bencode.Integer] = (constant('i') ~> positiveNumber('e')).xmap[Bencode.Integer](
+    val integerParser: Codec[Bencode.Integer] = (constant('i') ~> positiveNumber('e')).xmap(
       number => Bencode.Integer(number),
       integer => integer.value
     )
@@ -50,21 +50,21 @@ object BencodeCodec {
       case head :: _ => Right(head)
     }
 
-    val listParser: Codec[Bencode.List] = (constant('l') ~> varLengthList(valueCodec)).xmap[Bencode.List](
+    val listParser: Codec[Bencode.List] = (constant('l') ~> varLengthList(valueCodec)).xmap(
       elems => Bencode.List(elems),
       list => list.values
     )
 
-    val keyValueParser = (stringParser ~ valueCodec).xmap[String ~ Bencode](
+    val keyValueParser: Codec[String ~ Bencode] = (stringParser ~ valueCodec).xmap(
       { case (Bencode.String(key), value) => (key.decodeAscii.right.get, value) },
       { case (key, value) => (Bencode.String(ByteVector.encodeString(key).right.get), value) }
     )
 
     val dictionaryParser: Codec[Bencode.Dictionary] = (constant('d') ~> varLengthList(keyValueParser))
-      .xmap[Bencode.Dictionary](
-      elems => Bencode.Dictionary(elems.toMap),
-      dict => dict.values.toList
-    )
+      .xmap(
+        elems => Bencode.Dictionary(elems.toMap),
+        dict => dict.values.toList
+      )
 
     choice(
       stringParser.upcast[Bencode],
