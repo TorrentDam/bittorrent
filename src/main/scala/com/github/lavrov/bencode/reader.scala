@@ -13,6 +13,10 @@ package object reader {
 
   @newtype case class BencodeReader[A](value: RTR[A]) {
     def read(bencode: Bencode) = value.run(bencode)
+
+    def and[B](that: BencodeReader[B]): BencodeReader[(A, B)] = BencodeReader.and(this, that)
+
+    def or(that: BencodeReader[A]): BencodeReader[A] = BencodeReader.or(this, that)
   }
 
   object BencodeReader {
@@ -68,6 +72,10 @@ package object reader {
     }
 
     implicit val MonadInstance: Monad[BencodeReader] = derivingK
-    implicit val SemigroupKInstance: SemigroupK[BencodeReader] = derivingK
+    private val SemigroupKInstance: SemigroupK[BencodeReader] = derivingK
+
+    def and[A, B](x: BencodeReader[A], y: BencodeReader[B]): BencodeReader[(A, B)] = MonadInstance.tuple2(x, y)
+
+    def or[A](x: BencodeReader[A], y: BencodeReader[A]): BencodeReader[A] = SemigroupKInstance.combineK(x, y)
   }
 }

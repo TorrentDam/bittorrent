@@ -65,6 +65,6 @@ object Info {
     BencodeReader.field[List[File]]("files").map(MultipleFileInfo)
 
   implicit val InfoReader: BencodeReader[Info] =
-    SingleFileInfoReader.widen[Info] <+> MultipleFileInfoReader.widen
+    SingleFileInfoReader.widen[Info] or MultipleFileInfoReader.widen
 
 }
