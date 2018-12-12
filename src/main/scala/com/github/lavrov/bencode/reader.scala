@@ -12,7 +12,7 @@ package object reader {
   type RTR[A] = ReaderT[ER, Bencode, A]
 
   @newtype case class BencodeReader[A](value: RTR[A]) {
-    def read(bencode: Bencode) = value.run(bencode)
+    def read(bencode: Bencode): ER[A] = value.run(bencode)
 
     def and[B](that: BencodeReader[B]): BencodeReader[(A, B)] = BencodeReader.and(this, that)
 
@@ -24,7 +24,8 @@ package object reader {
     def field[A](name: String)(implicit bReader: BencodeReader[A]): BencodeReader[A] = BencodeReader {
       ReaderT {
         case Bencode.Dictionary(values) =>
-          values.get(name).toRight(s"Field $name not found").flatMap(bReader.value.run)
+          values.get(name).toRight(s"Field $name not found. Available fields: ${values.keys}")
+            .flatMap(bReader.value.run)
         case _ =>
           Left("Dictionary is expected")
       }
@@ -49,7 +50,7 @@ package object reader {
     implicit val StringReader: BencodeReader[String] = BencodeReader(
       ReaderT {
         case Bencode.String(v) => v.decodeAscii.left.map(_.getMessage)
-        case _ => Left("String is expected")
+        case other => Left(s"String is expected, $other found")
       }
     )
 
@@ -70,6 +71,12 @@ package object reader {
           Left("List is expected")
       }
     }
+
+    implicit val RawValueReader: BencodeReader[Bencode] = BencodeReader(
+      ReaderT {
+        case bencode => Right(bencode)
+      }
+    )
 
     implicit val MonadInstance: Monad[BencodeReader] = derivingK
     private val SemigroupKInstance: SemigroupK[BencodeReader] = derivingK

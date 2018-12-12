@@ -5,7 +5,9 @@ import java.time.Instant
 import com.github.lavrov.bencode.reader.BencodeReader
 import cats.syntax.apply._
 import cats.syntax.functor._
+import cats.syntax.flatMap._
 import cats.syntax.semigroupk._
+import com.github.lavrov.bencode.{Bencode, encode => encodeValue}
 import scodec.bits.ByteVector
 
 case class MetaInfo(
@@ -23,6 +25,8 @@ object MetaInfo {
       BencodeReader.optField[Instant]("creationDate")
     )
     .mapN(MetaInfo.apply)
+
+  val rawInfoHash: BencodeReader[Bencode] = BencodeReader.field[Bencode]("info")
 }
 
 sealed trait Info
@@ -36,13 +40,15 @@ object Info {
   extends Info
 
   case class MultipleFileInfo(
+    pieceLength: Long,
+    pieces: ByteVector,
     files: List[File]
   )
   extends Info
 
   case class File(
-    info: SingleFileInfo,
-    path: String
+    length: Long,
+    path: List[String]
   )
 
   implicit val SingleFileInfoReader: BencodeReader[SingleFileInfo] =
@@ -56,13 +62,18 @@ object Info {
 
   implicit val FileReader: BencodeReader[File] =
     (
-      BencodeReader.field[SingleFileInfo]("info"),
-      BencodeReader.field[String]("path")
+      BencodeReader.field[Long]("length"),
+      BencodeReader.field[List[String]]("path")
     )
     .mapN(File)
 
   implicit val MultipleFileInfoReader: BencodeReader[MultipleFileInfo] =
-    BencodeReader.field[List[File]]("files").map(MultipleFileInfo)
+    (
+      BencodeReader.field[Long]("piece length"),
+      BencodeReader.field[ByteVector]("pieces"),
+      BencodeReader.field[List[File]]("files")
+    )
+    .mapN(MultipleFileInfo)
 
   implicit val InfoReader: BencodeReader[Info] =
     SingleFileInfoReader.widen[Info] or MultipleFileInfoReader.widen

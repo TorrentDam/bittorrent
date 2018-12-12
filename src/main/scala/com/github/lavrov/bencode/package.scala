@@ -13,5 +13,5 @@ object `package` {
 
   def decode(source: Array[Byte]): Either[Err, DecodeResult[Bencode]] = decode(BitVector(source))
 
-  def encode(value: Bencode): Either[Err, BitVector] = BencodeCodec.instance.encode(value).toEither
+  def encode(value: Bencode): BitVector = BencodeCodec.instance.encode(value).toEither.right.get
 }

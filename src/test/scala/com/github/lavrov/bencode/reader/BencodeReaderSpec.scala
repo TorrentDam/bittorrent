@@ -48,25 +48,24 @@ class BencodeReaderSpec extends FlatSpec {
 
     val input1 = Bencode.Dictionary(
       Map(
+        "piece length" -> Bencode.Integer(10),
+        "pieces" -> Bencode.String.Emtpy,
         "files" -> Bencode.List(
           Bencode.Dictionary(
             Map(
-              "info" -> Bencode.Dictionary(
-                Map(
-                  "piece length" -> Bencode.Integer(10),
-                  "pieces" -> Bencode.String.Emtpy,
-                  "length" -> Bencode.Integer(10),
-                  "md5sum" -> Bencode.String.Emtpy,
-                )
-              ),
-              "path" -> Bencode.String("/root")
+              "length" -> Bencode.Integer(10),
+              "path" -> Bencode.List(Bencode.String("/root") :: Nil)
             )
           ) :: Nil
         )
       )
     )
 
-    Info.InfoReader.read(input1) mustBe Right(MultipleFileInfo(File(SingleFileInfo(10, ByteVector.empty, 10, Some(ByteVector.empty)), "/root") :: Nil))
+    Info.InfoReader.read(input1) mustBe Right(
+      MultipleFileInfo(10, ByteVector.empty,
+        File(10, "/root" :: Nil) :: Nil
+      )
+    )
   }
 
   it should "decode ubuntu torrent" in {
