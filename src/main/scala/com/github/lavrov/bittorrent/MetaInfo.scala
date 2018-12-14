@@ -2,12 +2,10 @@ package com.github.lavrov.bittorrent
 
 import java.time.Instant
 
-import com.github.lavrov.bencode.reader.BencodeReader
+import com.github.lavrov.bencode.Bencode
+import com.github.lavrov.bencode.reader._
+import cats.syntax.invariant._
 import cats.syntax.apply._
-import cats.syntax.functor._
-import cats.syntax.flatMap._
-import cats.syntax.semigroupk._
-import com.github.lavrov.bencode.{Bencode, encode => encodeValue}
 import scodec.bits.ByteVector
 
 case class MetaInfo(
@@ -16,66 +14,71 @@ case class MetaInfo(
   creationDate: Option[Instant]
 )
 
-object MetaInfo {
-  implicit val InstantReader: BencodeReader[Instant] = BencodeReader.LongReader.map(Instant.ofEpochMilli)
-  implicit val MetaInfoReader: BencodeReader[MetaInfo] =
-    (
-      BencodeReader.field[Info]("info"),
-      BencodeReader.field[String]("announce"),
-      BencodeReader.optField[Instant]("creationDate")
-    )
-    .mapN(MetaInfo.apply)
-
-  val rawInfoHash: BencodeReader[Bencode] = BencodeReader.field[Bencode]("info")
-}
-
 sealed trait Info
 object Info {
-  case class SingleFileInfo(
+  case class SingleFile(
     pieceLength: Long,
     pieces: ByteVector,
     length: Long,
     md5sum: Option[ByteVector]
   )
-  extends Info
+    extends Info
 
-  case class MultipleFileInfo(
+  case class MultipleFiles(
     pieceLength: Long,
     pieces: ByteVector,
     files: List[File]
   )
-  extends Info
+    extends Info
 
   case class File(
     length: Long,
     path: List[String]
   )
+}
 
-  implicit val SingleFileInfoReader: BencodeReader[SingleFileInfo] =
+object MetaInfo {
+
+  implicit val InstantFormat: BencodeFormat[Instant] = BencodeFormat.LongReader.imap(Instant.ofEpochMilli)(_.toEpochMilli)
+
+  implicit val SingleFileFormat: BencodeFormat[Info.SingleFile] =
     (
-      BencodeReader.field[Long]("piece length"),
-      BencodeReader.field[ByteVector]("pieces"),
-      BencodeReader.field[Long]("length"),
-      BencodeReader.optField[ByteVector]("md5sum")
+      field[Long]("piece length"),
+      field[ByteVector]("pieces"),
+      field[Long]("length"),
+      optField[ByteVector]("md5sum")
     )
-    .mapN(SingleFileInfo)
+      .imapN(Info.SingleFile)(v => (v.pieceLength, v.pieces, v.length, v.md5sum))
+      .generalize
 
-  implicit val FileReader: BencodeReader[File] =
+  implicit val FileFormat: BencodeFormat[Info.File] =
     (
-      BencodeReader.field[Long]("length"),
-      BencodeReader.field[List[String]]("path")
+      field[Long]("length"),
+      field[List[String]]("path")
     )
-    .mapN(File)
+      .imapN(Info.File)(v => (v.length, v.path))
+      .generalize
 
-  implicit val MultipleFileInfoReader: BencodeReader[MultipleFileInfo] =
+  implicit val MultipleFileFormat: BencodeFormat[Info.MultipleFiles] =
     (
-      BencodeReader.field[Long]("piece length"),
-      BencodeReader.field[ByteVector]("pieces"),
-      BencodeReader.field[List[File]]("files")
+      field[Long]("piece length"),
+      field[ByteVector]("pieces"),
+      field[List[Info.File]]("files")
     )
-    .mapN(MultipleFileInfo)
+      .imapN(Info.MultipleFiles)(v => (v.pieceLength, v.pieces, v.files))
+      .generalize
 
-  implicit val InfoReader: BencodeReader[Info] =
-    SingleFileInfoReader.widen[Info] or MultipleFileInfoReader.widen
+  implicit val InfoFormat: BencodeFormat[Info] =
+    SingleFileFormat.upcast[Info] or MultipleFileFormat.upcast
 
+  implicit val MetaInfoFormat: BencodeFormat[MetaInfo] =
+    (
+      field[Info]("info"),
+      field[String]("announce"),
+      optField[Instant]("creationDate")
+    )
+    .imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
+    .generalize
+
+  val rawInfoHash: BencodeFormat[Bencode] = field[Bencode]("info").generalize
 }

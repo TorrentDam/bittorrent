@@ -3,13 +3,19 @@ lazy val root = project
   .settings(
     name := "bittorrent",
     version := "0.1.0",
-    scalaVersion := "2.12.7",
     libraryDependencies ++= Seq(
-      "co.fs2" %% "fs2-io" % "1.0.0",
+      "co.fs2" %% "fs2-io" % "1.0.2",
       "org.scodec" %% "core" % "1.10.4",
-      "io.estatico" %% "newtype" % "0.4.2",
+      "org.typelevel" %% "cats-mtl-core" % "0.4.0",
       "org.scalatest" %% "scalatest" % "3.0.5",
     ),
+    // compiler settings
+    scalaVersion := "2.12.8",
+    scalacOptions ++= Seq(
+      "-language:higherKinds",
+      "-Ypartial-unification",
+    ),
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.8"),
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full)
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full),
   )
+
