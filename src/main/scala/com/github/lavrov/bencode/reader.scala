@@ -89,7 +89,11 @@ package object reader {
 
     def generalize = BencodeFormat(read, write.map(d => d))
 
+    def upcast[B >: A](implicit ta: Typeable[A]): DictionaryFormat[B] = reader.upcastDict[A, B](this)
+
     def and[B](that: DictionaryFormat[B]): DictionaryFormat[(A, B)] = reader.and(this, that)
+
+    def or(that: DictionaryFormat[A]): DictionaryFormat[A] = reader.orDict(this, that)
   }
 
   object DictionaryFormat {
@@ -130,9 +134,28 @@ package object reader {
     }
   )
 
+  def upcastDict[A, B >: A](x: DictionaryFormat[A])(implicit ta: Typeable[A]): DictionaryFormat[B] = DictionaryFormat(
+    x.read.widen[B],
+    ReaderT { b: B =>
+      ta.cast(b) match {
+        case Some(a) => x.write(a)
+        case None => Left(s"not a value of type ${ta.describe}")
+      }
+    }
+  )
+
   def and[A, B](x: DictionaryFormat[A], y: DictionaryFormat[B]): DictionaryFormat[(A, B)] = (x, y).tupled
 
   def or[A](x: BencodeFormat[A], y: BencodeFormat[A]): BencodeFormat[A] = BencodeFormat(
+    ReaderT { bencodeValue: Bencode =>
+      x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
+    },
+    ReaderT { a: A =>
+      x.write(a).left.flatMap(_ => y.write(a))
+    }
+  )
+
+  def orDict[A](x: DictionaryFormat[A], y: DictionaryFormat[A]): DictionaryFormat[A] = DictionaryFormat(
     ReaderT { bencodeValue: Bencode =>
       x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
     },
@@ -156,6 +179,14 @@ package object reader {
         bReader.write.run(a).map(bb => Bencode.Dictionary(Map(name -> bb)))
       }
     )
+
+  def matchField[A: Eq](name: String, value: A)(implicit format: BencodeFormat[A]): DictionaryFormat[Unit] = {
+    val df = field[A](name)
+    DictionaryFormat(
+      df.read.flatMapF(a => Either.cond(a === value, (), s"didn't match value $value")),
+      df.write.contramap(_ => value)
+    )
+  }
 
   def optField[A](name: String)(implicit bReader: BencodeFormat[A]): DictionaryFormat[Option[A]] =
     DictionaryFormat(
