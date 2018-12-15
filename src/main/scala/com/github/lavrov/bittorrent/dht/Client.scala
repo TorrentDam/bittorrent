@@ -6,7 +6,7 @@ import cats._
 import cats.implicits._
 import fs2.io.udp.{Packet, Socket}
 import com.github.lavrov.bencode.{decode, encode}
-import com.github.lavrov.bittorrent.dht.protocol.{Message, Query}
+import com.github.lavrov.bittorrent.dht.protocol.{Message, Query, Response}
 import fs2.Chunk
 
 class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadError[F, Throwable]) {
@@ -28,13 +28,21 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
 
     } yield ()
 
-  def main: F[Message] =
+  def main: F[Response.Nodes] =
     for {
       _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage("aa", Query.Ping(selfId)))
       m <- readMessage
       _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage("ab", Query.FindNode(selfId, selfId)))
       m1 <- readMessage
-    } yield m1
+      r <- M.fromEither(
+        PartialFunction.condOpt(m1){
+          case Message.ResponseMessage(transactionId, response) =>
+            Message.NodesResponseFormat.read(response).left.map(e => new Exception(e))
+        }
+        .toRight(new Exception("Got wrong message"))
+        .flatten
+      )
+    } yield r
 }
 
 object Client {

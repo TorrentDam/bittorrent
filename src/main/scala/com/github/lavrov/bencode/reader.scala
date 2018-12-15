@@ -3,6 +3,7 @@ package com.github.lavrov.bencode
 import cats._
 import cats.data.ReaderT
 import cats.implicits._
+import scodec.Codec
 import scodec.bits.ByteVector
 import shapeless.Typeable
 
@@ -203,5 +204,14 @@ package object reader {
           Right(Bencode.Dictionary(Map.empty))
       }
     )
+
+  def encodedString[A](codec: Codec[A]): BencodeFormat[A] = BencodeFormat(
+    BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
+      codec.decodeValue(bv.toBitVector).toEither.left.map(_.message)
+    },
+    ReaderT { v: A =>
+      codec.encode(v).toEither.bimap(_.message, bv => Bencode.String(bv.toByteVector))
+    }
+  )
 
 }
