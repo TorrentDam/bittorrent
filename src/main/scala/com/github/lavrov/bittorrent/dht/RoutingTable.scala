@@ -13,12 +13,13 @@ class RoutingTable[F[_]: Monad](
     PeerTableState: MonadState[F, Map[InfoHash, List[PeerInfo]]]
 ) {
 
-  def findNode(nodeId: NodeId): F[List[NodeId]] =
+  def findNode(nodeId: NodeId): F[List[DHTNode]] =
     for {
       tree <- BucketState.get
     } yield {
       val bucket = BucketTree.findBucket(tree, nodeId)
-      bucket.nodes.sortBy(NodeId.distance(nodeId, _))
+      val nodes = bucket.nodes.view.map(DHTNode.tupled).toList
+      nodes.sortBy(n => NodeId.distance(nodeId, n.id))
     }
 
   def findPeers(infoHash: InfoHash): F[Option[List[PeerInfo]]] =

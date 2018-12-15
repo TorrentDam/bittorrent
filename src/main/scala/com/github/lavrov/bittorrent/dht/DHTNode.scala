@@ -1,8 +1,10 @@
 package com.github.lavrov.bittorrent.dht
 
+import java.net.InetSocketAddress
 import scodec.bits.ByteVector
-
 import scala.util.Random
+
+final case class DHTNode(id: NodeId, address: InetSocketAddress)
 
 final case class NodeId(bytes: ByteVector) {
   val int = BigInt(1, bytes.toArray)
