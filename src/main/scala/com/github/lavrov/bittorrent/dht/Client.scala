@@ -2,7 +2,6 @@ package com.github.lavrov.bittorrent
 package dht
 
 import java.net.InetSocketAddress
-import java.nio.file.{Files, Paths}
 
 import cats._
 import cats.implicits._
@@ -73,16 +72,6 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
       r <- iteration(NodeInfo(r.id, Client.BootstrapNode))
     } yield r
   }
-
-  def main: F[List[PeerInfo]] =
-    for {
-      bytes <- M.pure(Files.readAllBytes(Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")))
-      bc <- M.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
-      infoDict <- M.fromEither(MetaInfo.RawInfoFormat.read(bc).left.map(new Exception(_)))
-      infoHash = InfoHash(util.sha1Hash(infoDict))
-      _ = println(s"Searching for peers on $infoHash")
-      r <- getPeersAlgo(infoHash)
-    } yield r
 }
 
 object Client {
