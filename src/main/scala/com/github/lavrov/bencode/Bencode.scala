@@ -14,7 +14,11 @@ object Bencode {
     val Emtpy = new String(ByteVector.empty)
   }
   case class Integer(value: scala.Long) extends Bencode
-  case class List(values: collection.immutable.List[Bencode]) extends Bencode
-  case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode
+  case class List(values: collection.immutable.List[Bencode]) extends Bencode {
+    override def toString() = s"List(${values.mkString(", ")}"
+  }
+  case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode {
+    override def toString() = s"Dictionary(${values.mkString(", ")})"
+  }
 }
 
