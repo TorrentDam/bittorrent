@@ -1,7 +1,10 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
+
+import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
+
 import scala.util.Random
 
 final case class NodeInfo(id: NodeId, address: InetSocketAddress)

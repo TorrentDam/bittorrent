@@ -5,7 +5,7 @@ import java.nio.file.{Files, Paths}
 
 import cats.effect.{ExitCode, IO, IOApp}
 import com.github.lavrov.bencode.decode
-import com.github.lavrov.bittorrent.dht.{Client, InfoHash, NodeId}
+import com.github.lavrov.bittorrent.dht.{Client, NodeId}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 
 import scala.util.Random

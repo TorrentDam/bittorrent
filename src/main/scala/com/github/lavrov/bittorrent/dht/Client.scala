@@ -7,7 +7,7 @@ import cats._
 import cats.implicits._
 import fs2.io.udp.{Packet, Socket}
 import com.github.lavrov.bencode.{decode, encode}
-import com.github.lavrov.bittorrent.dht.protocol.{Message, Query, Response}
+import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import fs2.Chunk
 
 class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadError[F, Throwable]) {
