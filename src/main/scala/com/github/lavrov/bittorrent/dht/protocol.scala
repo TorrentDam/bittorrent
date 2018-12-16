@@ -4,7 +4,7 @@ import java.net.{InetAddress, InetSocketAddress}
 
 import cats.implicits._
 import com.github.lavrov.bencode.Bencode
-import com.github.lavrov.bittorrent.dht.{DHTNode, NodeId}
+import com.github.lavrov.bittorrent.dht.{InfoHash, NodeId, NodeInfo, PeerInfo}
 import com.github.lavrov.bencode.reader._
 import scodec.Codec
 import scodec.bits.ByteVector
@@ -29,8 +29,15 @@ object Message {
     field[(NodeId, NodeId)]("a")((field[NodeId]("id") and field[NodeId]("target")).generalize)
   ).imapN((_, tpl) => Query.FindNode.tupled(tpl))(v => ((), (v.queryingNodeId, v.target)))
 
+  implicit val InfoHashFormat = BencodeFormat.ByteVectorReader.imap(InfoHash)(_.bytes)
+
+  val GetPeersQueryFormat: DictionaryFormat[Query.GetPeers] = (
+    matchField[String]("q", "get_peers"),
+    field[(NodeId, InfoHash)]("a")((field[NodeId]("id") and field[InfoHash]("info_hash")).generalize)
+  ).imapN((_, tpl) => Query.GetPeers.tupled(tpl))(v => ((), (v.queryingNodeId, v.infoHash)))
+
   val QueryFormat: DictionaryFormat[Query] =
-    PingQueryFormat.upcast[Query] or FindNodeQueryFormat.upcast[Query]
+    PingQueryFormat.upcast[Query] or FindNodeQueryFormat.upcast[Query] or GetPeersQueryFormat.upcast[Query]
 
   val QueryMessageFormat: BencodeFormat[Message.QueryMessage] = (
     matchField[String]("y", "q"),
@@ -39,25 +46,43 @@ object Message {
   ).imapN((_, tid, q) => QueryMessage(tid, q))(v => ((), v.transactionId, v.query))
     .generalize
 
-  val CompactNodeInfoCodec: Codec[List[DHTNode]] = {
+  val InetSocketAddressCodec: Codec[InetSocketAddress] = {
+    import scodec.codecs._
+    (bytes(4) ~ bytes(2)).xmap(
+      { case (address, port) =>
+        new InetSocketAddress(InetAddress.getByAddress(address.toArray), port.toInt(signed = false))
+      },
+      v => (ByteVector(v.getAddress.getAddress), ByteVector.fromInt(v.getPort, 2))
+    )
+  }
+
+  val CompactNodeInfoCodec: Codec[List[NodeInfo]] = {
     import scodec.codecs._
     list(
-      (bytes(20) ~ bytes(4) ~ bytes(2)).xmap(
-        { case ((id, address), port) =>
-          DHTNode(NodeId(id), new InetSocketAddress(InetAddress.getByAddress(address.toArray), port.toInt(signed = false)))
+      (bytes(20) ~ InetSocketAddressCodec).xmap(
+        { case (id, address) =>
+          NodeInfo(NodeId(id), address)
         },
-        v => ((v.id.bytes, ByteVector(v.address.getAddress.getAddress)), ByteVector.fromInt(v.address.getPort, 2))
+        v => (v.id.bytes, v.address)
       )
     )
   }
+
+  val CompactPeerInfoCodec: Codec[PeerInfo] = InetSocketAddressCodec.xmap(PeerInfo, _.address)
 
   val PingResponseFormat: BencodeFormat[Response.Ping] =
     field[NodeId]("id").imap(Response.Ping)(_.id).generalize
 
   val NodesResponseFormat: BencodeFormat[Response.Nodes] = (
     field[NodeId]("id"),
-    field[List[DHTNode]]("nodes")(encodedString(CompactNodeInfoCodec))
+    field[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec))
   ).imapN(Response.Nodes)(v => (v.id, v.nodes))
+    .generalize
+
+  val PeersResponseFormat: BencodeFormat[Response.Peers] = (
+    field[NodeId]("id"),
+    field[List[PeerInfo]]("values")(BencodeFormat.listReader(encodedString(CompactPeerInfoCodec)))
+  ).imapN(Response.Peers)(v => (v.id, v.peers))
     .generalize
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
@@ -83,10 +108,12 @@ sealed trait Query {
 object Query {
   final case class Ping(queryingNodeId: NodeId) extends Query
   final case class FindNode(queryingNodeId: NodeId, target: NodeId) extends Query
+  final case class GetPeers(queryingNodeId: NodeId, infoHash: InfoHash) extends Query
 }
 
 sealed trait Response
 object Response {
   final case class Ping(id: NodeId)
-  final case class Nodes(id: NodeId, nodes: List[DHTNode]) extends Response
+  final case class Nodes(id: NodeId, nodes: List[NodeInfo]) extends Response
+  final case class Peers(id: NodeId, peers: List[PeerInfo]) extends Response
 }

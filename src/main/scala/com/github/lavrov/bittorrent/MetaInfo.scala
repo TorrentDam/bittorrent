@@ -80,5 +80,5 @@ object MetaInfo {
     .imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
     .generalize
 
-  val rawInfoHash: BencodeFormat[Bencode] = field[Bencode]("info").generalize
+  val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info").generalize
 }

@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetAddress
+import java.net.{InetAddress, InetSocketAddress}
 
 import cats._
 import cats.implicits._
@@ -13,12 +13,12 @@ class RoutingTable[F[_]: Monad](
     PeerTableState: MonadState[F, Map[InfoHash, List[PeerInfo]]]
 ) {
 
-  def findNode(nodeId: NodeId): F[List[DHTNode]] =
+  def findNode(nodeId: NodeId): F[List[NodeInfo]] =
     for {
       tree <- BucketState.get
     } yield {
       val bucket = BucketTree.findBucket(tree, nodeId)
-      val nodes = bucket.nodes.view.map(DHTNode.tupled).toList
+      val nodes = bucket.nodes.view.map(NodeInfo.tupled).toList
       nodes.sortBy(n => NodeId.distance(nodeId, n.id))
     }
 
@@ -42,4 +42,4 @@ class RoutingTable[F[_]: Monad](
 
 final case class InfoHash(bytes: ByteVector)
 
-final case class PeerInfo(address: InetAddress)
+final case class PeerInfo(address: InetSocketAddress)

@@ -6,7 +6,6 @@ import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import com.github.lavrov.bittorrent.Info.{File, MultipleFiles, SingleFile}
 import org.scalatest.FlatSpec
 import org.scalatest.MustMatchers._
-import scodec.DecodeResult
 import scodec.bits.{BitVector, ByteVector}
 
 class BencodeFormatSpec extends FlatSpec {
@@ -67,17 +66,15 @@ class BencodeFormatSpec extends FlatSpec {
   }
 
   it should "decode ubuntu torrent" in {
-    bencode.decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(
-      DecodeResult(Bencode.Integer(56L), BitVector.empty))
-    bencode.decode(BitVector.encodeAscii("2:aa").right.get) mustBe Right(
-      DecodeResult(Bencode.String("aa"), BitVector.empty))
+    bencode.decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(Bencode.Integer(56L))
+    bencode.decode(BitVector.encodeAscii("2:aa").right.get) mustBe Right(Bencode.String("aa"))
     bencode.decode(BitVector.encodeAscii("l1:a2:bbe").right.get) mustBe Right(
-      DecodeResult(Bencode.List(Bencode.String("a") :: Bencode.String("bb") :: Nil), BitVector.empty))
+      Bencode.List(Bencode.String("a") :: Bencode.String("bb") :: Nil))
     bencode.decode(BitVector.encodeAscii("d1:ai6ee").right.get) mustBe Right(
-      DecodeResult(Bencode.Dictionary(Map("a" -> Bencode.Integer(6))), BitVector.empty))
+      Bencode.Dictionary(Map("a" -> Bencode.Integer(6))))
     val source = getClass.getClassLoader.getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent").readAllBytes()
     val Right(result) = bencode.decode(source)
-    val decodeResult = MetaInfo.MetaInfoFormat.read(result.value)
+    val decodeResult = MetaInfo.MetaInfoFormat.read(result)
     decodeResult.map(_.announce) mustBe Right("http://torrent.ubuntu.com:6969/announce")
   }
 }

@@ -10,7 +10,7 @@ object BucketTree {
 
   val MaxNodes = 8
 
-  def insert(bucket: BucketTree, node: DHTNode): BucketTree = bucket match {
+  def insert(bucket: BucketTree, node: NodeInfo): BucketTree = bucket match {
     case b@Split(center, lower, higher) =>
       if (node.id.int < center)
         b.copy(lower = insert(lower, node))
@@ -20,7 +20,7 @@ object BucketTree {
       if (nodes.size == MaxNodes) {
         val center = (from + until) / 2
         val splitBucket: BucketTree = Split(center, Final(from, center - 1, Map.empty), Final(center, until, Map.empty))
-        nodes.updated(node.id, node.address).view.map(DHTNode.tupled).foldLeft(splitBucket)(insert)
+        nodes.updated(node.id, node.address).view.map(NodeInfo.tupled).foldLeft(splitBucket)(insert)
       }
       else
         Final(from, until, nodes.updated(node.id, node.address))

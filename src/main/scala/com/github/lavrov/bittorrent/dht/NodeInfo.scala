@@ -4,7 +4,7 @@ import java.net.InetSocketAddress
 import scodec.bits.ByteVector
 import scala.util.Random
 
-final case class DHTNode(id: NodeId, address: InetSocketAddress)
+final case class NodeInfo(id: NodeId, address: InetSocketAddress)
 
 final case class NodeId(bytes: ByteVector) {
   val int = BigInt(1, bytes.toArray)
@@ -12,7 +12,11 @@ final case class NodeId(bytes: ByteVector) {
 
 object NodeId {
 
-  def distance(a: NodeId, b: NodeId): BigInt = BigInt(1, (a.bytes xor b.bytes).toArray)
+  private def distance(a: ByteVector, b: ByteVector): BigInt = BigInt(1, (a xor b).toArray)
+
+  def distance(a: NodeId, b: NodeId): BigInt = distance(a.bytes, b.bytes)
+
+  def distance(a: NodeId, b: InfoHash): BigInt = distance(a.bytes, b.bytes)
 
   def generate(rnd: Random): NodeId = {
     val buffer = Array.ofDim[Byte](20)
