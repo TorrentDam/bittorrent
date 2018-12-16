@@ -184,7 +184,7 @@ package object reader {
   def matchField[A: Eq](name: String, value: A)(implicit format: BencodeFormat[A]): DictionaryFormat[Unit] = {
     val df = field[A](name)
     DictionaryFormat(
-      df.read.flatMapF(a => Either.cond(a === value, (), s"didn't match value $value")),
+      df.read.flatMapF(a => Either.cond(a === value, (), s"Expected field $name='$value' but found $a")),
       df.write.contramap(_ => value)
     )
   }
