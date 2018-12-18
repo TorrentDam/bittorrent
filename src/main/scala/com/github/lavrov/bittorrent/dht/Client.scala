@@ -1,7 +1,7 @@
 package com.github.lavrov.bittorrent
 package dht
 
-import java.net.InetSocketAddress
+import java.net.{InetAddress, InetSocketAddress}
 import java.nio.channels.InterruptedByTimeoutException
 
 import cats._
@@ -73,12 +73,12 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
       _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage("aa", Query.Ping(selfId)))
       m <- readMessage
       r <- M.fromEither(
-        PartialFunction.condOpt(m){
+        m match {
           case Message.ResponseMessage(transactionId, response) =>
             Message.PingResponseFormat.read(response).leftMap(e => new Exception(e))
+          case other =>
+            Left(new Exception(s"Got wrong message $other"))
         }
-          .toRight(new Exception("Got wrong message"))
-          .flatten
       )
       r <- iteration(NonEmptyList.one(NodeInfo(r.id, Client.BootstrapNode)))
     } yield r

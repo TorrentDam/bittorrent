@@ -12,9 +12,9 @@ final case class Handshake(
 )
 
 object Handshake {
-  val ProtocolStringCodec: Codec[String] = variableSizeBytes(uint8, ascii)
+  val ProtocolStringCodec: Codec[String] = variableSizeBytes(uint8, utf8)
   val ReserveCodec: Codec[ByteVector] = bytes(8)
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
-  val PeerIdCodec: Codec[PeerId] = fixedSizeBytes(20, ascii).xmap(PeerId.apply, _.value)
+  val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] = (ProtocolStringCodec :: ReserveCodec :: InfoHashCodec :: PeerIdCodec).as
 }

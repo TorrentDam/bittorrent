@@ -1,25 +1,28 @@
 package com.github.lavrov.bittorrent.protocol
 import cats._
+import cats.effect.Concurrent
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.github.lavrov.bittorrent.protocol.message.Handshake
 import fs2.Chunk
-import fs2.io.udp.{Packet, Socket}
+import fs2.io.tcp.Socket
 import scodec.bits.{BitVector, ByteVector}
 
-class Client[F[_]: Monad](selfId: PeerId, socket: Socket[F])(implicit M: MonadError[F, Throwable]) {
+class Client[F[_]: Monad: Concurrent](selfId: PeerId, socket: Socket[F])(
+    implicit M: MonadError[F, Throwable]) {
 
-  def handshake(peerInfo: PeerInfo, infoHash: InfoHash): F[Handshake] = {
+  def handshake(infoHash: InfoHash): F[Handshake] = {
     val message = Handshake("BitTorrent protocol", ByteVector.fill(8)(0), infoHash, selfId)
     for {
       _ <- socket.write(
-        Packet(
-          peerInfo.address,
-          Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector)))
-      packet <- socket.read()
-      response <- M fromTry Handshake.HandshakeCodec
-        .decodeValue(BitVector(packet.bytes.toArray))
-        .toTry
+        Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector))
+      maybeBytes <- socket.read(1024)
+      bv = ByteVector(maybeBytes.get.toArray)
+      response <- M.fromTry(
+        Handshake.HandshakeCodec
+          .decodeValue(bv.toBitVector)
+          .toTry
+      )
     } yield response
   }
 }
