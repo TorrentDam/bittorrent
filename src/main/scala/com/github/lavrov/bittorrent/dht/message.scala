@@ -20,24 +20,24 @@ object Message {
 
   implicit val NodeIdFormat: BencodeFormat[NodeId] = BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
 
-  val PingQueryFormat: DictionaryFormat[Query.Ping] = (
+  val PingQueryFormat: BencodeFormat[Query.Ping] = (
     matchField[String]("q", "ping"),
-    field[NodeId]("a")(field[NodeId]("id").generalize)
+    field[NodeId]("a")(field[NodeId]("id"))
   ).imapN((_, qni) => Query.Ping(qni))(v => ((), v.queryingNodeId))
 
-  val FindNodeQueryFormat: DictionaryFormat[Query.FindNode] = (
+  val FindNodeQueryFormat: BencodeFormat[Query.FindNode] = (
     matchField[String]("q", "find_node"),
-    field[(NodeId, NodeId)]("a")((field[NodeId]("id") and field[NodeId]("target")).generalize)
+    field[(NodeId, NodeId)]("a")((field[NodeId]("id") and field[NodeId]("target")))
   ).imapN((_, tpl) => Query.FindNode.tupled(tpl))(v => ((), (v.queryingNodeId, v.target)))
 
   implicit val InfoHashFormat = BencodeFormat.ByteVectorReader.imap(InfoHash)(_.bytes)
 
-  val GetPeersQueryFormat: DictionaryFormat[Query.GetPeers] = (
+  val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
     matchField[String]("q", "get_peers"),
-    field[(NodeId, InfoHash)]("a")((field[NodeId]("id") and field[InfoHash]("info_hash")).generalize)
+    field[(NodeId, InfoHash)]("a")((field[NodeId]("id") and field[InfoHash]("info_hash")))
   ).imapN((_, tpl) => Query.GetPeers.tupled(tpl))(v => ((), (v.queryingNodeId, v.infoHash)))
 
-  val QueryFormat: DictionaryFormat[Query] =
+  val QueryFormat: BencodeFormat[Query] =
     PingQueryFormat.upcast[Query] or FindNodeQueryFormat.upcast[Query] or GetPeersQueryFormat.upcast[Query]
 
   val QueryMessageFormat: BencodeFormat[Message.QueryMessage] = (
@@ -45,7 +45,6 @@ object Message {
     field[String]("t"),
     QueryFormat
   ).imapN((_, tid, q) => QueryMessage(tid, q))(v => ((), v.transactionId, v.query))
-    .generalize
 
   val InetSocketAddressCodec: Codec[InetSocketAddress] = {
     import scodec.codecs._
@@ -72,32 +71,28 @@ object Message {
   val CompactPeerInfoCodec: Codec[PeerInfo] = InetSocketAddressCodec.xmap(PeerInfo, _.address)
 
   val PingResponseFormat: BencodeFormat[Response.Ping] =
-    field[NodeId]("id").imap(Response.Ping)(_.id).generalize
+    field[NodeId]("id").imap(Response.Ping)(_.id)
 
   val NodesResponseFormat: BencodeFormat[Response.Nodes] = (
     field[NodeId]("id"),
     field[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec))
   ).imapN(Response.Nodes)(v => (v.id, v.nodes))
-    .generalize
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
     field[NodeId]("id"),
     field[List[PeerInfo]]("values")(BencodeFormat.listReader(encodedString(CompactPeerInfoCodec)))
   ).imapN(Response.Peers)(v => (v.id, v.peers))
-    .generalize
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     matchField[String]("y", "r"),
     field[String]("t"),
     field[Bencode]("r")
   ).imapN((_, tid, r) => ResponseMessage(tid, r))(v => ((), v.transactionId, v.response))
-    .generalize
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
     matchField[String]("y", "e"),
     field[String]("t")
   ).imapN((_, tid) => ErrorMessage(tid))(v => ((), v.transactionId))
-    .generalize
 
   implicit val MessageFormat: BencodeFormat[Message] =
     QueryMessageFormat.upcast[Message] or ResponseMessageFormat.upcast or ErrorMessageFormat.upcast

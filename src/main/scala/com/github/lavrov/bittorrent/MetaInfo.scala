@@ -49,7 +49,6 @@ object MetaInfo {
       optField[ByteVector]("md5sum")
     )
       .imapN(Info.SingleFile)(v => (v.pieceLength, v.pieces, v.length, v.md5sum))
-      .generalize
 
   implicit val FileFormat: BencodeFormat[Info.File] =
     (
@@ -57,7 +56,6 @@ object MetaInfo {
       field[List[String]]("path")
     )
       .imapN(Info.File)(v => (v.length, v.path))
-      .generalize
 
   implicit val MultipleFileFormat: BencodeFormat[Info.MultipleFiles] =
     (
@@ -66,7 +64,6 @@ object MetaInfo {
       field[List[Info.File]]("files")
     )
       .imapN(Info.MultipleFiles)(v => (v.pieceLength, v.pieces, v.files))
-      .generalize
 
   implicit val InfoFormat: BencodeFormat[Info] =
     SingleFileFormat.upcast[Info] or MultipleFileFormat.upcast
@@ -78,7 +75,6 @@ object MetaInfo {
       optField[Instant]("creationDate")
     )
     .imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
-    .generalize
 
-  val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info").generalize
+  val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
 }

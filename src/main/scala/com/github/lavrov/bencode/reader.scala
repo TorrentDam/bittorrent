@@ -19,6 +19,8 @@ package object reader {
     def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = reader.upcast[A, B](this)
 
     def or(that: BencodeFormat[A]): BencodeFormat[A] = reader.or(this, that)
+
+    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = reader.and(this, that)
   }
 
   object BencodeFormat {
@@ -78,50 +80,34 @@ package object reader {
       }
     )
 
-    implicit val BencodeInvariant: Invariant[BencodeFormat] = new Invariant[BencodeFormat] {
+    implicit val BencodeFormatInvariant: Invariant[BencodeFormat] = new Invariant[BencodeFormat] {
       def imap[A, B](fa: BencodeFormat[A])(f: A => B)(g: B => A): BencodeFormat[B] = BencodeFormat(
         fa.read.map(f),
         fa.write.contramap(g)
       )
     }
-  }
 
-  case class DictionaryFormat[A](read: BReader[A], write: BDWriter[A]) {
-
-    def generalize = BencodeFormat(read, write.map(d => d))
-
-    def upcast[B >: A](implicit ta: Typeable[A]): DictionaryFormat[B] = reader.upcastDict[A, B](this)
-
-    def and[B](that: DictionaryFormat[B]): DictionaryFormat[(A, B)] = reader.and(this, that)
-
-    def or(that: DictionaryFormat[A]): DictionaryFormat[A] = reader.orDict(this, that)
-  }
-
-  object DictionaryFormat {
-
-    implicit val DictionaryFormatInvariant: Invariant[DictionaryFormat] = new Invariant[DictionaryFormat] {
-      def imap[A, B](fa: DictionaryFormat[A])(f: A => B)(g: B => A): DictionaryFormat[B] = DictionaryFormat(
-        fa.read.map(f),
-        fa.write.contramap(g)
-      )
-    }
-
-    implicit val DictionaryFormatSemigroupal: Semigroupal[DictionaryFormat] = new Semigroupal[DictionaryFormat] {
-      def product[A, B](fa: DictionaryFormat[A], fb: DictionaryFormat[B]): DictionaryFormat[(A, B)] =
-        DictionaryFormat[(A, B)](
+    implicit val BencodeFormatSemigroupal: Semigroupal[BencodeFormat] = new Semigroupal[BencodeFormat] {
+      def product[A, B](fa: BencodeFormat[A], fb: BencodeFormat[B]): BencodeFormat[(A, B)] =
+        BencodeFormat[(A, B)](
           (fa.read, fb.read).tupled,
           ReaderT {
             case (a, b) =>
               for {
-                ab <- fa.write(a)
-                bb <- fb.write(b)
+                ab <- fa.write(a).right.flatMap {
+                  case Bencode.Dictionary(values) => Right(values)
+                  case other => Left("Dictionary expected")
+                }
+                bb <- fb.write(b).right.flatMap {
+                  case Bencode.Dictionary(values) => Right(values)
+                  case other => Left("Dictionary expected")
+                }
               }
-                yield
-                  Bencode.Dictionary(ab.values ++ bb.values)
+              yield
+                Bencode.Dictionary(ab ++ bb)
           }
         )
     }
-
   }
 
 
@@ -135,17 +121,7 @@ package object reader {
     }
   )
 
-  def upcastDict[A, B >: A](x: DictionaryFormat[A])(implicit ta: Typeable[A]): DictionaryFormat[B] = DictionaryFormat(
-    x.read.widen[B],
-    ReaderT { b: B =>
-      ta.cast(b) match {
-        case Some(a) => x.write(a)
-        case None => Left(s"not a value of type ${ta.describe}")
-      }
-    }
-  )
-
-  def and[A, B](x: DictionaryFormat[A], y: DictionaryFormat[B]): DictionaryFormat[(A, B)] = (x, y).tupled
+  def and[A, B](x: BencodeFormat[A], y: BencodeFormat[B]): BencodeFormat[(A, B)] = (x, y).tupled
 
   def or[A](x: BencodeFormat[A], y: BencodeFormat[A]): BencodeFormat[A] = BencodeFormat(
     ReaderT { bencodeValue: Bencode =>
@@ -156,17 +132,8 @@ package object reader {
     }
   )
 
-  def orDict[A](x: DictionaryFormat[A], y: DictionaryFormat[A]): DictionaryFormat[A] = DictionaryFormat(
-    ReaderT { bencodeValue: Bencode =>
-      x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
-    },
-    ReaderT { a: A =>
-      x.write(a).left.flatMap(_ => y.write(a))
-    }
-  )
-
-  def field[A](name: String)(implicit bReader: BencodeFormat[A]): DictionaryFormat[A] =
-    DictionaryFormat(
+  def field[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[A] =
+    BencodeFormat(
       ReaderT {
         case Bencode.Dictionary(values) =>
           values
@@ -181,16 +148,16 @@ package object reader {
       }
     )
 
-  def matchField[A: Eq](name: String, value: A)(implicit format: BencodeFormat[A]): DictionaryFormat[Unit] = {
+  def matchField[A: Eq](name: String, value: A)(implicit format: BencodeFormat[A]): BencodeFormat[Unit] = {
     val df = field[A](name)
-    DictionaryFormat(
+    BencodeFormat(
       df.read.flatMapF(a => Either.cond(a === value, (), s"Expected field $name='$value' but found $a")),
       df.write.contramap(_ => value)
     )
   }
 
-  def optField[A](name: String)(implicit bReader: BencodeFormat[A]): DictionaryFormat[Option[A]] =
-    DictionaryFormat(
+  def optField[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[Option[A]] =
+    BencodeFormat(
       ReaderT {
         case Bencode.Dictionary(values) =>
           values.get(name).map(bReader.read.run).map(_.map(Some(_))).getOrElse(Right(None))
