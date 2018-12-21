@@ -20,7 +20,11 @@ class Connection[F[_]: Monad: Concurrent](socket: Socket[F])(implicit M: MonadEr
         timeout = Some(5.seconds)
       )
       maybeBytes <- socket.read(1024, timeout = Some(5.seconds))
-      bv = ByteVector(maybeBytes.get.toArray)
+      bytes <- M.fromOption(
+        maybeBytes,
+        new Exception("Connection was closed unexpectedly")
+      )
+      bv = ByteVector(bytes.toArray)
       response <- M.fromTry(
         Handshake.HandshakeCodec
           .decodeValue(bv.toBitVector)

@@ -1,7 +1,7 @@
 package com.github.lavrov.bittorrent
 package dht
 
-import java.net.{InetAddress, InetSocketAddress}
+import java.net.InetSocketAddress
 import java.nio.channels.InterruptedByTimeoutException
 
 import cats._
@@ -22,7 +22,7 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
       bc <- M.fromEither(
         decode(packet.bytes.toArray).left.map(e => new Exception(e.message)))
       message <- M.fromEither(
-        Message.MessageFormat.read(bc).left.map(e => new Exception(e)))
+        Message.MessageFormat.read(bc).left.map(e => new Exception(s"Filed to read message: $e. Bencode: $bc")))
     } yield message
 
   def sendMessage(address: InetSocketAddress, message: Message): F[Unit] =
