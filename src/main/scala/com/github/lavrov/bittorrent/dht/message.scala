@@ -21,30 +21,37 @@ object Message {
   implicit val NodeIdFormat: BencodeFormat[NodeId] = BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
-    matchField[String]("q", "ping"),
     field[NodeId]("a")(field[NodeId]("id"))
-  ).imapN((_, qni) => Query.Ping(qni))(v => ((), v.queryingNodeId))
+  ).imap(qni => Query.Ping(qni))(v => v.queryingNodeId)
 
   val FindNodeQueryFormat: BencodeFormat[Query.FindNode] = (
-    matchField[String]("q", "find_node"),
     field[(NodeId, NodeId)]("a")((field[NodeId]("id") and field[NodeId]("target")))
-  ).imapN((_, tpl) => Query.FindNode.tupled(tpl))(v => ((), (v.queryingNodeId, v.target)))
+  ).imap(tpl => Query.FindNode.tupled(tpl))(v => (v.queryingNodeId, v.target))
 
   implicit val InfoHashFormat = BencodeFormat.ByteVectorReader.imap(InfoHash)(_.bytes)
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
-    matchField[String]("q", "get_peers"),
     field[(NodeId, InfoHash)]("a")((field[NodeId]("id") and field[InfoHash]("info_hash")))
-  ).imapN((_, tpl) => Query.GetPeers.tupled(tpl))(v => ((), (v.queryingNodeId, v.infoHash)))
+  ).imap(tpl => Query.GetPeers.tupled(tpl))(v => (v.queryingNodeId, v.infoHash))
 
   val QueryFormat: BencodeFormat[Query] =
-    PingQueryFormat.upcast[Query] or FindNodeQueryFormat.upcast[Query] or GetPeersQueryFormat.upcast[Query]
+    field[String]("q").consume(
+      {
+        case "ping" => PingQueryFormat.upcast
+        case "find_node" => FindNodeQueryFormat.upcast
+        case "get_peers" => GetPeersQueryFormat.upcast
+      },
+      {
+        case _: Query.Ping => "ping"
+        case _: Query.FindNode => "find_node"
+        case _: Query.GetPeers => "get_peers"
+      }
+    )
 
   val QueryMessageFormat: BencodeFormat[Message.QueryMessage] = (
-    matchField[String]("y", "q"),
     field[String]("t"),
     QueryFormat
-  ).imapN((_, tid, q) => QueryMessage(tid, q))(v => ((), v.transactionId, v.query))
+  ).imapN((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
 
   val InetSocketAddressCodec: Codec[InetSocketAddress] = {
     import scodec.codecs._
@@ -84,18 +91,27 @@ object Message {
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
-    matchField[String]("y", "r"),
     field[String]("t"),
     field[Bencode]("r")
-  ).imapN((_, tid, r) => ResponseMessage(tid, r))(v => ((), v.transactionId, v.response))
+  ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
-    matchField[String]("y", "e"),
     field[String]("t")
-  ).imapN((_, tid) => ErrorMessage(tid))(v => ((), v.transactionId))
+  ).imap(tid => ErrorMessage(tid))(v => v.transactionId)
 
   implicit val MessageFormat: BencodeFormat[Message] =
-    QueryMessageFormat.upcast[Message] or ResponseMessageFormat.upcast or ErrorMessageFormat.upcast
+    field[String]("y").consume(
+      {
+        case "q" => QueryMessageFormat.upcast
+        case "r" => ResponseMessageFormat.upcast
+        case "e" => ErrorMessageFormat.upcast
+      },
+      {
+        case _: Message.QueryMessage => "q"
+        case _: Message.ResponseMessage => "r"
+        case _: Message.ErrorMessage => "e"
+      }
+    )
 }
 
 sealed trait Query {

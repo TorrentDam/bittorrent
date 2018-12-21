@@ -21,6 +21,8 @@ package object reader {
     def or(that: BencodeFormat[A]): BencodeFormat[A] = reader.or(this, that)
 
     def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = reader.and(this, that)
+
+    def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = reader.consume(this)(f, g)
   }
 
   object BencodeFormat {
@@ -109,6 +111,28 @@ package object reader {
         )
     }
   }
+
+
+  def consume[A, B](format: BencodeFormat[A])(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = BencodeFormat(
+    ReaderT { bv: Bencode =>
+      format.read(bv).flatMap(f(_).read(bv))
+    },
+    ReaderT { b: B =>
+      val a = g(b)
+      val bFromat = f(a)
+      for {
+        aa <- format.write(a).flatMap {
+          case Bencode.Dictionary(values) => Right(values)
+          case other => Left("Dictionary expected")
+        }
+        bb <- bFromat.write(b).flatMap {
+          case Bencode.Dictionary(values) => Right(values)
+          case other => Left("Dictionary expected")
+        }
+      }
+      yield Bencode.Dictionary(aa ++ bb)
+    }
+  )
 
 
   def upcast[A, B >: A](x: BencodeFormat[A])(implicit ta: Typeable[A]): BencodeFormat[B] = BencodeFormat(
