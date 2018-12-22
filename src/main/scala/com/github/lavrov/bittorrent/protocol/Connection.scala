@@ -36,4 +36,5 @@ class Connection[F[_]: Monad: Concurrent](socket: Socket[F])(implicit M: MonadEr
   def send(message: Message): F[Unit] = ???
 
   def receive: F[Message] = ???
+
 }
