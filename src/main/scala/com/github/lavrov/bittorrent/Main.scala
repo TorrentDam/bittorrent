@@ -12,10 +12,12 @@ import cats.syntax.monad._
 import cats.effect._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
-import com.github.lavrov.bittorrent.protocol.Connection
+import com.github.lavrov.bittorrent.protocol.{Connection, PeerCommunication}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
+import fs2.Stream
 
+import scala.concurrent.duration._
 import scala.util.Random
 
 object Main extends IOApp {
@@ -43,32 +45,41 @@ object Main extends IOApp {
         implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
 
         for {
-          infoHash <- getInfoHash
-          _ = println(s"Searching for peers on $infoHash")
-          addressList <- getPeers(infoHash)
-          firstPeer = addressList.head
+          torrentInfo <- getMetaInfo
+          (infoHash, metaInfo) = torrentInfo
+          Info.SingleFile(pieceLength, _, _, _) = metaInfo.info
+//          _ = println(s"Searching for peers on $infoHash")
+//          addressList <- getPeers(infoHash)
+//          firstPeer = addressList.head
+          firstPeer = PeerInfo(new InetSocketAddress(57491))
           _ = println(s"Connecting to $firstPeer")
-          r <- connectToPeer(firstPeer).use {connection =>
+          _ <- connectToPeer(firstPeer).use { connection =>
             println(s"Connected to $firstPeer")
+            val communication = new PeerCommunication[IO]
             for {
-            r <- connection.handshake(selfId, infoHash)
-            _ = println(s"Successful handshake: '$r'")
-            } yield r
+              handle <- communication.run(selfId, infoHash, connection)
+              _ = println("Communication started")
+              _ <- handle.send(PeerCommunication.Command.Download(0, pieceLength))
+              _ <- IO(println("Download queued"))
+              _ <- handle.fiber.join
+            }
+            yield ()
           }
         }
         yield ExitCode.Success
     }
   }
 
-  def getInfoHash: IO[InfoHash] = {
+  def getMetaInfo: IO[(InfoHash, MetaInfo)] = {
     for {
       bytes <- IO(
         Files.readAllBytes(
           Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")))
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
       infoDict <- IO.fromEither(MetaInfo.RawInfoFormat.read(bc).left.map(new Exception(_)))
+      metaInfo <- IO.fromEither(MetaInfo.MetaInfoFormat.read(bc).left.map(new Exception(_)))
     }
-    yield InfoHash(util.sha1Hash(infoDict))
+    yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
   }
 
   def getPeers(infoHash: InfoHash)(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[List[PeerInfo]] =

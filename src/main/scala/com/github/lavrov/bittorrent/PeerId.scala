@@ -3,7 +3,9 @@ import scodec.bits.ByteVector
 
 import scala.util.Random
 
-final case class PeerId(bytes: ByteVector)
+final case class PeerId(bytes: ByteVector) {
+  override def toString() = s"PeerId(${bytes.decodeUtf8.getOrElse(bytes.toHex)})"
+}
 
 object PeerId {
   def generate(rnd: Random): PeerId = {
