@@ -59,8 +59,8 @@ object Main extends IOApp {
             for {
               handle <- communication.run(selfId, infoHash, connection)
               _ = println("Communication started")
-              _ <- handle.send(PeerCommunication.Command.Download(0, pieceLength))
-              _ <- IO(println("Download queued"))
+//              _ <- handle.send(PeerCommunication.Command.Download(0, pieceLength))
+//              _ <- IO(println("Download queued"))
               _ <- handle.fiber.join
             }
             yield ()

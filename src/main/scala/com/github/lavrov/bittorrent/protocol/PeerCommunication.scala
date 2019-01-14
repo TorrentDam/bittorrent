@@ -1,12 +1,9 @@
 package com.github.lavrov.bittorrent.protocol
 import java.util.concurrent.TimeUnit
 
-import cats.{Monad, Traverse}
-import cats.syntax.functor._
-import cats.syntax.apply._
-import cats.syntax.flatMap._
-import cats.instances.list._
-import cats.syntax.option._
+import cats._
+import cats.data._
+import cats.syntax.all._
 import cats.effect.{Concurrent, Fiber, Sync, Timer}
 import cats.effect.syntax.concurrent._
 import com.github.lavrov.bittorrent.protocol.message.Message
@@ -20,7 +17,10 @@ import scala.collection.immutable.ListSet
 import scala.concurrent.duration._
 
 object PeerCommunication {
-  case class State(
+
+  type Thunk = RWS[Long, Chain[Eff], ComState, Unit]
+
+  case class ComState(
       lastMessageAt: Long = 0,
       choking: Boolean = true,
       interested: Boolean = false,
@@ -33,15 +33,7 @@ object PeerCommunication {
   sealed trait Eff
   object Eff {
     final case class Send(message: Message) extends Eff
-    final case class Schedule(in: FiniteDuration, cmd: Command) extends Eff
-    final case class Many(eff: List[Eff]) extends Eff
-    case object No extends Eff
-  }
-
-  sealed trait Command
-  object Command {
-    case object KeepAlive extends Command
-    final case class Download(index: Long, length: Long) extends Command
+    final case class Schedule(in: FiniteDuration, processor: Thunk) extends Eff
   }
 
 }
@@ -49,84 +41,78 @@ object PeerCommunication {
 class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
   import PeerCommunication._
 
-  case class Handle(send: Command => F[Unit], fiber: Fiber[F, Unit])
+  case class Handle(send: Thunk => F[Unit], fiber: Fiber[F, Unit])
 
   def run(selfId: PeerId, infoHash: InfoHash, connection: Connection[F]): F[Handle] = {
     for {
       handshake <- connection.handshake(selfId, infoHash)
       _ = println(s"Successful handshake $handshake")
-      queue <- InspectableQueue.unbounded[F, Command]
-      _ <- queue.enqueue1(Command.KeepAlive)
-      initialState = State(0)
-      inlet =
-        Stream.eval(connection.receive).map(Right(_)).repeat merge
-        queue.dequeue.map(Left(_))
+      thunkQueue <- InspectableQueue.unbounded[F, Thunk]
+      initialState = ComState(0)
+      inlet = Stream.eval(connection.receive).repeat
       process =
         inlet.evalScan(initialState){ (state, input) =>
           for {
             time <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-            state <- eventLoop(time, state, input) match {
-              case (s, eff) => runEff(eff, queue, connection).map(_ => s)
-            }
+            (effs, s, _) = standard(input).run(time, state).value
+            _ <- runEffs(effs, thunkQueue, connection).map(_ => s)
           }
           yield state
         }
       fiber <- Concurrent[F].start(process.compile.drain)
     }
-    yield Handle(queue.enqueue1, fiber)
+    yield Handle(thunkQueue.enqueue1, fiber)
   }
 
+  def peerState(in: Message): RWS[Long, Chain[Eff], ComState, Unit] = in match {
+    case Choke =>
+      RWS.modify(_.copy(peerChoking = true))
+    case Unchoke =>
+      RWS.modify(_.copy(peerChoking = false))
+    case Interested =>
+      RWS.modify(_.copy(peerInterested = true))
+    case NotInterested =>
+      RWS.modify(_.copy(peerInterested = false))
+    case _ =>
+      RWS.modify(identity)
+  }
 
-  def eventLoop(time: Long, state: State, in: Either[Command, Message]): (State, Eff) = in.fold(
-    {
-      case Command.KeepAlive =>
-        val sendKeepAlive = (time - state.lastMessageAt).millis > 60.seconds
-        val effects = Eff.Many(
-          Eff.Schedule(60.seconds, Command.KeepAlive) ::
-          (if (sendKeepAlive) List(Eff.Send(Message.KeepAlive)) else Nil)
-        )
-        (state, effects)
-      case Command.Download(index, length) =>
-        val chunkSize = 16 * 1024
-        val fullChunks = length / chunkSize
-        val reminder = length % chunkSize
-        val s = state.copy(
-          queue = (0L until fullChunks).map(i => Request(index, i * chunkSize, chunkSize)).to[ListSet] ++
-            (if (reminder > 0) Request(index, fullChunks * chunkSize, reminder).some else none).to[ListSet]
-        )
-        val e = if (state.interested) Eff.No else Eff.Send(Message.Interested)
-        (s, e)
-    },
-    {
-      case Choke => (state.copy(peerChoking = true), Eff.No)
-      case Unchoke =>
-        val s = state.copy(peerChoking = false)
-        val e = state.queue.headOption.fold[Eff](Eff.No)(Eff.Send)
-        (s, e)
-      case Interested => (state.copy(peerInterested = true), Eff.No)
-      case NotInterested => (state.copy(peerInterested = false), Eff.No)
-      case Bitfield(bytes) => (state.copy(bitfield = bytes.bits.some), Eff.No)
-      case Piece(index, begin, bytes) =>
-        val request = Request(index, begin, bytes.length)
-        if (state.queue contains request) {
-          val s =
-            state.copy(
-              queue = state.queue - request,
-              pieces = state.pieces.updated(request, bytes)
-            )
-          val e = s.queue.headOption.fold[Eff](Eff.No)(Eff.Send)
-          (s, e)
-        }
+  def bitfieldUpdate(in: Message): RWS[Long, Chain[Eff], ComState, Unit] = in match {
+    case Bitfield(bytes) =>
+      RWS.modify(_.copy(bitfield = bytes.bits.some))
+    case _ =>
+      RWS.modify(identity)
+  }
+
+  val keepAlive: Thunk =
+    for {
+      time <- RWS.ask[Long, Chain[Eff], ComState]
+      state <- RWS.get[Long, Chain[Eff], ComState]
+      _ <-
+        if (state.lastMessageAt + 10000 < time)
+          RWS.tell[Long, Chain[Eff], ComState](Chain one Eff.Send(KeepAlive))
         else
-          (state, Eff.No)
-      case _ => (state.copy(lastMessageAt = time), Eff.No)
+          RWS.tell[Long, Chain[Eff], ComState](Chain one Eff.Schedule(10000.millis, keepAlive))
     }
-  )
+    yield ()
 
-  def runEff(eff: Eff, commandQueue: Queue[F, Command], connection: Connection[F]): F[Unit] = eff match {
-    case Eff.No => Monad[F].unit
-    case Eff.Many(effects) => Traverse[List].sequence(effects.map(runEff(_, commandQueue, connection))) *> Monad[F].unit
-    case Eff.Send(message) => connection.send(message)
-    case Eff.Schedule(in, cmd) => (Timer[F].sleep(in) *> commandQueue.enqueue1(cmd)).start.void
+  def lastMessageTime(in: Message): RWS[Long, Chain[Eff], ComState, Unit] = {
+    for {
+      time <- RWS.ask[Long, Chain[Eff], ComState]
+      _ <- RWS.modify[Long, Chain[Eff], ComState](_.copy(lastMessageAt = time))
+    }
+    yield ()
+  }
+
+  def standard(in: Message) = peerState(in) *> bitfieldUpdate(in) *> lastMessageTime(in)
+
+  def runEffs(effs: Chain[Eff], thunkQueue: Queue[F, Thunk], connection: Connection[F]): F[Unit] = effs.uncons match {
+    case None => Monad[F].unit
+    case Some((eff, tail)) =>
+      val result = eff match {
+        case Eff.Send(message) => connection.send(message)
+        case Eff.Schedule(in, processor) => (Timer[F].sleep(in) *> thunkQueue.enqueue1(processor)).start.void
+      }
+      result *> runEffs(tail, thunkQueue, connection)
   }
 }
