@@ -59,9 +59,9 @@ object Main extends IOApp {
             for {
               handle <- communication.run(selfId, infoHash, connection)
               _ = println("Communication started")
-//              _ <- handle.send(PeerCommunication.Command.Download(0, pieceLength))
-//              _ <- IO(println("Download queued"))
-              _ <- handle.fiber.join
+              _ <- handle.algebra.download(0, 0, 16 * 1024)
+              _ <- IO(println("Download queued"))
+              _ <- handle.events.evalMap(e => IO(println(s"Event $e"))).compile.drain
             }
             yield ()
           }
