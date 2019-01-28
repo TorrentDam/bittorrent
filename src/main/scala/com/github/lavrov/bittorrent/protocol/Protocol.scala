@@ -2,27 +2,25 @@ package com.github.lavrov.bittorrent.protocol
 
 import cats.data._
 import cats.MonadError
-import cats.instances.all._
 import cats.syntax.all._
 import cats.mtl._
-import cats.mtl.instances.all._
+import com.github.lavrov.bittorrent.protocol.Protocol.ProtocolState
 import com.github.lavrov.bittorrent.protocol.message.Message
 import scodec.bits.{BitVector, ByteVector}
 
 import scala.collection.immutable.ListSet
 import scala.concurrent.duration._
 
-class Protocol(
+class Protocol[F[_], E](
     keepAliveInterval: FiniteDuration,
+    effects: Effects[F, E]
+)(implicit
+  Env: ApplicativeAsk[F, Long],
+  S: MonadState[F, ProtocolState],
+  F: MonadError[F, Throwable],
+  T: FunctorTell[F, Chain[E]]
 ) {
-  import Protocol._
-
-  val Env: ApplicativeAsk[Thunk, Long] = implicitly
-  val S: MonadState[Thunk, ProtocolState] = implicitly
-  val F: MonadError[Thunk, Throwable] = implicitly
-  val T: FunctorTell[Thunk, Chain[Eff]] = implicitly
-
-  def handleMessage(msg: Message): Thunk[Unit] = {
+  def handleMessage(msg: Message): F[Unit] = {
     for {
       time <- Env.ask
       _ <- msg match {
@@ -46,7 +44,7 @@ class Protocol(
     } yield ()
   }
 
-  def requestPiece: Thunk[Unit] = {
+  def requestPiece: F[Unit] = {
     for {
       state <- S.get
       _ <-
@@ -62,7 +60,7 @@ class Protocol(
                     pending = state.pending + request
                   )
                 )
-                _ <- T.tell(Chain one Eff.Send(request))
+                _ <- T.tell(Chain one effects.Send(request))
               }
               yield ()
             case None => F.unit
@@ -71,7 +69,7 @@ class Protocol(
     } yield ()
   }
 
-  def submitDownload(index: Long, begin: Long, length: Long): Thunk[Unit] = {
+  def submitDownload(index: Long, begin: Long, length: Long): F[Unit] = {
     for {
       state <- S.get
       request = Message.Request(index, begin, length)
@@ -80,27 +78,27 @@ class Protocol(
     } yield ()
   }
 
-  def sendKeepAlive: Thunk[Unit] = {
+  def sendKeepAlive: F[Unit] = {
     for {
       state <- S.get
       time <- Env.ask
       durationSinceLastMessage = (time - state.lastMessageAt).millis
       _ <- if (durationSinceLastMessage > keepAliveInterval)
-        T.tell(Chain one Eff.Send(Message.KeepAlive))
+        T.tell(Chain one effects.Send(Message.KeepAlive))
       else
         F.unit
-      _ <- T.tell(Chain one Eff.Schedule(keepAliveInterval, sendKeepAlive))
+      _ <- T.tell(Chain one effects.Schedule(keepAliveInterval, sendKeepAlive))
     } yield ()
   }
 
-  def receivePiece(piece: Message.Piece): Thunk[Unit] = {
+  def receivePiece(piece: Message.Piece): F[Unit] = {
     for {
       state <- S.get
       request = Message.Request(piece.index, piece.begin, piece.bytes.length)
       inPending = state.pending.contains(request)
       _ <- if (inPending)
         for {
-          _ <- T.tell(Chain one Eff.ReturnPiece(piece.index, piece.begin, piece.bytes))
+          _ <- T.tell(Chain one effects.ReturnPiece(piece.index, piece.begin, piece.bytes))
           _ <- S.set(
             state.copy(
               pending = state.pending.filterNot(_ == request)
@@ -116,8 +114,13 @@ class Protocol(
   }
 }
 
+trait Effects[F[_], E] {
+  def Send(message: Message): E
+  def Schedule(in: FiniteDuration, thunk: F[Unit]): E
+  def ReturnPiece(index: Long, begin: Long, bytes: ByteVector): E
+}
+
 object Protocol {
-  type Thunk[A] = RWST[Either[Throwable, ?], Long, Chain[Eff], ProtocolState, A]
 
   case class ProtocolState(
     lastMessageAt: Long = 0,
@@ -129,14 +132,5 @@ object Protocol {
     queue: ListSet[Message.Request] = ListSet.empty,
     pending: ListSet[Message.Request] = ListSet.empty,
   )
-  sealed trait Eff
-  object Eff {
-    final case class Send(message: Message) extends Eff
-    final case class Schedule(in: FiniteDuration, thunk: Thunk[Unit]) extends Eff
-    final case class ReturnPiece(index: Long, begin: Long, bytes: ByteVector) extends Eff
-  }
 
-  val materialized = new Protocol(10.seconds)
-
-  def run(thunk: Thunk[Unit], time: Long, state: ProtocolState) = thunk.run(time, state)
 }

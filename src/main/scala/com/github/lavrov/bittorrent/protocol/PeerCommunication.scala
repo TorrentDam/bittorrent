@@ -6,9 +6,13 @@ import cats._
 import cats.data._
 import cats.syntax.all._
 import cats.effect.{Concurrent, Fiber, Sync, Timer}
+import cats.instances.all._
+import cats.mtl._
+import cats.mtl.instances.all._
 import cats.effect.syntax.concurrent._
 import com.github.lavrov.bittorrent.protocol.PeerCommunication.Event
-import com.github.lavrov.bittorrent.protocol.Protocol.{Eff, ProtocolState, Thunk}
+import com.github.lavrov.bittorrent.protocol.Protocol.ProtocolState
+import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import fs2.Stream
 import fs2.concurrent.{InspectableQueue, Queue}
@@ -18,7 +22,22 @@ import scala.concurrent.duration._
 
 class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
 
-  val protocol = new Protocol(1.minute)
+  type Thunk[A] = RWST[Either[Throwable, ?], Long, Chain[Eff], ProtocolState, A]
+
+  sealed trait Eff
+  object Eff {
+    final case class Send(message: Message) extends Eff
+    final case class Schedule(in: FiniteDuration, thunk: Thunk[Unit]) extends Eff
+    final case class ReturnPiece(index: Long, begin: Long, bytes: ByteVector) extends Eff
+  }
+
+  val effects: Effects[Thunk, Eff] = new Effects[Thunk, Eff] {
+    def Send(message: Message) = Eff.Send(message)
+    def Schedule(in: FiniteDuration, thunk: Thunk[Unit]) = Eff.Schedule(in, thunk)
+    def ReturnPiece(index: Long, begin: Long, bytes: ByteVector) = Eff.ReturnPiece(index, begin, bytes)
+  }
+
+  val protocol = new Protocol[Thunk, Eff](1.minute, effects)
 
   case class Handle(algebra: CommunicationAlg[F], events: Stream[F, Event], fiber: Fiber[F, Unit])
 
@@ -39,7 +58,7 @@ class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
           }
           for {
             time <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-            state <- Protocol.run(thunk, time, state) match {
+            state <- thunk.run(time, state) match {
               case Right((effs, newState, _)) =>
                 runEffs(effs, thunkQueue, eventQueue, connection) *> newState.pure[F]
               case Left(e) =>
