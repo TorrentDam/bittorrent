@@ -12,7 +12,7 @@ import cats.syntax.monad._
 import cats.effect._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
-import com.github.lavrov.bittorrent.protocol.{Connection, PeerCommunication}
+import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, PeerConnection}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import fs2.Stream
@@ -55,13 +55,10 @@ object Main extends IOApp {
           _ = println(s"Connecting to $firstPeer")
           _ <- connectToPeer(firstPeer).use { connection =>
             println(s"Connected to $firstPeer")
-            val communication = new PeerCommunication[IO]
+            val peerConnection = new PeerConnection[IO]
+            val downloading = new Downloading[IO](peerConnection)
             for {
-              handle <- communication.run(selfId, infoHash, connection)
-              _ = println("Communication started")
-              _ <- handle.algebra.download(0, 0, 16 * 1024)
-              _ <- IO(println("Download queued"))
-              _ <- handle.events.evalMap(e => IO(println(s"Event $e"))).compile.drain
+              _ <- downloading.start(selfId, infoHash, metaInfo, connection)
             }
             yield ()
           }

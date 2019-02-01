@@ -10,7 +10,7 @@ import cats.instances.all._
 import cats.mtl._
 import cats.mtl.instances.all._
 import cats.effect.syntax.concurrent._
-import com.github.lavrov.bittorrent.protocol.PeerCommunication.Event
+import com.github.lavrov.bittorrent.protocol.PeerConnection.Event
 import com.github.lavrov.bittorrent.protocol.Protocol.ProtocolState
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
@@ -20,7 +20,7 @@ import scodec.bits.ByteVector
 
 import scala.concurrent.duration._
 
-class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
+class PeerConnection[F[_]: Timer: Concurrent: Sync: Monad] {
 
   type Thunk[A] = RWST[Either[Throwable, ?], Long, Chain[Eff], ProtocolState, A]
 
@@ -39,9 +39,13 @@ class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
 
   val protocol = new Protocol[Thunk, Eff](1.minute, effects)
 
-  case class Handle(algebra: CommunicationAlg[F], events: Stream[F, Event], fiber: Fiber[F, Unit])
+  trait Commands {
+    def download(index: Long, begin: Long, length: Long): F[Unit]
+  }
 
-  def run(selfId: PeerId, infoHash: InfoHash, connection: Connection[F]): F[Handle] = {
+  case class Handle(algebra: Commands, events: F[Event], fiber: Fiber[F, Unit])
+
+  def connect(selfId: PeerId, infoHash: InfoHash, connection: Connection[F]): F[Handle] = {
     for {
       handshake <- connection.handshake(selfId, infoHash)
       _ = println(s"Successful handshake $handshake")
@@ -68,13 +72,13 @@ class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
           yield state.copy(lastMessageAt = time)
         }
       fiber <- Concurrent[F].start(process.compile.drain)
-      alg = new CommunicationAlg[F] {
+      alg = new Commands {
         def download(index: Long, begin: Long, length: Long): F[Unit] = {
           thunkQueue.enqueue1(protocol.submitDownload(index, begin, length))
         }
       }
     }
-    yield Handle(alg, eventQueue.dequeue, fiber)
+    yield Handle(alg, eventQueue.dequeue1, fiber)
   }
 
   def runEffs(effs: Chain[Eff], thunkQueue: Queue[F, Thunk[Unit]], eventQueue: Queue[F, Event], connection: Connection[F]): F[Unit] = {
@@ -91,13 +95,9 @@ class PeerCommunication[F[_]: Timer: Concurrent: Sync: Monad] {
   }
 }
 
-object PeerCommunication {
+object PeerConnection {
   sealed trait Event
   object Event {
     final case class Downloaded(index: Long, begin: Long, bytes: ByteVector) extends Event
   }
-}
-
-trait CommunicationAlg[F[_]] {
-  def download(index: Long, begin: Long, length: Long): F[Unit]
 }
