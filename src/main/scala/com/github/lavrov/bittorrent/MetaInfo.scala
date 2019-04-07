@@ -9,37 +9,36 @@ import cats.syntax.apply._
 import scodec.bits.ByteVector
 
 case class MetaInfo(
-  info: Info,
-  announce: String,
-  creationDate: Option[Instant]
+    info: Info,
+    announce: String,
+    creationDate: Option[Instant]
 )
 
 sealed trait Info
 object Info {
   case class SingleFile(
-    pieceLength: Long,
-    pieces: ByteVector,
-    length: Long,
-    md5sum: Option[ByteVector]
-  )
-    extends Info
+      pieceLength: Long,
+      pieces: ByteVector,
+      length: Long,
+      md5sum: Option[ByteVector]
+  ) extends Info
 
   case class MultipleFiles(
-    pieceLength: Long,
-    pieces: ByteVector,
-    files: List[File]
-  )
-    extends Info
+      pieceLength: Long,
+      pieces: ByteVector,
+      files: List[File]
+  ) extends Info
 
   case class File(
-    length: Long,
-    path: List[String]
+      length: Long,
+      path: List[String]
   )
 }
 
 object MetaInfo {
 
-  implicit val InstantFormat: BencodeFormat[Instant] = BencodeFormat.LongReader.imap(Instant.ofEpochMilli)(_.toEpochMilli)
+  implicit val InstantFormat: BencodeFormat[Instant] =
+    BencodeFormat.LongReader.imap(Instant.ofEpochMilli)(_.toEpochMilli)
 
   implicit val SingleFileFormat: BencodeFormat[Info.SingleFile] =
     (
@@ -47,23 +46,20 @@ object MetaInfo {
       field[ByteVector]("pieces"),
       field[Long]("length"),
       optField[ByteVector]("md5sum")
-    )
-      .imapN(Info.SingleFile)(v => (v.pieceLength, v.pieces, v.length, v.md5sum))
+    ).imapN(Info.SingleFile)(v => (v.pieceLength, v.pieces, v.length, v.md5sum))
 
   implicit val FileFormat: BencodeFormat[Info.File] =
     (
       field[Long]("length"),
       field[List[String]]("path")
-    )
-      .imapN(Info.File)(v => (v.length, v.path))
+    ).imapN(Info.File)(v => (v.length, v.path))
 
   implicit val MultipleFileFormat: BencodeFormat[Info.MultipleFiles] =
     (
       field[Long]("piece length"),
       field[ByteVector]("pieces"),
       field[List[Info.File]]("files")
-    )
-      .imapN(Info.MultipleFiles)(v => (v.pieceLength, v.pieces, v.files))
+    ).imapN(Info.MultipleFiles)(v => (v.pieceLength, v.pieces, v.files))
 
   implicit val InfoFormat: BencodeFormat[Info] =
     SingleFileFormat.upcast[Info] or MultipleFileFormat.upcast
@@ -73,8 +69,7 @@ object MetaInfo {
       field[Info]("info"),
       field[String]("announce"),
       optField[Instant]("creationDate")
-    )
-    .imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
+    ).imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
 
   val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
 }

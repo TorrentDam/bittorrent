@@ -21,11 +21,14 @@ class BencodeCodecSpec extends FlatSpec {
 
   it should "decode list" in {
     decode(BitVector.encodeAscii("l1:a2:bbe").right.get) mustBe Right(
-      Bencode.List(Bencode.String("a") :: Bencode.String("bb") :: Nil))
+      Bencode.List(Bencode.String("a") :: Bencode.String("bb") :: Nil)
+    )
   }
 
   it should "decode dictionary" in {
-    decode(BitVector.encodeAscii("d1:ai6ee").right.get) mustBe Right(Bencode.Dictionary(Map("a" -> Bencode.Integer(6))))
+    decode(BitVector.encodeAscii("d1:ai6ee").right.get) mustBe Right(
+      Bencode.Dictionary(Map("a" -> Bencode.Integer(6)))
+    )
   }
 
   it should "encode string value" in {
@@ -33,11 +36,16 @@ class BencodeCodecSpec extends FlatSpec {
   }
 
   it should "encode list value" in {
-    encode(Bencode.List(Bencode.String("test") :: Bencode.Integer(10) :: Nil)) mustBe BitVector.encodeString("l4:testi10ee").right.get
+    encode(Bencode.List(Bencode.String("test") :: Bencode.Integer(10) :: Nil)) mustBe BitVector
+      .encodeString("l4:testi10ee")
+      .right
+      .get
   }
 
   it should "decode ubuntu torrent" in {
-    val source = getClass.getClassLoader.getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent").readAllBytes()
+    val source = getClass.getClassLoader
+      .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
+      .readAllBytes()
     val Right(result) = decode(source)
     val decodeResult = MetaInfo.MetaInfoFormat.read(result)
     decodeResult.map(_.announce) mustBe Right("http://torrent.ubuntu.com:6969/announce")
@@ -55,9 +63,15 @@ class BencodeCodecSpec extends FlatSpec {
   }
 
   it should "calculate info_hash" in {
-    val source = getClass.getClassLoader.getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent").readAllBytes()
+    val source = getClass.getClassLoader
+      .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
+      .readAllBytes()
     val Right(result) = decode(source)
     val decodedResult = MetaInfo.RawInfoFormat.read(result)
-    decodedResult.map(com.github.lavrov.bittorrent.util.sha1Hash).map(_.toHex(Bases.Alphabets.HexUppercase)) mustBe Right("8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609")
+    decodedResult
+      .map(com.github.lavrov.bittorrent.util.sha1Hash)
+      .map(_.toHex(Bases.Alphabets.HexUppercase)) mustBe Right(
+      "8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609"
+    )
   }
 }

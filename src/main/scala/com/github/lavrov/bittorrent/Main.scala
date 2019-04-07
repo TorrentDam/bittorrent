@@ -1,23 +1,19 @@
 package com.github.lavrov.bittorrent
 
-import java.net.{InetAddress, InetSocketAddress}
+import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.file.{Files, Paths}
 import java.util.concurrent.Executors
 
-import cats._
-import cats.implicits._
-import cats.syntax.monad._
 import cats.effect._
+import cats.implicits._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
 import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
-import fs2.Stream
 
-import scala.concurrent.duration._
 import scala.util.Random
 
 object Main extends IOApp {
@@ -28,16 +24,14 @@ object Main extends IOApp {
     val selfId = PeerId.generate(rnd)
     val resources = for {
       a <- Resource.make(IO(AsynchronousSocketGroup()))(r => IO(r.close()))
-      b <-
-        Resource.make(
-          IO(
-            AsynchronousChannelProvider
-              .provider()
-              .openAsynchronousChannelGroup(2, Executors.defaultThreadFactory())
-          )
-        )(g => IO(g.shutdown()))
-    }
-    yield (a, b)
+      b <- Resource.make(
+        IO(
+          AsynchronousChannelProvider
+            .provider()
+            .openAsynchronousChannelGroup(2, Executors.defaultThreadFactory())
+        )
+      )(g => IO(g.shutdown()))
+    } yield (a, b)
 
     resources.use {
       case (asg, acg) =>
@@ -56,11 +50,9 @@ object Main extends IOApp {
               _ <- download.send(Downloading.Command.AddPeer(connection))
               _ <- download.complete
               _ <- IO(println("The End"))
-            }
-            yield ()
+            } yield ()
           }
-        }
-        yield ExitCode.Success
+        } yield ExitCode.Success
     }
   }
 
@@ -68,21 +60,26 @@ object Main extends IOApp {
     for {
       bytes <- IO(
         Files.readAllBytes(
-          Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")))
+          Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
+        )
+      )
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
       infoDict <- IO.fromEither(MetaInfo.RawInfoFormat.read(bc).left.map(new Exception(_)))
       metaInfo <- IO.fromEither(MetaInfo.MetaInfoFormat.read(bc).left.map(new Exception(_)))
-    }
-    yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
+    } yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
   }
 
-  def getPeers(infoHash: InfoHash)(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[List[PeerInfo]] =
+  def getPeers(
+      infoHash: InfoHash
+  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[List[PeerInfo]] =
     Socket[IO](address = new InetSocketAddress(6881)).use { socket =>
       val dhtClient = new DHTClient[IO](NodeId.generate(rnd), socket)
       dhtClient.getPeersAlgo(infoHash)
     }
 
-  def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(implicit asynchronousChannelGroup: AsynchronousChannelGroup): Resource[IO, Connection[IO]] =
+  def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(
+      implicit asynchronousChannelGroup: AsynchronousChannelGroup
+  ): Resource[IO, Connection[IO]] =
     TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
       Resource.make(Connection.connect(selfId, infoHash, socket, timer))(_ => IO.unit)
     }

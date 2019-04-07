@@ -10,7 +10,8 @@ object Bencode {
     override def toString() = s"String(${value.decodeUtf8.getOrElse(value.toHex)})"
   }
   object String {
-    def apply(string: java.lang.String): String = new String(ByteVector.encodeString(string).right.get)
+    def apply(string: java.lang.String): String =
+      new String(ByteVector.encodeString(string).right.get)
     val Emtpy = new String(ByteVector.empty)
   }
   case class Integer(value: scala.Long) extends Bencode
@@ -21,4 +22,3 @@ object Bencode {
     override def toString() = s"Dictionary(${values.mkString(", ")})"
   }
 }
-

@@ -16,7 +16,8 @@ object Handshake {
   val ReserveCodec: Codec[Unit] = bytes(8).unit(ByteVector.fill(8)(0))
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
-  val HandshakeCodec: Codec[Handshake] = ((ProtocolStringCodec <~ ReserveCodec) :: InfoHashCodec :: PeerIdCodec).as
+  val HandshakeCodec: Codec[Handshake] =
+    ((ProtocolStringCodec <~ ReserveCodec) :: InfoHashCodec :: PeerIdCodec).as
 }
 
 sealed trait Message
@@ -40,21 +41,22 @@ object Message {
     val KeepAliveCodec: Codec[KeepAlive.type] = provide(KeepAlive).complete
 
     val OtherMessagesCodec: Codec[Message] =
-      discriminated[Message].by(uint8)
-        .| (0) { case m@Choke => m} (identity) (provide(Choke))
-        .| (1) { case m@Unchoke => m} (identity) (provide(Unchoke))
-        .| (2) { case m@Interested => m} (identity) (provide(Interested))
-        .| (3) { case m@NotInterested => m} (identity) (provide(NotInterested))
-        .| (4) { case Have(index) => index } (Have) (uint32)
-        .| (5) { case Bitfield(bytes) => bytes } (Bitfield) (bytes)
-        .| (6) { case m: Request => m } (identity) ((uint32 :: uint32 :: uint32).as)
-        .| (7) { case m: Piece => m } (identity) ((uint32 :: uint32 :: bytes).as)
-        .| (8) { case m: Cancel => m } (identity) ((uint32 :: uint32 :: uint32).as)
-        .| (9) { case Port(port) => port } (Port) (uint16)
+      discriminated[Message]
+        .by(uint8)
+        .|(0) { case m @ Choke => m }(identity)(provide(Choke))
+        .|(1) { case m @ Unchoke => m }(identity)(provide(Unchoke))
+        .|(2) { case m @ Interested => m }(identity)(provide(Interested))
+        .|(3) { case m @ NotInterested => m }(identity)(provide(NotInterested))
+        .|(4) { case Have(index) => index }(Have)(uint32)
+        .|(5) { case Bitfield(bytes) => bytes }(Bitfield)(bytes)
+        .|(6) { case m: Request => m }(identity)((uint32 :: uint32 :: uint32).as)
+        .|(7) { case m: Piece => m }(identity)((uint32 :: uint32 :: bytes).as)
+        .|(8) { case m: Cancel => m }(identity)((uint32 :: uint32 :: uint32).as)
+        .|(9) { case Port(port) => port }(Port)(uint16)
 
     choice(
       KeepAliveCodec.upcast,
-      OtherMessagesCodec,
+      OtherMessagesCodec
     )
   }
 

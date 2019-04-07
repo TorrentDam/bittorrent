@@ -15,9 +15,9 @@ import fs2.concurrent.Queue
 import scodec.bits.ByteVector
 
 case class Downloading[F[_]](
-  send: Downloading.Command[F] => F[Unit],
-  fiber: Fiber[F, Unit],
-  complete: F[Unit],
+    send: Downloading.Command[F] => F[Unit],
+    fiber: Fiber[F, Unit],
+    complete: F[Unit]
 )
 
 object Downloading {
@@ -26,7 +26,7 @@ object Downloading {
       chunkQueue: List[Message.Request],
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
       inProgress: Map[Message.Request, UUID] = Map.empty,
-      downloaded: Set[Message.Request] = Set.empty,
+      downloaded: Set[Message.Request] = Set.empty
   )
 
   sealed trait Command[F[_]]
@@ -57,9 +57,7 @@ object Downloading {
       fiber <- Concurrent[F].start {
         commandQueue.dequeue.evalTap(behaviour).compile.drain
       }
-    }
-    yield
-      new Downloading(commandQueue.enqueue1, fiber, downloadComplete.get)
+    } yield new Downloading(commandQueue.enqueue1, fiber, downloadComplete.get)
   }
 
   def buildQueue(metaInfo: MetaInfo): Chain[Message.Request] = {
@@ -67,7 +65,8 @@ object Downloading {
     def downloadFile(fileInfo: Info.SingleFile): Chain[Message.Request] = {
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
-        val pieceLength = math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
+        val pieceLength =
+          math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
         if (pieceLength != 0) {
           val list = downloadPiece(index, pieceLength, fileInfo.pieces.drop(index * 20).take(20))
           result = result ++ list
@@ -78,7 +77,11 @@ object Downloading {
       result
     }
 
-    def downloadPiece(pieceIndex: Long, length: Long, checksum: ByteVector): Chain[Message.Request] = {
+    def downloadPiece(
+        pieceIndex: Long,
+        length: Long,
+        checksum: ByteVector
+    ): Chain[Message.Request] = {
       val maxChunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
@@ -100,9 +103,9 @@ object Downloading {
   }
 
   class Behaviour[F[_]: Concurrent](
-    State: MonadState[F, Downloading.State[F]],
-    effects: Effects[F],
-  ) extends (Command[F] => F[Unit]){
+      State: MonadState[F, Downloading.State[F]],
+      effects: Effects[F]
+  ) extends (Command[F] => F[Unit]) {
 
     def apply(command: Command[F]): F[Unit] = command match {
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
@@ -123,13 +126,14 @@ object Downloading {
               case _ =>
                 Monad[F].unit
             }
-            .onFinalize{
-              effects.send(Command.RemovePeer(uuid))}
-            .compile.drain
+            .onFinalize {
+              effects.send(Command.RemovePeer(uuid))
+            }
+            .compile
+            .drain
         }
         _ <- tryDownload
-      }
-        yield ()
+      } yield ()
     }
 
     def removePeer(peerId: UUID): F[Unit] = {
@@ -142,8 +146,7 @@ object Downloading {
             chunkQueue = chunkId :: state.chunkQueue
           )
         )
-      }
-        yield ()
+      } yield ()
     }
 
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
@@ -151,8 +154,7 @@ object Downloading {
         _ <- State.modify(state => state.copy(inProgress = state.inProgress - request))
         _ <- State.modify(state => state.copy(downloaded = state.downloaded + request))
         _ <- tryDownload
-      }
-        yield ()
+      } yield ()
     }
 
     def tryDownload: F[Unit] = {
@@ -167,16 +169,16 @@ object Downloading {
             _ <- (chunkFromQueue, peerIdOpt) match {
               case (Some((nextChunk, rest)), Some((peerId, connection))) =>
                 for {
-                  _ <- State.modify(state =>
-                    state.copy(
-                      chunkQueue = rest,
-                      inProgress = state.inProgress.updated(nextChunk, peerId),
-                    )
+                  _ <- State.modify(
+                    state =>
+                      state.copy(
+                        chunkQueue = rest,
+                        inProgress = state.inProgress.updated(nextChunk, peerId)
+                      )
                   )
                   _ <- connection send Connection.Command.Download(nextChunk)
                   _ <- tryDownload
-                }
-                  yield ()
+                } yield ()
               case _ =>
                 State.inspect(_.inProgress.isEmpty).flatMap {
                   case true =>
@@ -185,8 +187,7 @@ object Downloading {
                     Monad[F].unit
                 }
             }
-          }
-            yield ()
+          } yield ()
         case false =>
           Monad[F].unit
       }

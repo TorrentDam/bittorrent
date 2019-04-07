@@ -18,7 +18,8 @@ object Message {
   final case class ResponseMessage(transactionId: String, response: Bencode) extends Message
   final case class ErrorMessage(transactionId: String) extends Message
 
-  implicit val NodeIdFormat: BencodeFormat[NodeId] = BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
+  implicit val NodeIdFormat: BencodeFormat[NodeId] =
+    BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
     field[NodeId]("a")(field[NodeId]("id"))
@@ -40,8 +41,7 @@ object Message {
         case "ping" => PingQueryFormat.upcast
         case "find_node" => FindNodeQueryFormat.upcast
         case "get_peers" => GetPeersQueryFormat.upcast
-      },
-      {
+      }, {
         case _: Query.Ping => "ping"
         case _: Query.FindNode => "find_node"
         case _: Query.GetPeers => "get_peers"
@@ -56,8 +56,12 @@ object Message {
   val InetSocketAddressCodec: Codec[InetSocketAddress] = {
     import scodec.codecs._
     (bytes(4) ~ bytes(2)).xmap(
-      { case (address, port) =>
-        new InetSocketAddress(InetAddress.getByAddress(address.toArray), port.toInt(signed = false))
+      {
+        case (address, port) =>
+          new InetSocketAddress(
+            InetAddress.getByAddress(address.toArray),
+            port.toInt(signed = false)
+          )
       },
       v => (ByteVector(v.getAddress.getAddress), ByteVector.fromInt(v.getPort, 2))
     )
@@ -67,8 +71,9 @@ object Message {
     import scodec.codecs._
     list(
       (bytes(20) ~ InetSocketAddressCodec).xmap(
-        { case (id, address) =>
-          NodeInfo(NodeId(id), address)
+        {
+          case (id, address) =>
+            NodeInfo(NodeId(id), address)
         },
         v => (v.id.bytes, v.address)
       )
@@ -105,8 +110,7 @@ object Message {
         case "q" => QueryMessageFormat.upcast
         case "r" => ResponseMessageFormat.upcast
         case "e" => ErrorMessageFormat.upcast
-      },
-      {
+      }, {
         case _: Message.QueryMessage => "q"
         case _: Message.ResponseMessage => "r"
         case _: Message.ErrorMessage => "e"

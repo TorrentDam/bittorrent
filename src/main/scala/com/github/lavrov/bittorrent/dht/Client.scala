@@ -19,10 +19,13 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
   def readMessage: F[Message] =
     for {
       packet <- socket.read(5.seconds.some)
-      bc <- M.fromEither(
-        decode(packet.bytes.toArray).left.map(e => new Exception(e.message)))
+      bc <- M.fromEither(decode(packet.bytes.toArray).left.map(e => new Exception(e.message)))
       message <- M.fromEither(
-        Message.MessageFormat.read(bc).left.map(e => new Exception(s"Filed to read message: $e. Bencode: $bc")))
+        Message.MessageFormat
+          .read(bc)
+          .left
+          .map(e => new Exception(s"Filed to read message: $e. Bencode: $bc"))
+      )
     } yield message
 
   def sendMessage(address: InetSocketAddress, message: Message): F[Unit] =
@@ -33,13 +36,15 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
 
     } yield ()
 
-
   def getPeersAlgo(infoHash: InfoHash): F[List[PeerInfo]] = {
     def iteration(nodesToTry: NonEmptyList[NodeInfo]): F[List[PeerInfo]] = {
       val nodeInfo = nodesToTry.head
       val logic: F[List[PeerInfo]] =
         for {
-          _ <- sendMessage(nodeInfo.address, Message.QueryMessage("aa", Query.GetPeers(selfId, infoHash)))
+          _ <- sendMessage(
+            nodeInfo.address,
+            Message.QueryMessage("aa", Query.GetPeers(selfId, infoHash))
+          )
           _ = println(s"Querying $nodeInfo")
           m <- readMessage
           _ = println(s"Got message $m")
@@ -47,17 +52,20 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
             m match {
               case Message.ResponseMessage("aa", bc) =>
                 val reader =
-                  Message.PeersResponseFormat.read.widen[Response].orElse(Message.NodesResponseFormat.read.widen[Response])
+                  Message.PeersResponseFormat.read
+                    .widen[Response]
+                    .orElse(Message.NodesResponseFormat.read.widen[Response])
                 reader(bc).leftMap(new Exception(_))
               case other =>
                 Left(new Exception(s"Expected response but got $other"))
             }
           )
           peers <- response match {
-            case Response.Nodes(_, nodes) => nodes.sortBy(n => NodeId.distance(n.id, infoHash)).toNel match {
-              case Some(ns) => iteration(ns)
-              case _ => M.raiseError(new Exception("Failed to find peers"))
-            }
+            case Response.Nodes(_, nodes) =>
+              nodes.sortBy(n => NodeId.distance(n.id, infoHash)).toNel match {
+                case Some(ns) => iteration(ns)
+                case _ => M.raiseError(new Exception("Failed to find peers"))
+              }
             case Response.Peers(_, peers) => M.pure(peers)
           }
         } yield peers

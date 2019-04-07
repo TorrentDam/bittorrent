@@ -9,7 +9,8 @@ object `package` {
 
   implicit private[bencode] val charset = Charset.forName("US-ASCII")
 
-  def decode(source: BitVector): Either[Err, Bencode] = BencodeCodec.instance.decodeOnly.decodeValue(source).toEither
+  def decode(source: BitVector): Either[Err, Bencode] =
+    BencodeCodec.instance.decodeOnly.decodeValue(source).toEither
 
   def decode(source: Array[Byte]): Either[Err, Bencode] = decode(BitVector(source))
 

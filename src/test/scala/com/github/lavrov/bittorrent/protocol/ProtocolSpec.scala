@@ -5,7 +5,6 @@ import org.scalatest.MustMatchers._
 
 class ProtocolSpec extends FlatSpec {
 
-  it should "test" in {
-  }
+  it should "test" in {}
 
 }

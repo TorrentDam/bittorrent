@@ -27,14 +27,14 @@ trait Connection[F[_]] {
 object Connection {
 
   case class State(
-    lastMessageAt: Long = 0,
-    choking: Boolean = true,
-    interested: Boolean = false,
-    peerChoking: Boolean = true,
-    peerInterested: Boolean = false,
-    bitfield: Option[BitVector] = None,
-    queue: ListSet[Message.Request] = ListSet.empty,
-    pending: ListSet[Message.Request] = ListSet.empty,
+      lastMessageAt: Long = 0,
+      choking: Boolean = true,
+      interested: Boolean = false,
+      peerChoking: Boolean = true,
+      peerInterested: Boolean = false,
+      bitfield: Option[BitVector] = None,
+      queue: ListSet[Message.Request] = ListSet.empty,
+      pending: ListSet[Message.Request] = ListSet.empty
   )
 
   trait Effects[F[_]] {
@@ -62,8 +62,8 @@ object Connection {
   }
 
   class Behaviour[F[_]: Monad](
-    keepAliveInterval: FiniteDuration,
-    effects: Effects[F],
+      keepAliveInterval: FiniteDuration,
+      effects: Effects[F]
   ) {
 
     def behaviour: Command => F[Unit] = {
@@ -100,8 +100,7 @@ object Connection {
     def requestPieceFromQueue: F[Unit] = {
       for {
         state <- effects.state.get
-        _ <-
-        if (state.peerChoking)
+        _ <- if (state.peerChoking)
           Monad[F].unit
         else
           state.queue.headOption match {
@@ -114,8 +113,7 @@ object Connection {
                   )
                 )
                 _ <- effects.send(request)
-              }
-                yield ()
+              } yield ()
             case None => Monad[F].unit
           }
 
@@ -127,8 +125,7 @@ object Connection {
         state <- effects.state.get
         time <- effects.currentTime
         durationSinceLastMessage = (time - state.lastMessageAt).millis
-        _ <-
-        if (durationSinceLastMessage > keepAliveInterval)
+        _ <- if (durationSinceLastMessage > keepAliveInterval)
           effects.send(Message.KeepAlive)
         else
           Monad[F].unit
@@ -159,8 +156,7 @@ object Connection {
                 )
               )
               _ <- requestPieceFromQueue
-            }
-              yield ()
+            } yield ()
           else
             effects.error.raiseError(new Exception("Unexpected piece"))
         }: F[Unit]
@@ -168,7 +164,12 @@ object Connection {
     }
   }
 
-  def connect[F[_]: Concurrent](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], timer: Timer[F]): F[Connection[F]] = {
+  def connect[F[_]: Concurrent](
+      selfId: PeerId,
+      infoHash: InfoHash,
+      socket: Socket[F],
+      timer: Timer[F]
+  ): F[Connection[F]] = {
     val ops = new ConnectionOps(socket)
     for {
       _ <- ops.handshake(selfId, infoHash)
@@ -191,12 +192,15 @@ object Connection {
         val state: MonadState[F, State] = stateRef.stateInstance
         val error: MonadError[F, Throwable] = implicitly
       }
-      enqueueFiber <- Concurrent[F] start Stream.repeatEval(ops.receive).map(Command.PeerMessage).to(queue.enqueue).compile.drain
+      enqueueFiber <- Concurrent[F] start Stream
+        .repeatEval(ops.receive)
+        .map(Command.PeerMessage)
+        .to(queue.enqueue)
+        .compile
+        .drain
       behaviour = new Behaviour(10.seconds, effects).behaviour
       dequeueFiber <- Concurrent[F] start {
-        queue.dequeue.evalTap(behaviour)
-          .compile
-          .drain
+        queue.dequeue.evalTap(behaviour).compile.drain
       }
       _ <- Concurrent[F].start {
         Concurrent[F]
@@ -209,13 +213,11 @@ object Connection {
           }
       }
       //      _ <- queue.enqueue1(Command.SendKeepAlive())
-    }
-    yield
-      new Connection[F] {
-        def send(msg: Command): F[Unit] = queue.enqueue1(msg)
+    } yield new Connection[F] {
+      def send(msg: Command): F[Unit] = queue.enqueue1(msg)
 
-        def events: Stream[F, Event] = eventQueue.dequeue
-      }
+      def events: Stream[F, Event] = eventQueue.dequeue
+    }
   }
 }
 
@@ -247,8 +249,7 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
     for {
       _ <- socket.write(Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector))
       _ <- Sync[F].delay(println(s"Sent: $message"))
-    }
-      yield ()
+    } yield ()
 
   def receive: F[Message] =
     for {
@@ -264,7 +265,6 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .toTry
       )
       _ <- Sync[F].delay(println(s"Received $message"))
-    }
-      yield message
+    } yield message
 
 }

@@ -22,7 +22,8 @@ package object reader {
 
     def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = reader.and(this, that)
 
-    def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = reader.consume(this)(f, g)
+    def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
+      reader.consume(this)(f, g)
   }
 
   object BencodeFormat {
@@ -77,8 +78,8 @@ package object reader {
       ReaderT {
         case bencode => Right(bencode)
       },
-      ReaderT {
-        value => Right(value)
+      ReaderT { value =>
+        Right(value)
       }
     )
 
@@ -89,31 +90,31 @@ package object reader {
       )
     }
 
-    implicit val BencodeFormatSemigroupal: Semigroupal[BencodeFormat] = new Semigroupal[BencodeFormat] {
-      def product[A, B](fa: BencodeFormat[A], fb: BencodeFormat[B]): BencodeFormat[(A, B)] =
-        BencodeFormat[(A, B)](
-          (fa.read, fb.read).tupled,
-          ReaderT {
-            case (a, b) =>
-              for {
-                ab <- fa.write(a).right.flatMap {
-                  case Bencode.Dictionary(values) => Right(values)
-                  case other => Left("Dictionary expected")
-                }
-                bb <- fb.write(b).right.flatMap {
-                  case Bencode.Dictionary(values) => Right(values)
-                  case other => Left("Dictionary expected")
-                }
-              }
-              yield
-                Bencode.Dictionary(ab ++ bb)
-          }
-        )
-    }
+    implicit val BencodeFormatSemigroupal: Semigroupal[BencodeFormat] =
+      new Semigroupal[BencodeFormat] {
+        def product[A, B](fa: BencodeFormat[A], fb: BencodeFormat[B]): BencodeFormat[(A, B)] =
+          BencodeFormat[(A, B)](
+            (fa.read, fb.read).tupled,
+            ReaderT {
+              case (a, b) =>
+                for {
+                  ab <- fa.write(a).right.flatMap {
+                    case Bencode.Dictionary(values) => Right(values)
+                    case other => Left("Dictionary expected")
+                  }
+                  bb <- fb.write(b).right.flatMap {
+                    case Bencode.Dictionary(values) => Right(values)
+                    case other => Left("Dictionary expected")
+                  }
+                } yield Bencode.Dictionary(ab ++ bb)
+            }
+          )
+      }
   }
 
-
-  def consume[A, B](format: BencodeFormat[A])(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = BencodeFormat(
+  def consume[A, B](
+      format: BencodeFormat[A]
+  )(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = BencodeFormat(
     ReaderT { bv: Bencode =>
       format.read(bv).flatMap(f(_).read(bv))
     },
@@ -129,21 +130,20 @@ package object reader {
           case Bencode.Dictionary(values) => Right(values)
           case other => Left("Dictionary expected")
         }
-      }
-      yield Bencode.Dictionary(aa ++ bb)
+      } yield Bencode.Dictionary(aa ++ bb)
     }
   )
 
-
-  def upcast[A, B >: A](x: BencodeFormat[A])(implicit ta: Typeable[A]): BencodeFormat[B] = BencodeFormat(
-    x.read.widen[B],
-    ReaderT { b: B =>
-      ta.cast(b) match {
-        case Some(a) => x.write(a)
-        case None => Left(s"not a value of type ${ta.describe}")
+  def upcast[A, B >: A](x: BencodeFormat[A])(implicit ta: Typeable[A]): BencodeFormat[B] =
+    BencodeFormat(
+      x.read.widen[B],
+      ReaderT { b: B =>
+        ta.cast(b) match {
+          case Some(a) => x.write(a)
+          case None => Left(s"not a value of type ${ta.describe}")
+        }
       }
-    }
-  )
+    )
 
   def and[A, B](x: BencodeFormat[A], y: BencodeFormat[B]): BencodeFormat[(A, B)] = (x, y).tupled
 
@@ -172,10 +172,13 @@ package object reader {
       }
     )
 
-  def matchField[A: Eq](name: String, value: A)(implicit format: BencodeFormat[A]): BencodeFormat[Unit] = {
+  def matchField[A: Eq](name: String, value: A)(
+      implicit format: BencodeFormat[A]
+  ): BencodeFormat[Unit] = {
     val df = field[A](name)
     BencodeFormat(
-      df.read.flatMapF(a => Either.cond(a === value, (), s"Expected field $name='$value' but found $a")),
+      df.read
+        .flatMapF(a => Either.cond(a === value, (), s"Expected field $name='$value' but found $a")),
       df.write.contramap(_ => value)
     )
   }
