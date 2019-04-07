@@ -49,10 +49,11 @@ object Downloading {
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
   }
 
-  case class CompletePiece(index: Long, bytes: ByteVector)
+  case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
 
   case class IncompletePiece(
       index: Long,
+      begin: Long,
       size: Long,
       requests: List[Message.Request],
       downloadedSize: Long = 0,
@@ -100,11 +101,11 @@ object Downloading {
     def downloadFile(fileInfo: Info.SingleFile): Chain[IncompletePiece] = {
       var result = Chain.empty[IncompletePiece]
       def loop(index: Long): Unit = {
-        val pieceLength =
+        val thisPieceLength =
           math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
-        if (pieceLength != 0) {
-          val list = downloadPiece(index, pieceLength, fileInfo.pieces.drop(index * 20).take(20))
-          result = result append IncompletePiece(index, pieceLength, list.toList)
+        if (thisPieceLength != 0) {
+          val list = downloadPiece(index, thisPieceLength, fileInfo.pieces.drop(index * 20).take(20))
+          result = result append IncompletePiece(index, index * fileInfo.pieceLength, thisPieceLength, list.toList)
           loop(index + 1)
         }
       }
@@ -200,7 +201,7 @@ object Downloading {
           if (incompletePiece.isComplete)
             State.modify(pieceLens.set(None)) *>
               effects.notifyPieceComplete(
-                CompletePiece(incompletePiece.index, incompletePiece.joinChunks)
+                CompletePiece(incompletePiece.index, incompletePiece.begin, incompletePiece.joinChunks)
               )
           else
             State.modify(pieceLens.set(incompletePiece.some))
