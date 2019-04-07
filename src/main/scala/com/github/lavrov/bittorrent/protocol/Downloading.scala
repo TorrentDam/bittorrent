@@ -1,61 +1,96 @@
 package com.github.lavrov.bittorrent.protocol
 
+import java.util.UUID
+
 import cats.Monad
-import cats.effect.{Concurrent, Sync}
-import cats.effect.concurrent.MVar
+import cats.data.Chain
+import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.{Concurrent, Fiber}
+import cats.mtl.MonadState
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.{Info, InfoHash, MetaInfo, PeerId}
+import com.github.lavrov.bittorrent.protocol.message.Message
+import com.github.lavrov.bittorrent.{Info, MetaInfo}
+import com.olegpy.meow.effects._
+import fs2.concurrent.Queue
 import scodec.bits.ByteVector
 
-class Downloading[F[_]: Concurrent](peerConnection: PeerConnection[F]) {
+case class Downloading[F[_]](
+  send: Downloading.Command[F] => F[Unit],
+  fiber: Fiber[F, Unit],
+  complete: F[Unit],
+)
 
-  def start(selfId: PeerId, infoHash: InfoHash, metaInfo: MetaInfo, connection: Connection[F]): F[Unit] = {
-    for {
-      handle <- peerConnection.connect(selfId, infoHash, connection)
-      _ <- downloadFrom(handle, metaInfo)
-    }
-    yield ()
+object Downloading {
+
+  case class State[F[_]](
+      chunkQueue: List[Message.Request],
+      connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
+      inProgress: Map[Message.Request, UUID] = Map.empty,
+      downloaded: Set[Message.Request] = Set.empty,
+  )
+
+  sealed trait Command[F[_]]
+
+  object Command {
+    case class AddPeer[F[_]](connectionActor: Connection[F]) extends Command[F]
+    case class RemovePeer[F[_]](id: UUID) extends Command[F]
+    case class AddDownloaded[F[_]](request: Message.Request, bytes: ByteVector) extends Command[F]
   }
 
-  def downloadFrom(handle: peerConnection.Handle, metaInfo: MetaInfo): F[Unit] = {
+  trait Effects[F[_]] {
+    def send(command: Command[F]): F[Unit]
+    def notifyComplete: F[Unit]
+  }
 
-    def downloadFile(fileInfo: Info.SingleFile): F[Unit] = {
-      def loop(index: Long): F[Unit] = {
-        val pieceLength = math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
-        if (pieceLength != 0)
-          downloadPiece(index, pieceLength, fileInfo.pieces.drop(index * 20).take(20)).flatMap(_ =>
-            loop(index + 1))
-        else
-          Monad[F].unit
+  def start[F[_]: Concurrent](metaInfo: MetaInfo): F[Downloading[F]] = {
+    for {
+      _ <- Monad[F].unit
+      commandQueue <- Queue.unbounded[F, Command[F]]
+      requestQueue = buildQueue(metaInfo).toList
+      stateRef <- Ref.of[F, State[F]](State(requestQueue))
+      downloadComplete <- Deferred[F, Unit]
+      effects = new Effects[F] {
+        def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
+        def notifyComplete: F[Unit] = downloadComplete.complete(())
       }
-      Sync[F].delay(println(s"Download file $fileInfo")) *>
+      behaviour = new Behaviour(stateRef.stateInstance, effects)
+      fiber <- Concurrent[F].start {
+        commandQueue.dequeue.evalTap(behaviour).compile.drain
+      }
+    }
+    yield
+      new Downloading(commandQueue.enqueue1, fiber, downloadComplete.get)
+  }
+
+  def buildQueue(metaInfo: MetaInfo): Chain[Message.Request] = {
+
+    def downloadFile(fileInfo: Info.SingleFile): Chain[Message.Request] = {
+      var result = Chain.empty[Message.Request]
+      def loop(index: Long): Unit = {
+        val pieceLength = math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
+        if (pieceLength != 0) {
+          val list = downloadPiece(index, pieceLength, fileInfo.pieces.drop(index * 20).take(20))
+          result = result ++ list
+          loop(index + 1)
+        }
+      }
       loop(0)
+      result
     }
 
-    def downloadPiece(pieceIndex: Long, length: Long, checksum: ByteVector): F[Unit] = {
+    def downloadPiece(pieceIndex: Long, length: Long, checksum: ByteVector): Chain[Message.Request] = {
       val maxChunkSize = 16 * 1024
-      def loop(index: Long): F[Unit] = {
+      var result = Chain.empty[Message.Request]
+      def loop(index: Long): Unit = {
         val chunkSize = math.min(maxChunkSize, length - index * maxChunkSize)
         if (chunkSize != 0) {
           val begin = index * maxChunkSize
-          Sync[F].delay(println(s"Try download $pieceIndex, $begin, $chunkSize")) *>
-          handle.algebra.download(pieceIndex, begin, chunkSize).flatMap { _ =>
-            handle.events
-              .flatMap {
-                case PeerConnection.Event.Downloaded(`pieceIndex`, `begin`, bytes) =>
-                  println(s"Received bytes $index, $begin, ${bytes.size}!!!")
-                  loop(index + 1)
-                case ev =>
-                  println(s"unknown event $ev!!!")
-                  Monad[F].unit
-              }
-          }
+          result = result append Message.Request(pieceIndex, begin, chunkSize)
+          loop(index + 1)
         }
-        else
-          Monad[F].unit
       }
-      Sync[F].delay(println(s"Download piece $pieceIndex, $length, $checksum")) *>
       loop(0)
+      result
     }
 
     metaInfo.info match {
@@ -64,4 +99,98 @@ class Downloading[F[_]: Concurrent](peerConnection: PeerConnection[F]) {
     }
   }
 
+  class Behaviour[F[_]: Concurrent](
+    State: MonadState[F, Downloading.State[F]],
+    effects: Effects[F],
+  ) extends (Command[F] => F[Unit]){
+
+    def apply(command: Command[F]): F[Unit] = command match {
+      case Command.AddPeer(connectionActor) => addPeer(connectionActor)
+      case Command.RemovePeer(id) => removePeer(id)
+      case Command.AddDownloaded(request, bytes) => addDownloaded(request, bytes)
+    }
+
+    def addPeer(connection: Connection[F]): F[Unit] = {
+      for {
+        state <- State.get
+        uuid = UUID.randomUUID()
+        _ <- State.set(state.copy(connections = state.connections.updated(uuid, connection)))
+        _ <- Concurrent[F].start {
+          connection.events
+            .evalTap {
+              case Connection.Event.Downloaded(request, bytes) =>
+                effects.send(Command.AddDownloaded(request, bytes))
+              case _ =>
+                Monad[F].unit
+            }
+            .onFinalize{
+              effects.send(Command.RemovePeer(uuid))}
+            .compile.drain
+        }
+        _ <- tryDownload
+      }
+        yield ()
+    }
+
+    def removePeer(peerId: UUID): F[Unit] = {
+      for {
+        state <- State.get
+        (chunkId, _) = state.inProgress.find(_._2 == peerId).get
+        _ <- State.set(
+          state.copy(
+            inProgress = state.inProgress - chunkId,
+            chunkQueue = chunkId :: state.chunkQueue
+          )
+        )
+      }
+        yield ()
+    }
+
+    def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
+      for {
+        _ <- State.modify(state => state.copy(inProgress = state.inProgress - request))
+        _ <- State.modify(state => state.copy(downloaded = state.downloaded + request))
+        _ <- tryDownload
+      }
+        yield ()
+    }
+
+    def tryDownload: F[Unit] = {
+      State.inspect(_.inProgress.size < 128).flatMap {
+        case true =>
+          for {
+            chunkFromQueue <- State.inspect(_.chunkQueue).map {
+              case head :: tail => Some(head -> tail)
+              case Nil => None
+            }
+            peerIdOpt <- State.inspect(_.connections.headOption) // TODO
+            _ <- (chunkFromQueue, peerIdOpt) match {
+              case (Some((nextChunk, rest)), Some((peerId, connection))) =>
+                for {
+                  _ <- State.modify(state =>
+                    state.copy(
+                      chunkQueue = rest,
+                      inProgress = state.inProgress.updated(nextChunk, peerId),
+                    )
+                  )
+                  _ <- connection send Connection.Command.Download(nextChunk)
+                  _ <- tryDownload
+                }
+                  yield ()
+              case _ =>
+                State.inspect(_.inProgress.isEmpty).flatMap {
+                  case true =>
+                    effects.notifyComplete
+                  case false =>
+                    Monad[F].unit
+                }
+            }
+          }
+            yield ()
+        case false =>
+          Monad[F].unit
+      }
+    }
+
+  }
 }

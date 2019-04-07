@@ -12,7 +12,7 @@ import cats.syntax.monad._
 import cats.effect._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
-import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, PeerConnection}
+import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import fs2.Stream
@@ -48,17 +48,14 @@ object Main extends IOApp {
           torrentInfo <- getMetaInfo
           (infoHash, metaInfo) = torrentInfo
           Info.SingleFile(pieceLength, _, _, _) = metaInfo.info
-//          _ = println(s"Searching for peers on $infoHash")
-//          addressList <- getPeers(infoHash)
-//          firstPeer = addressList.head
           firstPeer = PeerInfo(new InetSocketAddress(57491))
           _ = println(s"Connecting to $firstPeer")
-          _ <- connectToPeer(firstPeer).use { connection =>
-            println(s"Connected to $firstPeer")
-            val peerConnection = new PeerConnection[IO]
-            val downloading = new Downloading[IO](peerConnection)
+          _ <- connectToPeer(firstPeer, selfId, infoHash).use { connection =>
             for {
-              _ <- downloading.start(selfId, infoHash, metaInfo, connection)
+              download <- Downloading.start[IO](metaInfo)
+              _ <- download.send(Downloading.Command.AddPeer(connection))
+              _ <- download.complete
+              _ <- IO(println("The End"))
             }
             yield ()
           }
@@ -85,9 +82,9 @@ object Main extends IOApp {
       dhtClient.getPeersAlgo(infoHash)
     }
 
-  def connectToPeer(peerInfo: PeerInfo)(implicit asynchronousChannelGroup: AsynchronousChannelGroup): Resource[IO, Connection[IO]] =
-    TCPSocket.client[IO](to = peerInfo.address).map { socket =>
-      new Connection(socket)
+  def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(implicit asynchronousChannelGroup: AsynchronousChannelGroup): Resource[IO, Connection[IO]] =
+    TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
+      Resource.make(Connection.connect(selfId, infoHash, socket, timer))(_ => IO.unit)
     }
 
 }

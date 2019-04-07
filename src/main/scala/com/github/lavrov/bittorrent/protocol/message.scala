@@ -34,7 +34,9 @@ object Message {
   final case class Cancel(index: Long, begin: Long, length: Long) extends Message
   final case class Port(port: Int) extends Message
 
-  val MessageCodec: Codec[Message] = {
+  val MessageSizeCodec: Codec[Long] = uint32
+
+  val MessageBodyCodec: Codec[Message] = {
     val KeepAliveCodec: Codec[KeepAlive.type] = provide(KeepAlive).complete
 
     val OtherMessagesCodec: Codec[Message] =
@@ -50,12 +52,16 @@ object Message {
         .| (8) { case m: Cancel => m } (identity) ((uint32 :: uint32 :: uint32).as)
         .| (9) { case Port(port) => port } (Port) (uint16)
 
+    choice(
+      KeepAliveCodec.upcast,
+      OtherMessagesCodec,
+    )
+  }
+
+  val MessageCodec: Codec[Message] = {
     variableSizeBytesLong(
-      uint32,
-      choice(
-        KeepAliveCodec.upcast,
-        OtherMessagesCodec,
-      )
+      MessageSizeCodec,
+      MessageBodyCodec
     )
   }
 }

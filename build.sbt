@@ -8,6 +8,7 @@ lazy val root = project
       "org.scodec" %% "core" % "1.10.4",
       "org.typelevel" %% "cats-mtl-core" % "0.4.0",
       "org.scalatest" %% "scalatest" % "3.0.5",
+      "com.olegpy" %% "meow-mtl" % "0.2.0",
     ),
     // compiler settings
     scalaVersion := "2.12.8",
