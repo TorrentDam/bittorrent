@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent.protocol
 import java.util.concurrent.TimeUnit
 
 import cats.effect.concurrent.Ref
-import cats.effect.{Concurrent, Sync, Timer}
+import cats.effect.{Concurrent, Timer}
 import cats.mtl._
 import cats.syntax.all._
 import cats.{Monad, MonadError}
@@ -248,7 +248,6 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
   def send(message: Message): F[Unit] =
     for {
       _ <- socket.write(Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector))
-      _ <- Sync[F].delay(println(s"Sent: $message"))
     } yield ()
 
   def receive: F[Message] =
@@ -264,7 +263,6 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .decodeValue(bv.toBitVector)
           .toTry
       )
-      _ <- Sync[F].delay(println(s"Received $message"))
     } yield message
 
 }

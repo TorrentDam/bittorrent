@@ -48,7 +48,12 @@ object Main extends IOApp {
             for {
               download <- Downloading.start[IO](metaInfo)
               _ <- download.send(Downloading.Command.AddPeer(connection))
-              _ <- download.complete
+              _ <- download.completePieces
+                .evalTap(p => IO(println(s"Complete: $p")))
+                .compile
+                .drain
+                .start
+              _ <- download.fiber.join
               _ <- IO(println("The End"))
             } yield ()
           }

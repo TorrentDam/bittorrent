@@ -8,25 +8,31 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, Fiber}
 import cats.mtl.MonadState
 import cats.syntax.all._
+import com.github.lavrov.bittorrent.protocol.Downloading.CompletePiece
 import com.github.lavrov.bittorrent.protocol.message.Message
+import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import com.olegpy.meow.effects._
+import fs2.Stream
 import fs2.concurrent.Queue
+import monocle.macros.GenLens
+import monocle.function.At.at
+import monocle.std.map._
 import scodec.bits.ByteVector
 
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
-    fiber: Fiber[F, Unit],
-    complete: F[Unit]
+    completePieces: Stream[F, CompletePiece],
+    fiber: Fiber[F, Unit]
 )
 
 object Downloading {
 
   case class State[F[_]](
+      incompletePieces: Map[Long, IncompletePiece] = Map.empty,
       chunkQueue: List[Message.Request],
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
-      inProgress: Map[Message.Request, UUID] = Map.empty,
-      downloaded: Set[Message.Request] = Set.empty
+      inProgress: Map[Message.Request, UUID] = Map.empty
   )
 
   sealed trait Command[F[_]]
@@ -40,36 +46,65 @@ object Downloading {
   trait Effects[F[_]] {
     def send(command: Command[F]): F[Unit]
     def notifyComplete: F[Unit]
+    def notifyPieceComplete(piece: CompletePiece): F[Unit]
+  }
+
+  case class CompletePiece(index: Long, bytes: ByteVector)
+
+  case class IncompletePiece(
+      index: Long,
+      size: Long,
+      requests: List[Message.Request],
+      downloadedSize: Long = 0,
+      downloaded: Map[Message.Request, ByteVector] = Map.empty
+  ) {
+    def add(request: Request, bytes: ByteVector): IncompletePiece =
+      copy(
+        downloadedSize = downloadedSize + request.length,
+        downloaded = downloaded.updated(request, bytes)
+      )
+    def isComplete: Boolean = size == downloadedSize
+    def joinChunks: ByteVector = downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
   }
 
   def start[F[_]: Concurrent](metaInfo: MetaInfo): F[Downloading[F]] = {
     for {
       _ <- Monad[F].unit
       commandQueue <- Queue.unbounded[F, Command[F]]
-      requestQueue = buildQueue(metaInfo).toList
-      stateRef <- Ref.of[F, State[F]](State(requestQueue))
+      incompletePieces = buildQueue(metaInfo)
+      requestQueue = incompletePieces.map(_.requests).toList.flatten
+      stateRef <- Ref.of[F, State[F]](
+        State(incompletePieces.toList.map(p => (p.index, p)).toMap, requestQueue)
+      )
+      completePieces <- Queue.unbounded[F, CompletePiece]
       downloadComplete <- Deferred[F, Unit]
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(())
+        def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece)
       }
       behaviour = new Behaviour(stateRef.stateInstance, effects)
-      fiber <- Concurrent[F].start {
-        commandQueue.dequeue.evalTap(behaviour).compile.drain
+      fiber <- Concurrent[F] start {
+        Concurrent[F]
+          .race(
+            commandQueue.dequeue.evalTap(behaviour).compile.drain,
+            downloadComplete.get
+          )
+          .void
       }
-    } yield new Downloading(commandQueue.enqueue1, fiber, downloadComplete.get)
+    } yield Downloading(commandQueue.enqueue1, completePieces.dequeue, fiber)
   }
 
-  def buildQueue(metaInfo: MetaInfo): Chain[Message.Request] = {
+  def buildQueue(metaInfo: MetaInfo): Chain[IncompletePiece] = {
 
-    def downloadFile(fileInfo: Info.SingleFile): Chain[Message.Request] = {
-      var result = Chain.empty[Message.Request]
+    def downloadFile(fileInfo: Info.SingleFile): Chain[IncompletePiece] = {
+      var result = Chain.empty[IncompletePiece]
       def loop(index: Long): Unit = {
         val pieceLength =
           math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
         if (pieceLength != 0) {
           val list = downloadPiece(index, pieceLength, fileInfo.pieces.drop(index * 20).take(20))
-          result = result ++ list
+          result = result append IncompletePiece(index, pieceLength, list.toList)
           loop(index + 1)
         }
       }
@@ -106,6 +141,10 @@ object Downloading {
       State: MonadState[F, Downloading.State[F]],
       effects: Effects[F]
   ) extends (Command[F] => F[Unit]) {
+
+    object Lenses {
+      val incompletePiece = GenLens[State[F]](_.incompletePieces)
+    }
 
     def apply(command: Command[F]): F[Unit] = command match {
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
@@ -150,9 +189,22 @@ object Downloading {
     }
 
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
+      val pieceLens = Lenses.incompletePiece composeLens at(request.index)
       for {
         _ <- State.modify(state => state.copy(inProgress = state.inProgress - request))
-        _ <- State.modify(state => state.copy(downloaded = state.downloaded + request))
+        incompletePieceOpt <- State.inspect(pieceLens.get)
+        incompletePiece <- Concurrent[F]
+          .fromOption(incompletePieceOpt, new Exception("Piece not found"))
+        incompletePiece <- Monad[F] pure incompletePiece.add(request, bytes)
+        _ <- {
+          if (incompletePiece.isComplete)
+            State.modify(pieceLens.set(None)) *>
+              effects.notifyPieceComplete(
+                CompletePiece(incompletePiece.index, incompletePiece.joinChunks)
+              )
+          else
+            State.modify(pieceLens.set(incompletePiece.some))
+        }
         _ <- tryDownload
       } yield ()
     }
