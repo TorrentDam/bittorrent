@@ -32,7 +32,8 @@ object Downloading {
       incompletePieces: Map[Long, IncompletePiece] = Map.empty,
       chunkQueue: List[Message.Request],
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
-      inProgress: Map[Message.Request, UUID] = Map.empty
+      inProgress: Map[Message.Request, UUID] = Map.empty,
+      inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
   )
 
   sealed trait Command[F[_]]
@@ -178,21 +179,27 @@ object Downloading {
 
     def removePeer(peerId: UUID): F[Unit] = {
       for {
-        state <- State.get
-        (chunkId, _) = state.inProgress.find(_._2 == peerId).get
-        _ <- State.set(
+        _ <- State.modify { state =>
+          val requests = state.inProgressByPeer(peerId)
           state.copy(
-            inProgress = state.inProgress - chunkId,
-            chunkQueue = chunkId :: state.chunkQueue
+            inProgress = state.inProgress -- requests,
+            chunkQueue = requests ++: state.chunkQueue
           )
-        )
+        }
       } yield ()
     }
 
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
       val pieceLens = Lenses.incompletePiece composeLens at(request.index)
       for {
-        _ <- State.modify(state => state.copy(inProgress = state.inProgress - request))
+        _ <- State.modify { state =>
+          val peer = state.inProgress(request)
+          val peerRequests = state.inProgressByPeer(peer)
+          state.copy(
+            inProgress = state.inProgress - request,
+            inProgressByPeer = state.inProgressByPeer.updated(peer, peerRequests - request)
+          )
+        }
         incompletePieceOpt <- State.inspect(pieceLens.get)
         incompletePiece <- Concurrent[F]
           .fromOption(incompletePieceOpt, new Exception("Piece not found"))
@@ -212,39 +219,53 @@ object Downloading {
 
     def tryDownload: F[Unit] = {
       State.inspect(_.inProgress.size < 128).flatMap {
-        case true =>
-          for {
-            chunkFromQueue <- State.inspect(_.chunkQueue).map {
-              case head :: tail => Some(head -> tail)
-              case Nil => None
-            }
-            peerIdOpt <- State.inspect(_.connections.headOption) // TODO
-            _ <- (chunkFromQueue, peerIdOpt) match {
-              case (Some((nextChunk, rest)), Some((peerId, connection))) =>
-                for {
-                  _ <- State.modify(
-                    state =>
-                      state.copy(
-                        chunkQueue = rest,
-                        inProgress = state.inProgress.updated(nextChunk, peerId)
-                      )
-                  )
-                  _ <- connection send Connection.Command.Download(nextChunk)
-                  _ <- tryDownload
-                } yield ()
-              case _ =>
-                State.inspect(_.inProgress.isEmpty).flatMap {
-                  case true =>
-                    effects.notifyComplete
-                  case false =>
-                    Monad[F].unit
-                }
-            }
-          } yield ()
         case false =>
           Monad[F].unit
+        case true =>
+          State.inspect(_.chunkQueue).flatMap {
+            case Nil =>
+              State.inspect(_.inProgress.isEmpty).flatMap {
+                case true =>
+                  effects.notifyComplete
+                case false =>
+                  Monad[F].unit
+              }
+
+            case nextChunk :: leftChunks =>
+              State.inspect(state =>
+                state.inProgressByPeer.toSeq.sortBy(_._2.size)(Ordering.Int.reverse)
+                  .headOption
+                  .collect {
+                    case (peerId, requests) =>
+                      val connection = state.connections(peerId)
+                      (peerId, connection, requests)
+                  }
+                  .orElse {
+                    state.connections.headOption.map {
+                      case (peerId, connection) =>
+                        (peerId, connection, Set.empty[Message.Request])
+                    }
+                  }
+              ).flatMap {
+                case None =>
+                  Monad[F].unit
+                case Some((peerId, connection, requests)) =>
+                  for {
+                    _ <- State.modify(
+                      state =>
+                        state.copy(
+                          chunkQueue = leftChunks,
+                          inProgress = state.inProgress.updated(nextChunk, peerId),
+                          inProgressByPeer =
+                            state.inProgressByPeer.updated(peerId, requests + nextChunk)
+                        )
+                    )
+                    _ <- connection send Connection.Command.Download(nextChunk)
+                    _ <- tryDownload
+                  } yield ()
+              }
+          }
       }
     }
-
   }
 }
