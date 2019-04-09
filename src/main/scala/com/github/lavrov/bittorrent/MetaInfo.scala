@@ -10,13 +10,13 @@ import scodec.bits.ByteVector
 
 case class MetaInfo(
     info: Info,
-    announce: String,
     creationDate: Option[Instant]
 )
 
 sealed trait Info
 object Info {
   case class SingleFile(
+      name: String,
       pieceLength: Long,
       pieces: ByteVector,
       length: Long,
@@ -42,11 +42,12 @@ object MetaInfo {
 
   implicit val SingleFileFormat: BencodeFormat[Info.SingleFile] =
     (
+      field[String]("name"),
       field[Long]("piece length"),
       field[ByteVector]("pieces"),
       field[Long]("length"),
       optField[ByteVector]("md5sum")
-    ).imapN(Info.SingleFile)(v => (v.pieceLength, v.pieces, v.length, v.md5sum))
+    ).imapN(Info.SingleFile)(v => (v.name, v.pieceLength, v.pieces, v.length, v.md5sum))
 
   implicit val FileFormat: BencodeFormat[Info.File] =
     (
@@ -67,9 +68,8 @@ object MetaInfo {
   implicit val MetaInfoFormat: BencodeFormat[MetaInfo] =
     (
       field[Info]("info"),
-      field[String]("announce"),
       optField[Instant]("creationDate")
-    ).imapN(MetaInfo.apply)(v => (v.info, v.announce, v.creationDate))
+    ).imapN(MetaInfo.apply)(v => (v.info, v.creationDate))
 
   val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
 }

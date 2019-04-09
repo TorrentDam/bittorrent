@@ -15,9 +15,8 @@ import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import com.olegpy.meow.effects._
 import fs2.Stream
 import fs2.concurrent.Queue
-import monocle.macros.GenLens
 import monocle.function.At.at
-import monocle.std.map._
+import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
 case class Downloading[F[_]](
@@ -29,8 +28,8 @@ case class Downloading[F[_]](
 object Downloading {
 
   case class State[F[_]](
-      incompletePieces: Map[Long, IncompletePiece] = Map.empty,
-      chunkQueue: List[Message.Request],
+      incompletePieces: Map[Long, IncompletePiece],
+      chunkQueue: List[Message.Request] = Nil,
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
       inProgress: Map[Message.Request, UUID] = Map.empty,
       inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
@@ -78,14 +77,14 @@ object Downloading {
       stateRef <- Ref.of[F, State[F]](
         State(incompletePieces.toList.map(p => (p.index, p)).toMap, requestQueue)
       )
-      completePieces <- Queue.unbounded[F, CompletePiece]
+      completePieces <- Queue.noneTerminated[F, CompletePiece]
       downloadComplete <- Deferred[F, Unit]
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
-        def notifyComplete: F[Unit] = downloadComplete.complete(())
-        def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece)
+        def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
+        def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
       }
-      behaviour = new Behaviour(stateRef.stateInstance, effects)
+      behaviour = new Behaviour(256, stateRef.stateInstance, effects)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
@@ -104,9 +103,15 @@ object Downloading {
       def loop(index: Long): Unit = {
         val thisPieceLength =
           math.min(fileInfo.pieceLength, fileInfo.length - index * fileInfo.pieceLength)
-        if (thisPieceLength != 0) {
-          val list = downloadPiece(index, thisPieceLength, fileInfo.pieces.drop(index * 20).take(20))
-          result = result append IncompletePiece(index, index * fileInfo.pieceLength, thisPieceLength, list.toList)
+        if (thisPieceLength > 0) {
+          val list =
+            downloadPiece(index, thisPieceLength, fileInfo.pieces.drop(index * 20).take(20))
+          result = result append IncompletePiece(
+            index,
+            index * fileInfo.pieceLength,
+            thisPieceLength,
+            list.toList
+          )
           loop(index + 1)
         }
       }
@@ -119,13 +124,13 @@ object Downloading {
         length: Long,
         checksum: ByteVector
     ): Chain[Message.Request] = {
-      val maxChunkSize = 16 * 1024
+      val chunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
-        val chunkSize = math.min(maxChunkSize, length - index * maxChunkSize)
-        if (chunkSize != 0) {
-          val begin = index * maxChunkSize
-          result = result append Message.Request(pieceIndex, begin, chunkSize)
+        val thisChunkSize = math.min(chunkSize, length - index * chunkSize)
+        if (thisChunkSize > 0) {
+          val begin = index * chunkSize
+          result = result append Message.Request(pieceIndex, begin, thisChunkSize)
           loop(index + 1)
         }
       }
@@ -140,6 +145,7 @@ object Downloading {
   }
 
   class Behaviour[F[_]: Concurrent](
+      maxInflightChunks: Int,
       State: MonadState[F, Downloading.State[F]],
       effects: Effects[F]
   ) extends (Command[F] => F[Unit]) {
@@ -208,7 +214,11 @@ object Downloading {
           if (incompletePiece.isComplete)
             State.modify(pieceLens.set(None)) *>
               effects.notifyPieceComplete(
-                CompletePiece(incompletePiece.index, incompletePiece.begin, incompletePiece.joinChunks)
+                CompletePiece(
+                  incompletePiece.index,
+                  incompletePiece.begin,
+                  incompletePiece.joinChunks
+                )
               )
           else
             State.modify(pieceLens.set(incompletePiece.some))
@@ -218,7 +228,7 @@ object Downloading {
     }
 
     def tryDownload: F[Unit] = {
-      State.inspect(_.inProgress.size < 128).flatMap {
+      State.inspect(_.inProgress.size < maxInflightChunks).flatMap {
         case false =>
           Monad[F].unit
         case true =>
@@ -232,38 +242,42 @@ object Downloading {
               }
 
             case nextChunk :: leftChunks =>
-              State.inspect(state =>
-                state.inProgressByPeer.toSeq.sortBy(_._2.size)(Ordering.Int.reverse)
-                  .headOption
-                  .collect {
-                    case (peerId, requests) =>
-                      val connection = state.connections(peerId)
-                      (peerId, connection, requests)
-                  }
-                  .orElse {
-                    state.connections.headOption.map {
-                      case (peerId, connection) =>
-                        (peerId, connection, Set.empty[Message.Request])
-                    }
-                  }
-              ).flatMap {
-                case None =>
-                  Monad[F].unit
-                case Some((peerId, connection, requests)) =>
-                  for {
-                    _ <- State.modify(
-                      state =>
-                        state.copy(
-                          chunkQueue = leftChunks,
-                          inProgress = state.inProgress.updated(nextChunk, peerId),
-                          inProgressByPeer =
-                            state.inProgressByPeer.updated(peerId, requests + nextChunk)
-                        )
-                    )
-                    _ <- connection send Connection.Command.Download(nextChunk)
-                    _ <- tryDownload
-                  } yield ()
-              }
+              State
+                .inspect(
+                  state =>
+                    state.inProgressByPeer.toSeq
+                      .sortBy(_._2.size)(Ordering.Int.reverse)
+                      .headOption
+                      .collect {
+                        case (peerId, requests) =>
+                          val connection = state.connections(peerId)
+                          (peerId, connection, requests)
+                      }
+                      .orElse {
+                        state.connections.headOption.map {
+                          case (peerId, connection) =>
+                            (peerId, connection, Set.empty[Message.Request])
+                        }
+                      }
+                )
+                .flatMap {
+                  case None =>
+                    Monad[F].unit
+                  case Some((peerId, connection, requests)) =>
+                    for {
+                      _ <- State.modify(
+                        state =>
+                          state.copy(
+                            chunkQueue = leftChunks,
+                            inProgress = state.inProgress.updated(nextChunk, peerId),
+                            inProgressByPeer =
+                              state.inProgressByPeer.updated(peerId, requests + nextChunk)
+                          )
+                      )
+                      _ <- connection send Connection.Command.Download(nextChunk)
+                      _ <- tryDownload
+                    } yield ()
+                }
           }
       }
     }

@@ -10,7 +10,7 @@ import cats.effect._
 import cats.implicits._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
-import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
+import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, FileSink}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 
@@ -41,21 +41,27 @@ object Main extends IOApp {
         for {
           torrentInfo <- getMetaInfo
           (infoHash, metaInfo) = torrentInfo
-          Info.SingleFile(pieceLength, _, _, _) = metaInfo.info
+          Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
           firstPeer = PeerInfo(new InetSocketAddress(57491))
-          _ = println(s"Connecting to $firstPeer")
+          _ <- IO(println(s"Start downloading"))
+          download <- Downloading.start[IO](metaInfo)
+          _ <- IO(println(s"Connecting to $firstPeer"))
           _ <- connectToPeer(firstPeer, selfId, infoHash).use { connection =>
-            for {
-              download <- Downloading.start[IO](metaInfo)
-              _ <- download.send(Downloading.Command.AddPeer(connection))
-              _ <- download.completePieces
-                .evalTap(p => IO(println(s"Complete: $p")))
-                .compile
-                .drain
-                .start
-              _ <- download.fiber.join
-              _ <- IO(println("The End"))
-            } yield ()
+            Resource
+              .fromAutoCloseable(
+                IO apply FileSink(metaInfo, Paths.get("/Users/vitaly/Downloads/my_torrent"))
+              )
+              .use { fileSink =>
+                for {
+                  _ <- download.send(Downloading.Command.AddPeer(connection))
+                  _ <- download.completePieces
+                    .evalTap(p => IO(println(s"Complete: $p")))
+                    .evalTap(p => IO(fileSink.write(p.index, p.begin, p.bytes)))
+                    .compile
+                    .drain
+                  _ <- IO(println("The End"))
+                } yield ()
+              }
           }
         } yield ExitCode.Success
     }
@@ -65,7 +71,8 @@ object Main extends IOApp {
     for {
       bytes <- IO(
         Files.readAllBytes(
-          Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
+//          Paths.get("src/test/resources/bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
+          Paths.get("/Users/vitaly/Downloads/my_torrent/The.Expanse.S03E12-E13.torrent")
         )
       )
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))

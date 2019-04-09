@@ -13,13 +13,16 @@ class BencodeFormatSpec extends FlatSpec {
   it should "decode dictionary" in {
     val input = Bencode.Dictionary(
       Map(
+        "name" -> Bencode.String("file_name"),
         "piece length" -> Bencode.Integer(10),
         "pieces" -> Bencode.String(ByteVector(10)),
         "length" -> Bencode.Integer(10)
       )
     )
 
-    MetaInfo.SingleFileFormat.read(input) mustBe Right(SingleFile(10, ByteVector(10), 10, None))
+    MetaInfo.SingleFileFormat.read(input) mustBe Right(
+      SingleFile("file_name", 10, ByteVector(10), 10, None)
+    )
   }
 
   it should "decode list" in {
@@ -35,13 +38,16 @@ class BencodeFormatSpec extends FlatSpec {
   it should "decode either a or b" in {
     val input = Bencode.Dictionary(
       Map(
+        "name" -> Bencode.String("file_name"),
         "piece length" -> Bencode.Integer(10),
         "pieces" -> Bencode.String.Emtpy,
         "length" -> Bencode.Integer(10)
       )
     )
 
-    MetaInfo.InfoFormat.read(input) mustBe Right(SingleFile(10, ByteVector.empty, 10, None))
+    MetaInfo.InfoFormat.read(input) mustBe Right(
+      SingleFile("file_name", 10, ByteVector.empty, 10, None)
+    )
 
     val input1 = Bencode.Dictionary(
       Map(
@@ -77,6 +83,6 @@ class BencodeFormatSpec extends FlatSpec {
       .readAllBytes()
     val Right(result) = bencode.decode(source)
     val decodeResult = MetaInfo.MetaInfoFormat.read(result)
-    decodeResult.map(_.announce) mustBe Right("http://torrent.ubuntu.com:6969/announce")
+    decodeResult.isRight mustBe true
   }
 }
