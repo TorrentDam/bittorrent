@@ -42,7 +42,8 @@ object Main extends IOApp {
           torrentInfo <- getMetaInfo
           (infoHash, metaInfo) = torrentInfo
           Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
-          firstPeer = PeerInfo(new InetSocketAddress(57491))
+          peers <- getPeers(infoHash)
+          firstPeer = peers.head
           _ <- IO(println(s"Start downloading"))
           download <- Downloading.start[IO](metaInfo)
           _ <- IO(println(s"Connecting to $firstPeer"))

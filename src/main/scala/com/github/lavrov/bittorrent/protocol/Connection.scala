@@ -212,7 +212,7 @@ object Connection {
                 eventQueue.enqueue1(None)
           }
       }
-      //      _ <- queue.enqueue1(Command.SendKeepAlive())
+      _ <- ops.send(Message.Interested)
     } yield new Connection[F] {
       def send(msg: Command): F[Unit] = queue.enqueue1(msg)
 
@@ -225,13 +225,14 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
   private val M: MonadError[F, Throwable] = implicitly
 
   def handshake(selfId: PeerId, infoHash: InfoHash): F[Handshake] = {
-    val message = Handshake("BitTorrent protocol", infoHash, selfId)
+    val message = Handshake(infoHash, selfId)
     for {
+      _ <- Concurrent[F].delay(println(s"Initiate handshake"))
       _ <- socket.write(
         bytes = Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector),
         timeout = Some(5.seconds)
       )
-      maybeBytes <- socket.read(1024, timeout = Some(5.seconds))
+      maybeBytes <- socket.readN(Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8, timeout = Some(5.seconds))
       bytes <- M.fromOption(
         maybeBytes,
         new Exception("Connection was closed unexpectedly")
@@ -242,12 +243,14 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .decodeValue(bv.toBitVector)
           .toTry
       )
+      _ <- Concurrent[F].delay(println(s"Successful handshake"))
     } yield response
   }
 
   def send(message: Message): F[Unit] =
     for {
       _ <- socket.write(Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector))
+      _ <- Concurrent[F].delay(println(s"Sent $message"))
     } yield ()
 
   def receive: F[Message] =
@@ -263,6 +266,7 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .decodeValue(bv.toBitVector)
           .toTry
       )
+      _ <- Concurrent[F].delay(println(s"Received $message"))
     } yield message
 
 }

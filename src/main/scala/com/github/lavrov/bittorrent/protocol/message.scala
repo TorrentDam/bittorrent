@@ -6,18 +6,17 @@ import scodec.codecs._
 import scodec.bits.ByteVector
 
 final case class Handshake(
-    protocolString: String,
     infoHash: InfoHash,
     peerId: PeerId
 )
 
 object Handshake {
-  val ProtocolStringCodec: Codec[String] = variableSizeBytes(uint8, utf8)
+  val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(19, utf8.unit("BitTorrent protocol"))
   val ReserveCodec: Codec[Unit] = bytes(8).unit(ByteVector.fill(8)(0))
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] =
-    ((ProtocolStringCodec <~ ReserveCodec) :: InfoHashCodec :: PeerIdCodec).as
+    ((ProtocolStringCodec <~ ReserveCodec) ~> InfoHashCodec :: PeerIdCodec).as
 }
 
 sealed trait Message

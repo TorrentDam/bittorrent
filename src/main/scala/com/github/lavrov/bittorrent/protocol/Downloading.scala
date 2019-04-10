@@ -84,7 +84,7 @@ object Downloading {
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
       }
-      behaviour = new Behaviour(256, stateRef.stateInstance, effects)
+      behaviour = new Behaviour(16, stateRef.stateInstance, effects)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
