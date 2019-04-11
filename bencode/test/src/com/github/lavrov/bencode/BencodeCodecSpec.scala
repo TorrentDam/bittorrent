@@ -2,7 +2,6 @@ package com.github.lavrov.bencode
 
 import java.nio.charset.Charset
 
-import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import org.scalatest.FlatSpec
 import org.scalatest.MustMatchers._
 import scodec.bits.{Bases, BitVector}
@@ -40,38 +39,5 @@ class BencodeCodecSpec extends FlatSpec {
       .encodeString("l4:testi10ee")
       .right
       .get
-  }
-
-  it should "decode ubuntu torrent" in {
-    val source = getClass.getClassLoader
-      .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAllBytes()
-    val Right(result) = decode(source)
-    val decodeResult = MetaInfo.MetaInfoFormat.read(result)
-    decodeResult.isRight mustBe true
-  }
-
-  it should "encode file class" in {
-    MetaInfo.FileFormat.write(Info.File(77, "abc" :: Nil)) mustBe Right(
-      Bencode.Dictionary(
-        Map(
-          "length" -> Bencode.Integer(77),
-          "path" -> Bencode.List(Bencode.String("abc") :: Nil)
-        )
-      )
-    )
-  }
-
-  it should "calculate info_hash" in {
-    val source = getClass.getClassLoader
-      .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAllBytes()
-    val Right(result) = decode(source)
-    val decodedResult = MetaInfo.RawInfoFormat.read(result)
-    decodedResult
-      .map(com.github.lavrov.bittorrent.util.sha1Hash)
-      .map(_.toHex(Bases.Alphabets.HexUppercase)) mustBe Right(
-      "8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609"
-    )
   }
 }
