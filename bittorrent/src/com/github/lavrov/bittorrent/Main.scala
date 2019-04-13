@@ -11,6 +11,7 @@ import cats.implicits._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
 import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, FileSink}
+import fs2.Stream
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 
@@ -43,27 +44,22 @@ object Main extends IOApp {
           (infoHash, metaInfo) = torrentInfo
           Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
           peers <- getPeers(infoHash)
-          firstPeer = peers.head
           _ <- IO(println(s"Start downloading"))
-          download <- Downloading.start[IO](metaInfo)
-          _ <- IO(println(s"Connecting to $firstPeer"))
-          _ <- connectToPeer(firstPeer, selfId, infoHash).use { connection =>
-            Resource
-              .fromAutoCloseable(
-                IO apply FileSink(metaInfo, Paths.get("/Users/vitaly/Downloads/my_torrent"))
-              )
-              .use { fileSink =>
-                for {
-                  _ <- download.send(Downloading.Command.AddPeer(connection))
-                  _ <- download.completePieces
-                    .evalTap(p => IO(println(s"Complete: $p")))
-                    .evalTap(p => IO(fileSink.write(p.index, p.begin, p.bytes)))
-                    .compile
-                    .drain
-                  _ <- IO(println("The End"))
-                } yield ()
+          downloading <- Downloading.start[IO](metaInfo)
+          _ <- peers
+            .evalTap[IO] { peer =>
+              IO(println(s"Connecting to $peer")) *>
+              connectToPeer(peer, selfId, infoHash).allocated
+              .flatMap {
+                case (connection, _) =>
+                  downloading.send(Downloading.Command.AddPeer(connection))
               }
-          }
+              .attempt
+              .flatTap(result => IO(println(s"Connection result: $result")))
+              .void
+            }
+            .compile.drain.start
+          _ <- saveToFile(downloading, metaInfo)
         } yield ExitCode.Success
     }
   }
@@ -84,17 +80,33 @@ object Main extends IOApp {
 
   def getPeers(
       infoHash: InfoHash
-  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[List[PeerInfo]] =
-    Socket[IO](address = new InetSocketAddress(6881)).use { socket =>
+  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[Stream[IO, PeerInfo]] =
+    Socket[IO](address = new InetSocketAddress(6881)).allocated.flatMap { case (socket, _) =>
       val dhtClient = new DHTClient[IO](NodeId.generate(rnd), socket)
       dhtClient.getPeersAlgo(infoHash)
     }
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
-  ): Resource[IO, Connection[IO]] =
+  ): Resource[IO, Connection[IO]] = {
     TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
       Resource.make(Connection.connect(selfId, infoHash, socket, timer))(_ => IO.unit)
     }
+  }
 
+  def saveToFile[F[_]: Sync](downloading: Downloading[F], metaInfo: MetaInfo): F[Unit] = {
+    val sink = Sync[F].delay {
+      FileSink(metaInfo, Paths.get("/Users/vitaly/Downloads/my_torrent"))
+    }
+    Resource.fromAutoCloseable(sink).use { fileSink =>
+      for {
+        _ <- downloading.completePieces
+          .evalTap(p => Sync[F].delay(println(s"Complete: $p")))
+          .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
+          .compile
+          .drain
+        _ <- Sync[F].delay(println("The End"))
+      } yield ()
+    }
+  }
 }
