@@ -13,6 +13,8 @@ object bittorrent extends Module {
   def ivyDeps = Agg(
     ivy"co.fs2::fs2-io:1.0.2",
     ivy"com.olegpy::meow-mtl:0.2.0",
+    ivy"io.chrisdavenport::log4cats-slf4j:0.3.0",
+    ivy"ch.qos.logback:logback-classic:1.2.3",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
     ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
   )

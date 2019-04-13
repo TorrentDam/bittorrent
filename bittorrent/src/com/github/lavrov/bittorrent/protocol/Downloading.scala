@@ -15,6 +15,8 @@ import com.github.lavrov.bittorrent.{Info, MetaInfo}
 import com.olegpy.meow.effects._
 import fs2.Stream
 import fs2.concurrent.Queue
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import monocle.function.At.at
 import monocle.macros.GenLens
 import scodec.bits.ByteVector
@@ -70,7 +72,7 @@ object Downloading {
 
   def start[F[_]: Concurrent](metaInfo: MetaInfo): F[Downloading[F]] = {
     for {
-      _ <- Monad[F].unit
+      logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
       incompletePieces = buildQueue(metaInfo)
       requestQueue = incompletePieces.map(_.requests).toList.flatten
@@ -84,7 +86,7 @@ object Downloading {
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
       }
-      behaviour = new Behaviour(16, stateRef.stateInstance, effects)
+      behaviour = new Behaviour(16, stateRef.stateInstance, effects, logger)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
@@ -147,7 +149,8 @@ object Downloading {
   class Behaviour[F[_]: Concurrent](
       maxInflightChunks: Int,
       State: MonadState[F, Downloading.State[F]],
-      effects: Effects[F]
+      effects: Effects[F],
+      logger: Logger[F]
   ) extends (Command[F] => F[Unit]) {
 
     object Lenses {
@@ -185,6 +188,7 @@ object Downloading {
 
     def removePeer(peerId: UUID): F[Unit] = {
       for {
+        _ <- logger.debug(s"Remove peer [$peerId]")
         _ <- State.modify { state =>
           val requests = state.inProgressByPeer(peerId)
           state.copy(

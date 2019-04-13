@@ -14,6 +14,8 @@ import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, FileSink}
 import fs2.Stream
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 
 import scala.util.Random
 
@@ -40,26 +42,30 @@ object Main extends IOApp {
         implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
 
         for {
+          logger <- Slf4jLogger.fromClass[IO](getClass)
           torrentInfo <- getMetaInfo
           (infoHash, metaInfo) = torrentInfo
           Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
           peers <- getPeers(infoHash)
-          _ <- IO(println(s"Start downloading"))
+          _ <- logger.info(s"Start downloading")
           downloading <- Downloading.start[IO](metaInfo)
           _ <- peers
             .evalTap[IO] { peer =>
-              IO(println(s"Connecting to $peer")) *>
+              logger.info(s"Connecting to $peer") *>
               connectToPeer(peer, selfId, infoHash).allocated
               .flatMap {
                 case (connection, _) =>
                   downloading.send(Downloading.Command.AddPeer(connection))
               }
               .attempt
-              .flatTap(result => IO(println(s"Connection result: $result")))
+              .onError {
+                case e =>
+                  logger.error(e)(s"Failed to connect to [$peer]")
+              }
               .void
             }
             .compile.drain.start
-          _ <- saveToFile(downloading, metaInfo)
+          _ <- saveToFile(downloading, metaInfo, logger)
         } yield ExitCode.Success
     }
   }
@@ -94,18 +100,18 @@ object Main extends IOApp {
     }
   }
 
-  def saveToFile[F[_]: Sync](downloading: Downloading[F], metaInfo: MetaInfo): F[Unit] = {
+  def saveToFile[F[_]: Sync](downloading: Downloading[F], metaInfo: MetaInfo, logger: Logger[F]): F[Unit] = {
     val sink = Sync[F].delay {
       FileSink(metaInfo, Paths.get("/Users/vitaly/Downloads/my_torrent"))
     }
     Resource.fromAutoCloseable(sink).use { fileSink =>
       for {
         _ <- downloading.completePieces
-          .evalTap(p => Sync[F].delay(println(s"Complete: $p")))
+          .evalTap(p => logger.info(s"Complete: $p"))
           .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
           .compile
           .drain
-        _ <- Sync[F].delay(println("The End"))
+        _ <- logger.info("The End")
       } yield ()
     }
   }

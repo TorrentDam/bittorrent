@@ -14,6 +14,8 @@ import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
 import fs2.concurrent.Queue
 import fs2.io.tcp.Socket
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.{BitVector, ByteVector}
 
 import scala.collection.immutable.ListSet
@@ -63,7 +65,8 @@ object Connection {
 
   class Behaviour[F[_]: Monad](
       keepAliveInterval: FiniteDuration,
-      effects: Effects[F]
+      effects: Effects[F],
+      logger: Logger[F],
   ) {
 
     def behaviour: Command => F[Unit] = {
@@ -170,8 +173,9 @@ object Connection {
       socket: Socket[F],
       timer: Timer[F]
   ): F[Connection[F]] = {
-    val ops = new ConnectionOps(socket)
     for {
+      logger <- Slf4jLogger.fromClass(getClass)
+      ops = new ConnectionOps(socket, logger)
       _ <- ops.handshake(selfId, infoHash)
       queue <- Queue.unbounded[F, Command]
       eventQueue <- Queue.noneTerminated[F, Event]
@@ -198,7 +202,7 @@ object Connection {
         .to(queue.enqueue)
         .compile
         .drain
-      behaviour = new Behaviour(10.seconds, effects).behaviour
+      behaviour = new Behaviour(10.seconds, effects, logger).behaviour
       dequeueFiber <- Concurrent[F] start {
         queue.dequeue.evalTap(behaviour).compile.drain
       }
@@ -207,9 +211,8 @@ object Connection {
           .race(enqueueFiber.join, dequeueFiber.join)
           .onError {
             case e =>
-              Concurrent[F].delay(println(s"Error $e")) *>
-                Concurrent[F].delay(e.printStackTrace()) *>
-                eventQueue.enqueue1(None)
+              logger.error(e)(s"Error $e") *>
+              eventQueue.enqueue1(None)
           }
       }
       _ <- ops.send(Message.Interested)
@@ -221,13 +224,13 @@ object Connection {
   }
 }
 
-class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
+class ConnectionOps[F[_]: Concurrent](socket: Socket[F], logger: Logger[F]) {
   private val M: MonadError[F, Throwable] = implicitly
 
   def handshake(selfId: PeerId, infoHash: InfoHash): F[Handshake] = {
     val message = Handshake(infoHash, selfId)
     for {
-      _ <- Concurrent[F].delay(println(s"Initiate handshake"))
+      _ <- logger.debug(s"Initiate handshake")
       _ <- socket.write(
         bytes = Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector),
         timeout = Some(5.seconds)
@@ -243,14 +246,14 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .decodeValue(bv.toBitVector)
           .toTry
       )
-      _ <- Concurrent[F].delay(println(s"Successful handshake"))
+      _ <- logger.debug(s"Successful handshake")
     } yield response
   }
 
   def send(message: Message): F[Unit] =
     for {
       _ <- socket.write(Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector))
-      _ <- Concurrent[F].delay(println(s"Sent $message"))
+      _ <- logger.debug(s"Sent $message")
     } yield ()
 
   def receive: F[Message] =
@@ -266,7 +269,7 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F]) {
           .decodeValue(bv.toBitVector)
           .toTry
       )
-      _ <- Concurrent[F].delay(println(s"Received $message"))
+      _ <- logger.debug(s"Received $message")
     } yield message
 
 }
