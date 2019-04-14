@@ -15,6 +15,7 @@ object bittorrent extends Module {
     ivy"com.olegpy::meow-mtl:0.2.0",
     ivy"io.chrisdavenport::log4cats-slf4j:0.3.0",
     ivy"ch.qos.logback:logback-classic:1.2.3",
+    ivy"com.monovore::decline:0.5.0",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
     ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
   )

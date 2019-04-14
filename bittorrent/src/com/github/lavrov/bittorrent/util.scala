@@ -11,7 +11,6 @@ object util {
   def sha1Hash(value: Bencode): ByteVector = {
     val bytes = bencode.encode(value).toByteArray
     val digest = MessageDigest.getInstance("SHA-1").digest(bytes)
-    new String()
     ByteVector(digest)
   }
 
