@@ -61,6 +61,7 @@ object Connection {
     case class PeerMessage(message: Message) extends Command
     case class SendKeepAlive() extends Command
     case class Download(request: Message.Request) extends Command
+    case class CheckRequest(request: Message.Request) extends Command
   }
 
   class Behaviour[F[_]: Monad](
@@ -73,6 +74,7 @@ object Connection {
       case Command.PeerMessage(message) => handleMessage(message)
       case Command.SendKeepAlive() => sendKeepAlive
       case Command.Download(request) => requestPiece(request)
+      case Command.CheckRequest(request) => checkRequest(request)
     }
 
     def handleMessage(msg: Message): F[Unit] = {
@@ -116,6 +118,7 @@ object Connection {
                   )
                 )
                 _ <- effects.send(request)
+                _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
               } yield ()
             case None => Monad[F].unit
           }
@@ -141,6 +144,13 @@ object Connection {
         state <- effects.state.get
         _ <- effects.state.set(state.copy(queue = state.queue + request))
         _ <- requestPieceFromQueue
+      } yield ()
+    }
+
+    def checkRequest(request: Message.Request): F[Unit] = {
+      for {
+        stillPending <- effects.state.inspect(s => s.pending.contains(request) || s.queue.contains(request))
+        _ <- if (stillPending) effects.error.raiseError[Unit](new Exception("Peer doesn't respond")) else Monad[F].unit
       } yield ()
     }
 

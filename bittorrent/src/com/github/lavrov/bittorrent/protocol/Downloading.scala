@@ -189,11 +189,14 @@ object Downloading {
     def removePeer(peerId: UUID): F[Unit] = {
       for {
         _ <- logger.debug(s"Remove peer [$peerId]")
+        requests <- State.inspect { state => state.inProgressByPeer.getOrElse(peerId, Set.empty) }
+        _ <- logger.debug(s"Returned ${requests.size} to the queue")
         _ <- State.modify { state =>
-          val requests = state.inProgressByPeer(peerId)
           state.copy(
+            connections = state.connections - peerId,
+            inProgressByPeer = state.inProgressByPeer - peerId,
             inProgress = state.inProgress -- requests,
-            chunkQueue = requests ++: state.chunkQueue
+            chunkQueue = requests.toList ++ state.chunkQueue,
           )
         }
       } yield ()

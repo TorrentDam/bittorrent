@@ -61,7 +61,7 @@ object Main extends IOApp {
               .start.flatMap(_.join.timeout(1.seconds))
               .recoverWith {
                 case e =>
-                  logger.error(e)(s"Failed to connect to [$peer]")
+                  logger.debug(e)(s"Failed to connect to [$peer]")
               }
               .void
             }
@@ -102,18 +102,25 @@ object Main extends IOApp {
     }
   }
 
-  def saveToFile[F[_]: Sync](downloading: Downloading[F], metaInfo: MetaInfo, logger: Logger[F]): F[Unit] = {
+  def saveToFile[F[_]: Concurrent](downloading: Downloading[F], metaInfo: MetaInfo, logger: Logger[F]): F[Unit] = {
     val sink = Sync[F].delay {
       FileSink(metaInfo, Paths.get("/Users/vitaly/Downloads/my_torrent"))
     }
     Resource.fromAutoCloseable(sink).use { fileSink =>
       for {
-        _ <- downloading.completePieces
-          .evalTap(p => logger.info(s"Complete: $p"))
-          .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
-          .compile
-          .drain
-        _ <- logger.info("The End")
+        _ <- Concurrent[F].start {
+          downloading.completePieces
+            .evalTap(p => logger.info(s"Complete: $p"))
+            .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
+            .compile
+            .drain
+            .onError {
+              case e =>
+                logger.error(e)(s"Download failed")
+            }
+        }
+        _ <- downloading.fiber.join
+        _ <- logger.info(s"The End")
       } yield ()
     }
   }
