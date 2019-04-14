@@ -18,6 +18,7 @@ import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 
 import scala.util.Random
+import scala.concurrent.duration._
 
 object Main extends IOApp {
 
@@ -57,8 +58,8 @@ object Main extends IOApp {
                 case (connection, _) =>
                   downloading.send(Downloading.Command.AddPeer(connection))
               }
-              .attempt
-              .onError {
+              .start.flatMap(_.join.timeout(1.seconds))
+              .recoverWith {
                 case e =>
                   logger.error(e)(s"Failed to connect to [$peer]")
               }
@@ -88,8 +89,9 @@ object Main extends IOApp {
       infoHash: InfoHash
   )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[Stream[IO, PeerInfo]] =
     Socket[IO](address = new InetSocketAddress(6881)).allocated.flatMap { case (socket, _) =>
-      val dhtClient = new DHTClient[IO](NodeId.generate(rnd), socket)
-      dhtClient.getPeersAlgo(infoHash)
+      DHTClient[IO](NodeId.generate(rnd), socket).flatMap { dhtClient =>
+        dhtClient.getPeersAlgo(infoHash)
+      }
     }
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(

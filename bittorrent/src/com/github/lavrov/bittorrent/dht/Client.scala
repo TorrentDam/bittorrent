@@ -2,20 +2,22 @@ package com.github.lavrov.bittorrent
 package dht
 
 import java.net.InetSocketAddress
-import java.nio.channels.InterruptedByTimeoutException
 
 import cats._
 import cats.data.NonEmptyList
+import cats.effect.Sync
 import cats.implicits._
 import fs2.io.udp.{Packet, Socket}
 import com.github.lavrov.bencode.{decode, encode}
 import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import fs2.Chunk
 import fs2.Stream
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 
 import scala.concurrent.duration.DurationInt
 
-class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadError[F, Throwable]) {
+class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(implicit M: MonadError[F, Throwable]) {
 
   def readMessage: F[Message] =
     for {
@@ -72,6 +74,10 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
               Stream(peers: _*)
           }
         }
+      .recoverWith {
+        case e =>
+          Stream.eval(logger.error(e)("Failed query")) *> Stream.empty
+      }
     for {
       _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage("aa", Query.Ping(selfId)))
       m <- readMessage
@@ -89,4 +95,10 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F])(implicit M: MonadEr
 
 object Client {
   val BootstrapNode = new InetSocketAddress("router.bittorrent.com", 6881)
+
+  def apply[F[_]: Sync](selfId: NodeId, socket: Socket[F]): F[Client[F]] =
+    for {
+      logger <- Slf4jLogger.fromClass[F](getClass)
+    }
+    yield new Client(selfId, socket, logger)
 }
