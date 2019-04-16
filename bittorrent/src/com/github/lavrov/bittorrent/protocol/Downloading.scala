@@ -102,7 +102,7 @@ object Downloading {
       }
       _ <- Concurrent[F] start throttledPeers.evalTap(c => effects.send(Command.AddPeer(c))).compile.drain
       _ <- effects.send(Command.Init())
-      behaviour = new Behaviour(16, 3, stateRef.stateInstance, effects, logger)
+      behaviour = new Behaviour(16, 10, stateRef.stateInstance, effects, logger)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
