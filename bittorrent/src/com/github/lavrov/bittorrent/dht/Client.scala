@@ -71,7 +71,7 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
                 case _ => Stream eval M.raiseError(new Exception("Failed to find peers"))
               }
             case Response.Peers(_, peers) =>
-              Stream(peers: _*)
+              Stream.emits(peers)
           }
         }
       .recoverWith {

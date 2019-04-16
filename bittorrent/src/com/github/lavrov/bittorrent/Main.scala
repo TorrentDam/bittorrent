@@ -69,25 +69,25 @@ object Main extends IOApp {
             for {
               logger <- Slf4jLogger.fromClass[IO](getClass)
               Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
-              peers <- getPeers(infoHash)
-              _ <- logger.info(s"Start downloading")
-              downloading <- Downloading.start[IO](metaInfo)
-              _ <- peers
-                .evalTap[IO] { peer =>
-                logger.info(s"Connecting to $peer") *>
-                  connectToPeer(peer, selfId, infoHash).allocated
-                    .flatMap {
-                      case (connection, _) =>
-                        downloading.send(Downloading.Command.AddPeer(connection))
-                    }
+              foundPeers <- getPeers(infoHash)
+              connections = foundPeers
+                .evalMap { peer =>
+                  logger.info(s"Connecting to $peer") *>
+                  connectToPeer(peer, selfId, infoHash)
+                    .allocated
+                    .map(_._1.some)
                     .start.flatMap(_.join.timeout(1.seconds))
                     .recoverWith {
                       case e =>
-                        logger.debug(e)(s"Failed to connect to [$peer]")
+                        logger.debug(e)(s"Failed to connect to [$peer]") as none
                     }
-                    .void
-              }
-                .compile.drain.start
+                }
+                .collect {
+                  case Some(c) => c
+                }
+                .evalTap(_ => logger.info(s"Connected"))
+              _ <- logger.info(s"Start downloading")
+              downloading <- Downloading.start[IO](metaInfo, connections)
               _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
             } yield ()
         }

@@ -4,16 +4,16 @@ import java.util.UUID
 
 import cats.Monad
 import cats.data.Chain
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.{Deferred, MVar, Ref}
 import cats.effect.{Concurrent, Fiber}
 import cats.mtl.MonadState
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.Downloading.CompletePiece
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-import com.github.lavrov.bittorrent.{Info, MetaInfo}
+import com.github.lavrov.bittorrent.{Info, MetaInfo, PeerInfo}
 import com.olegpy.meow.effects._
-import fs2.Stream
+import fs2.{Pull, Stream}
 import fs2.concurrent.Queue
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
@@ -40,6 +40,7 @@ object Downloading {
   sealed trait Command[F[_]]
 
   object Command {
+    case class Init[F[_]]() extends Command[F]
     case class AddPeer[F[_]](connectionActor: Connection[F]) extends Command[F]
     case class RemovePeer[F[_]](id: UUID) extends Command[F]
     case class AddDownloaded[F[_]](request: Message.Request, bytes: ByteVector) extends Command[F]
@@ -49,6 +50,7 @@ object Downloading {
     def send(command: Command[F]): F[Unit]
     def notifyComplete: F[Unit]
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
+    def requestPeer: F[Unit]
   }
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
@@ -70,7 +72,7 @@ object Downloading {
     def joinChunks: ByteVector = downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
   }
 
-  def start[F[_]: Concurrent](metaInfo: MetaInfo): F[Downloading[F]] = {
+  def start[F[_]: Concurrent](metaInfo: MetaInfo, peers: Stream[F, Connection[F]]): F[Downloading[F]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
@@ -81,12 +83,26 @@ object Downloading {
       )
       completePieces <- Queue.noneTerminated[F, CompletePiece]
       downloadComplete <- Deferred[F, Unit]
+      peerDemand <- MVar.empty[F, Int]
+      throttledPeers: Stream[F, Connection[F]] = {
+        def recur(source: Stream[F, Connection[F]]): Pull[F, Connection[F], Unit] =
+          Pull.eval(peerDemand.take) >>
+          Pull.eval(logger.info("Request a new connection")) >>
+          source.pull.uncons1.flatMap {
+            case Some((connection, tail)) => Pull.output1(connection) >> recur(tail)
+            case None => Pull.done
+          }
+        recur(peers).stream
+      }
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
+        def requestPeer: F[Unit] = Concurrent[F].start { peerDemand.put(1) }.void
       }
-      behaviour = new Behaviour(16, stateRef.stateInstance, effects, logger)
+      _ <- Concurrent[F] start throttledPeers.evalTap(c => effects.send(Command.AddPeer(c))).compile.drain
+      _ <- effects.send(Command.Init())
+      behaviour = new Behaviour(16, 3, stateRef.stateInstance, effects, logger)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
@@ -148,6 +164,7 @@ object Downloading {
 
   class Behaviour[F[_]: Concurrent](
       maxInflightChunks: Int,
+      maxConnections: Int,
       State: MonadState[F, Downloading.State[F]],
       effects: Effects[F],
       logger: Logger[F]
@@ -158,9 +175,14 @@ object Downloading {
     }
 
     def apply(command: Command[F]): F[Unit] = command match {
+      case Command.Init() => init
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
       case Command.RemovePeer(id) => removePeer(id)
       case Command.AddDownloaded(request, bytes) => addDownloaded(request, bytes)
+    }
+
+    def init: F[Unit] = {
+      effects.requestPeer
     }
 
     def addPeer(connection: Connection[F]): F[Unit] = {
@@ -182,6 +204,7 @@ object Downloading {
             .compile
             .drain
         }
+        _ <- requestPeer
         _ <- tryDownload
       } yield ()
     }
@@ -199,8 +222,11 @@ object Downloading {
             chunkQueue = requests.toList ++ state.chunkQueue,
           )
         }
+        _ <- requestPeer
       } yield ()
     }
+
+    def requestPeer: F[Unit] = State.inspect(_.connections.size < maxConnections) >>= effects.requestPeer.whenA
 
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
       val pieceLens = Lenses.incompletePiece composeLens at(request.index)
