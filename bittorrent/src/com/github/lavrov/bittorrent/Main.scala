@@ -68,7 +68,6 @@ object Main extends IOApp {
 
             for {
               logger <- Slf4jLogger.fromClass[IO](getClass)
-              Info.SingleFile(_, pieceLength, _, _, _) = metaInfo.info
               foundPeers <- getPeers(infoHash)
               connections = foundPeers
                 .evalMap { peer =>
@@ -116,7 +115,7 @@ object Main extends IOApp {
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
   ): Resource[IO, Connection[IO]] = {
     TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
-      Resource.make(Connection.connect(selfId, infoHash, socket, timer))(_ => IO.unit)
+      Resource.make(Connection.connect(selfId, peerInfo, infoHash, socket, timer))(_ => IO.unit)
     }
   }
 

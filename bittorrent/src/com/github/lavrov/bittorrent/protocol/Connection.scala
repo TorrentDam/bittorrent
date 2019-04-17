@@ -9,7 +9,7 @@ import cats.syntax.all._
 import cats.{Monad, MonadError}
 import com.github.lavrov.bittorrent.protocol.Connection.{Command, Event}
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
-import com.github.lavrov.bittorrent.{InfoHash, PeerId}
+import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
 import fs2.concurrent.Queue
@@ -104,24 +104,29 @@ object Connection {
 
     def requestPieceFromQueue: F[Unit] = {
       for {
+        iAmInterested <- effects.state.inspect(_.interested)
+        _ <- effects.send(Message.Interested).whenA(!iAmInterested)
+        _ <- effects.state.modify(_.copy(interested = true))
         state <- effects.state.get
-        _ <- if (state.peerChoking)
-          Monad[F].unit
-        else
-          state.queue.headOption match {
-            case Some(request) =>
-              for {
-                _ <- effects.state.set(
-                  state.copy(
-                    queue = state.queue.tail,
-                    pending = state.pending + request
+        _ <-
+          if (state.peerChoking)
+            Monad[F].unit
+          else
+            state.queue.headOption match {
+              case Some(request) =>
+                for {
+                  _ <- effects.state.set(
+                    state.copy(
+                      queue = state.queue.tail,
+                      pending = state.pending + request
+                    )
                   )
-                )
-                _ <- effects.send(request)
-                _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
-              } yield ()
-            case None => Monad[F].unit
-          }
+                  _ <- effects.send(request)
+                  _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
+                } yield ()
+              case None =>
+                Monad[F].unit
+            }
 
       } yield ()
     }
@@ -179,6 +184,7 @@ object Connection {
 
   def connect[F[_]: Concurrent](
       selfId: PeerId,
+      peerInfo: PeerInfo,
       infoHash: InfoHash,
       socket: Socket[F],
       timer: Timer[F]
@@ -221,11 +227,11 @@ object Connection {
           .race(enqueueFiber.join, dequeueFiber.join)
           .onError {
             case e =>
-              logger.error(e)(s"Error $e") *>
+              logger.info(s"Disconnected $peerInfo") *>
+              logger.debug(e)(s"Connection error") *>
               eventQueue.enqueue1(None)
           }
       }
-      _ <- ops.send(Message.Interested)
     } yield new Connection[F] {
       def send(msg: Command): F[Unit] = queue.enqueue1(msg)
 
