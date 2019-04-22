@@ -125,7 +125,7 @@ object Main extends IOApp {
       for {
         _ <- Concurrent[F].start {
           downloading.completePieces
-            .evalTap(p => logger.info(s"Complete: $p"))
+            .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
             .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
             .compile
             .drain

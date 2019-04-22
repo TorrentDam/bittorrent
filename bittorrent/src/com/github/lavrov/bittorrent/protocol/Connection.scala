@@ -234,7 +234,6 @@ object Connection {
       }
     } yield new Connection[F] {
       def send(msg: Command): F[Unit] = queue.enqueue1(msg)
-
       def events: Stream[F, Event] = eventQueue.dequeue
     }
   }
