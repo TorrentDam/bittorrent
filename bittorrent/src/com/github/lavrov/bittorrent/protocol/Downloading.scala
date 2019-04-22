@@ -4,7 +4,7 @@ import java.util.UUID
 
 import cats.Monad
 import cats.data.Chain
-import cats.effect.concurrent.{Deferred, MVar, Ref}
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, Fiber}
 import cats.mtl.MonadState
 import cats.syntax.all._
@@ -83,10 +83,10 @@ object Downloading {
       )
       completePieces <- Queue.noneTerminated[F, CompletePiece]
       downloadComplete <- Deferred[F, Unit]
-      peerDemand <- MVar.empty[F, Int]
+      peerDemand <- Queue.unbounded[F, Unit]
       throttledPeers: Stream[F, Connection[F]] = {
         def recur(source: Stream[F, Connection[F]]): Pull[F, Connection[F], Unit] =
-          Pull.eval(peerDemand.take) >>
+          Pull.eval(peerDemand.dequeue1) >>
           Pull.eval(logger.info("Request a new connection")) >>
           source.pull.uncons1.flatMap {
             case Some((connection, tail)) => Pull.output1(connection) >> recur(tail)
@@ -98,7 +98,7 @@ object Downloading {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
-        def requestPeer: F[Unit] = Concurrent[F].start { peerDemand.put(1) }.void
+        def requestPeer: F[Unit] = peerDemand.enqueue1(())
       }
       _ <- Concurrent[F] start throttledPeers.evalTap(c => effects.send(Command.AddPeer(c))).compile.drain
       _ <- effects.send(Command.Init())
