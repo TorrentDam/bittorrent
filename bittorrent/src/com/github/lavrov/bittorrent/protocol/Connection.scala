@@ -22,6 +22,7 @@ import scala.collection.immutable.ListSet
 import scala.concurrent.duration._
 
 trait Connection[F[_]] {
+  def info: PeerInfo
   def send(command: Command): F[Unit]
   def events: Stream[F, Event]
 }
@@ -233,6 +234,7 @@ object Connection {
           }
       }
     } yield new Connection[F] {
+      val info = peerInfo
       def send(msg: Command): F[Unit] = queue.enqueue1(msg)
       def events: Stream[F, Event] = eventQueue.dequeue
     }

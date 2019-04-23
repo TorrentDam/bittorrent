@@ -87,7 +87,6 @@ object Downloading {
       throttledPeers: Stream[F, Connection[F]] = {
         def recur(source: Stream[F, Connection[F]]): Pull[F, Connection[F], Unit] =
           Pull.eval(peerDemand.dequeue1) >>
-          Pull.eval(logger.info("Request a new connection")) >>
           source.pull.uncons1.flatMap {
             case Some((connection, tail)) => Pull.output1(connection) >> recur(tail)
             case None => Pull.done
@@ -98,7 +97,9 @@ object Downloading {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
-        def requestPeer: F[Unit] = peerDemand.enqueue1(())
+        def requestPeer: F[Unit] =
+          logger.info("Request a new connection") *>
+          peerDemand.enqueue1(())
       }
       _ <- Concurrent[F] start throttledPeers.evalTap(c => effects.send(Command.AddPeer(c))).compile.drain
       _ <- effects.send(Command.Init())
