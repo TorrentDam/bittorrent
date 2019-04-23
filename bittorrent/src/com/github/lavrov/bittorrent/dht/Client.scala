@@ -14,10 +14,12 @@ import fs2.Chunk
 import fs2.Stream
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
 
 class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(implicit M: MonadError[F, Throwable]) {
+  private val transactionId = ByteVector.encodeAscii("aa").right.get
 
   def readMessage: F[Message] =
     for {
@@ -46,12 +48,12 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
           for {
             _ <- sendMessage(
               nodeInfo.address,
-              Message.QueryMessage("aa", Query.GetPeers(selfId, infoHash))
+              Message.QueryMessage(transactionId, Query.GetPeers(selfId, infoHash))
             )
             m <- readMessage
             response <- M.fromEither(
               m match {
-                case Message.ResponseMessage("aa", bc) =>
+                case Message.ResponseMessage(transactionId, bc) =>
                   val reader =
                     Message.PeersResponseFormat.read
                       .widen[Response]
@@ -79,7 +81,7 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
           Stream.eval(logger.error(e)("Failed query")) *> Stream.empty
       }
     for {
-      _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage("aa", Query.Ping(selfId)))
+      _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage(transactionId, Query.Ping(selfId)))
       m <- readMessage
       r <- M.fromEither(
         m match {

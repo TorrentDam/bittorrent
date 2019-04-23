@@ -7,7 +7,7 @@ sealed trait Bencode
 object Bencode {
 
   case class String(value: ByteVector) extends Bencode {
-    override def toString() = s"String(${value.decodeUtf8.getOrElse(value.toHex)})"
+    override def toString() = s"String(${value.decodeUtf8.getOrElse("0x" + value.toHex)})"
   }
   object String {
     def apply(string: java.lang.String): String =

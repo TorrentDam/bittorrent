@@ -9,7 +9,7 @@ import shapeless.Typeable
 
 package object reader {
 
-  type ER[R] = Either[String, R]
+  type ER[R] = Either[BencodeFormatException, R]
   type BReader[A] = ReaderT[ER, Bencode, A]
   type BWriter[A] = ReaderT[ER, A, Bencode]
   type BDWriter[A] = ReaderT[ER, A, Bencode.Dictionary]
@@ -31,7 +31,7 @@ package object reader {
     implicit val LongReader: BencodeFormat[Long] = BencodeFormat(
       ReaderT {
         case Bencode.Integer(l) => Right(l)
-        case _ => Left("Integer is expected")
+        case _ => Left(BencodeFormatException("Integer is expected"))
       },
       ReaderT { value =>
         Right(Bencode.Integer(value))
@@ -40,8 +40,8 @@ package object reader {
 
     implicit val StringReader: BencodeFormat[String] = BencodeFormat(
       ReaderT {
-        case Bencode.String(v) => v.decodeAscii.left.map(_.getMessage)
-        case other => Left(s"String is expected, $other found")
+        case Bencode.String(v) => v.decodeAscii.left.map(BencodeFormatException("Unable to decode ascii", _))
+        case other => Left(BencodeFormatException(s"String is expected, $other found"))
       },
       ReaderT { value =>
         Right(Bencode.String.apply(value))
@@ -51,7 +51,7 @@ package object reader {
     implicit val ByteVectorReader: BencodeFormat[ByteVector] = BencodeFormat(
       ReaderT {
         case Bencode.String(v) => Right(v)
-        case _ => Left("String is expected")
+        case _ => Left(BencodeFormatException("String is expected"))
       },
       ReaderT { bv =>
         Right(Bencode.String(bv))
@@ -66,7 +66,7 @@ package object reader {
           case Bencode.List(values) =>
             values.traverse(aReader.read.run)
           case _ =>
-            Left("List is expected")
+            Left(BencodeFormatException("List is expected"))
         },
         ReaderT { values: List[A] =>
           values.traverse(aReader.write.run).map(Bencode.List)
@@ -100,11 +100,11 @@ package object reader {
                 for {
                   ab <- fa.write(a).right.flatMap {
                     case Bencode.Dictionary(values) => Right(values)
-                    case other => Left("Dictionary expected")
+                    case other => Left(BencodeFormatException("Dictionary expected"))
                   }
                   bb <- fb.write(b).right.flatMap {
                     case Bencode.Dictionary(values) => Right(values)
-                    case other => Left("Dictionary expected")
+                    case other => Left(BencodeFormatException("Dictionary expected"))
                   }
                 } yield Bencode.Dictionary(ab ++ bb)
             }
@@ -124,11 +124,11 @@ package object reader {
       for {
         aa <- format.write(a).flatMap {
           case Bencode.Dictionary(values) => Right(values)
-          case other => Left("Dictionary expected")
+          case other => Left(BencodeFormatException("Dictionary expected"))
         }
         bb <- bFromat.write(b).flatMap {
           case Bencode.Dictionary(values) => Right(values)
-          case other => Left("Dictionary expected")
+          case other => Left(BencodeFormatException("Dictionary expected"))
         }
       } yield Bencode.Dictionary(aa ++ bb)
     }
@@ -140,7 +140,7 @@ package object reader {
       ReaderT { b: B =>
         ta.cast(b) match {
           case Some(a) => x.write(a)
-          case None => Left(s"not a value of type ${ta.describe}")
+          case None => Left(BencodeFormatException(s"not a value of type ${ta.describe}"))
         }
       }
     )
@@ -162,10 +162,10 @@ package object reader {
         case Bencode.Dictionary(values) =>
           values
             .get(name)
-            .toRight(s"Field $name not found. Available fields: ${values.keys}")
+            .toRight(BencodeFormatException(s"Field $name not found. Available fields: ${values.keys}"))
             .flatMap(bReader.read.run)
         case _ =>
-          Left("Dictionary is expected")
+          Left(BencodeFormatException("Dictionary is expected"))
       },
       ReaderT { a: A =>
         bReader.write.run(a).map(bb => Bencode.Dictionary(Map(name -> bb)))
@@ -178,7 +178,7 @@ package object reader {
     val df = field[A](name)
     BencodeFormat(
       df.read
-        .flatMapF(a => Either.cond(a === value, (), s"Expected field $name='$value' but found $a")),
+        .flatMapF(a => Either.cond(a === value, (), BencodeFormatException(s"Expected field $name='$value' but found $a"))),
       df.write.contramap(_ => value)
     )
   }
@@ -189,7 +189,7 @@ package object reader {
         case Bencode.Dictionary(values) =>
           values.get(name).map(bReader.read.run).map(_.map(Some(_))).getOrElse(Right(None))
         case _ =>
-          Left("Dictionary is expected")
+          Left(BencodeFormatException("Dictionary is expected"))
       },
       ReaderT {
         case Some(value) =>
@@ -201,11 +201,13 @@ package object reader {
 
   def encodedString[A](codec: Codec[A]): BencodeFormat[A] = BencodeFormat(
     BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
-      codec.decodeValue(bv.toBitVector).toEither.left.map(_.message)
+      codec.decodeValue(bv.toBitVector).toEither.left.map(err => BencodeFormatException(err.messageWithContext))
     },
     ReaderT { v: A =>
-      codec.encode(v).toEither.bimap(_.message, bv => Bencode.String(bv.toByteVector))
+      codec.encode(v).toEither.bimap(err => BencodeFormatException(err.messageWithContext), bv => Bencode.String(bv.toByteVector))
     }
   )
 
 }
+
+case class BencodeFormatException(message: String, cause: Throwable = null) extends Exception(message, cause)

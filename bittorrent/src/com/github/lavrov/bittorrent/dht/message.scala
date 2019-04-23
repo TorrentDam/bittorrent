@@ -11,12 +11,12 @@ import scodec.Codec
 import scodec.bits.ByteVector
 
 sealed trait Message {
-  def transactionId: String
+  def transactionId: ByteVector
 }
 object Message {
-  final case class QueryMessage(transactionId: String, query: Query) extends Message
-  final case class ResponseMessage(transactionId: String, response: Bencode) extends Message
-  final case class ErrorMessage(transactionId: String) extends Message
+  final case class QueryMessage(transactionId: ByteVector, query: Query) extends Message
+  final case class ResponseMessage(transactionId: ByteVector, response: Bencode) extends Message
+  final case class ErrorMessage(transactionId: ByteVector) extends Message
 
   implicit val NodeIdFormat: BencodeFormat[NodeId] =
     BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
@@ -49,7 +49,7 @@ object Message {
     )
 
   val QueryMessageFormat: BencodeFormat[Message.QueryMessage] = (
-    field[String]("t"),
+    field[ByteVector]("t"),
     QueryFormat
   ).imapN((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
 
@@ -96,12 +96,12 @@ object Message {
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
-    field[String]("t"),
+    field[ByteVector]("t"),
     field[Bencode]("r")
   ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
-    field[String]("t")
+    field[ByteVector]("t")
   ).imap(tid => ErrorMessage(tid))(v => v.transactionId)
 
   implicit val MessageFormat: BencodeFormat[Message] =
