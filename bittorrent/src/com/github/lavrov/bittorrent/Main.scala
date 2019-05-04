@@ -10,9 +10,9 @@ import cats.effect._
 import cats.implicits._
 import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
-import com.github.lavrov.bittorrent.protocol.{Connection, Downloading, FileSink}
+import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
 import com.monovore.decline.{Command, Opts}
-import fs2.Stream
+import fs2.{Sink, Stream}
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import io.chrisdavenport.log4cats.Logger
@@ -120,23 +120,22 @@ object Main extends IOApp {
   }
 
   def saveToFile[F[_]: Concurrent](targetDirectory: Path, downloading: Downloading[F], metaInfo: MetaInfo, logger: Logger[F]): F[Unit] = {
-    val sink = Sync[F].delay { FileSink(metaInfo, targetDirectory) }
-    Resource.fromAutoCloseable(sink).use { fileSink =>
-      for {
-        _ <- Concurrent[F].start {
-          downloading.completePieces
-            .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
-            .evalTap(p => Sync[F].delay(fileSink.write(p.index, p.begin, p.bytes)))
-            .compile
-            .drain
-            .onError {
-              case e =>
-                logger.error(e)(s"Download failed")
-            }
-        }
-        _ <- downloading.fiber.join
-        _ <- logger.info(s"The End")
-      } yield ()
-    }
+    val sink = FileSink(metaInfo, targetDirectory)
+    for {
+      _ <- Concurrent[F].start {
+        downloading.completePieces
+          .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
+          .map(p => FileSink.Piece(p.begin, p.bytes))
+          .to(sink)
+          .compile
+          .drain
+          .onError {
+            case e =>
+              logger.error(e)(s"Download failed")
+          }
+      }
+      _ <- downloading.fiber.join
+      _ <- logger.info(s"The End")
+    } yield ()
   }
 }
