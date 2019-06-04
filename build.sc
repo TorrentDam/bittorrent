@@ -18,6 +18,7 @@ object bittorrent extends Module {
     ivy"com.monovore::decline:0.5.0",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
     ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
+    ivy"com.github.bigwheel::util-backports:1.1",
   )
   object test extends TestModule
 }

@@ -245,7 +245,7 @@ class ConnectionOps[F[_]: Concurrent](socket: Socket[F], logger: Logger[F]) {
   private val M: MonadError[F, Throwable] = implicitly
 
   def handshake(selfId: PeerId, infoHash: InfoHash): F[Handshake] = {
-    val message = Handshake(infoHash, selfId)
+    val message = Handshake(Set.empty, infoHash, selfId)
     for {
       _ <- logger.debug(s"Initiate handshake")
       _ <- socket.write(

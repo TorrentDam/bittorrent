@@ -1,22 +1,40 @@
 package com.github.lavrov.bittorrent.protocol.message
-import com.github.lavrov.bencode.reader.BencodeFormat
+
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import scodec.Codec
 import scodec.codecs._
 import scodec.bits.ByteVector
 
+import scala.util.chaining._
+
 final case class Handshake(
+    extensions: Set[Extensions],
     infoHash: InfoHash,
     peerId: PeerId
 )
 
 object Handshake {
   val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(19, utf8.unit("BitTorrent protocol"))
-  val ReserveCodec: Codec[Unit] = bytes(8).unit(ByteVector.fill(8)(0))
+  val ReserveCodec: Codec[Set[Extensions]] = Extensions.ExtensionsCodec
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] =
-    ((ProtocolStringCodec <~ ReserveCodec) ~> InfoHashCodec :: PeerIdCodec).as
+    (ProtocolStringCodec ~> ReserveCodec :: InfoHashCodec :: PeerIdCodec).as
+}
+
+sealed trait Extensions
+
+object Extensions {
+  case object Metadata extends Extensions
+
+  val ExtensionsCodec: Codec[Set[Extensions]] = bits(8 * 8).xmap(
+    bv => if (bv get 43) Set(Metadata) else Set.empty[Extensions],
+    set =>
+     ByteVector.fill(8)(0).toBitVector.pipe( v =>
+       if (set contains Metadata) v.set(43)
+       else v
+     )
+  )
 }
 
 sealed trait Message
