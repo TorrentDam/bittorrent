@@ -8,27 +8,27 @@ import scodec.bits.ByteVector
 import scala.util.chaining._
 
 final case class Handshake(
-    extensions: Set[Extensions],
+    extensions: Set[ProtocolExtension],
     infoHash: InfoHash,
     peerId: PeerId
 )
 
 object Handshake {
   val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(19, utf8.unit("BitTorrent protocol"))
-  val ReserveCodec: Codec[Set[Extensions]] = Extensions.ExtensionsCodec
+  val ReserveCodec: Codec[Set[ProtocolExtension]] = ProtocolExtension.ExtensionsCodec
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] =
     (ProtocolStringCodec ~> ReserveCodec :: InfoHashCodec :: PeerIdCodec).as
 }
 
-sealed trait Extensions
+sealed trait ProtocolExtension
 
-object Extensions {
-  case object Metadata extends Extensions
+object ProtocolExtension {
+  case object Metadata extends ProtocolExtension
 
-  val ExtensionsCodec: Codec[Set[Extensions]] = bits(8 * 8).xmap(
-    bv => if (bv get 43) Set(Metadata) else Set.empty[Extensions],
+  val ExtensionsCodec: Codec[Set[ProtocolExtension]] = bits(8 * 8).xmap(
+    bv => if (bv get 43) Set(Metadata) else Set.empty[ProtocolExtension],
     set =>
      ByteVector.fill(8)(0).toBitVector.pipe( v =>
        if (set contains Metadata) v.set(43)

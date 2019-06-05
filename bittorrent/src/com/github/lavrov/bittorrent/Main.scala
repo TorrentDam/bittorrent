@@ -13,15 +13,15 @@ import com.github.lavrov.bencode.decode
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
 import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
 import com.monovore.decline.{Command, Opts}
-import fs2.{Sink, Stream}
+import fs2.Stream
 import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import scodec.bits.{BitVector, ByteVector}
+import scodec.bits.ByteVector
 
-import scala.util.Random
 import scala.concurrent.duration._
+import scala.util.Random
 
 object Main extends IOApp {
 
@@ -38,25 +38,33 @@ object Main extends IOApp {
     }
   }
 
+  val infoHashOpt = Opts
+    .option[String]("info-hash", "Info-hash of the torrent file")
+    .mapValidated(
+      string =>
+        Validated.fromEither(ByteVector.fromHexDescriptive(string)).toValidatedNel
+    )
+    .validate("Must be 20 bytes long")(_.size == 20)
+    .map(InfoHash)
+
   val findPeersCommand = Opts.subcommand(
     name = "find-peers",
     help = "Find peers by info-hash",
   ){
-    val infoHashOpt = Opts
-      .option[String]("info-hash", "Info-hash of the torrent file")
-      .mapValidated(
-        string =>
-          Validated.fromEither(ByteVector.fromHexDescriptive(string)).toValidatedNel
-      )
-      .validate("Must be 20 bytes long")(_.size == 20)
-      .map(InfoHash)
     infoHashOpt.map(findPeers)
+  }
+
+  val getTorrentCommand = Opts.subcommand(
+    name = "get-torrent",
+    help = "Download torrent file by info-hash from peers",
+  ){
+    infoHashOpt.map(getTorrent)
   }
 
   val topLevelCommand = Command(
     name = "get-torrent",
     header = "Bittorrent client",
-  )(downloadCommand <+> findPeersCommand)
+  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand)
 
   val selfId = PeerId.generate(rnd)
 
@@ -96,7 +104,7 @@ object Main extends IOApp {
               connections = foundPeers
                 .evalMap { peer =>
                   logger.info(s"Connecting to $peer") *>
-                  connectToPeer(peer, selfId, infoHash)
+                  connectToPeer(peer, selfId, infoHash, logger)
                     .allocated
                     .map(_._1.some)
                     .start.flatMap(_.join.timeout(1.seconds))
@@ -135,11 +143,15 @@ object Main extends IOApp {
       }
     }
 
-  def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash)(
+  def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
   ): Resource[IO, Connection[IO]] = {
     TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
-      Resource.make(Connection.connect(selfId, peerInfo, infoHash, socket, timer))(_ => IO.unit)
+      val acquire =
+        logger.debug(s"Opened socket to ${peerInfo.address}") *>
+        logger.debug(s"Initiate peer connection to ${peerInfo.address}") *>
+        Connection.connect(selfId, peerInfo, infoHash, socket, timer)
+      Resource.make(acquire)(_ => IO.unit)
     }
   }
 
@@ -170,6 +182,28 @@ object Main extends IOApp {
         getPeers(infoHash)(asg).flatMap { stream =>
           stream
             .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
+            .compile.drain
+        }
+    }
+  } yield ()
+
+  def getTorrent(infoHash: InfoHash): IO[Unit] = for {
+    logger <- makeLogger
+    _ <- resources.use {
+      case (asg, acg) =>
+        getPeers(infoHash)(asg).flatMap { stream =>
+          stream
+            .evalMap { peer =>
+              logger.debug(s"Connecting to $peer") *>
+              connectToPeer(peer, selfId, infoHash, logger)(acg)
+                .allocated
+                .flatMap {
+                  case (connection, release) =>
+                    logger.info(s"Connected to $peer which supports extensions ${connection.extensions}") *>
+                    release
+                }
+                .attempt
+            }
             .compile.drain
         }
     }

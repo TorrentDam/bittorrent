@@ -8,7 +8,7 @@ import cats.mtl._
 import cats.syntax.all._
 import cats.{Monad, MonadError}
 import com.github.lavrov.bittorrent.protocol.Connection.{Command, Event}
-import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
+import com.github.lavrov.bittorrent.protocol.message.{ProtocolExtension, Handshake, Message}
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
@@ -23,6 +23,7 @@ import scala.concurrent.duration._
 
 trait Connection[F[_]] {
   def info: PeerInfo
+  def extensions: Set[ProtocolExtension]
   def send(command: Command): F[Unit]
   def events: Stream[F, Event]
 }
@@ -193,7 +194,7 @@ object Connection {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       ops = new ConnectionOps(socket, logger)
-      _ <- ops.handshake(selfId, infoHash)
+      handshakeResponse <- ops.handshake(selfId, infoHash)
       queue <- Queue.unbounded[F, Command]
       eventQueue <- Queue.noneTerminated[F, Event]
       stateRef <- Ref.of[F, State](State())
@@ -216,7 +217,7 @@ object Connection {
       enqueueFiber <- Concurrent[F] start Stream
         .repeatEval(ops.receive)
         .map(Command.PeerMessage)
-        .to(queue.enqueue)
+        .through(queue.enqueue)
         .compile
         .drain
       behaviour = new Behaviour(10.seconds, effects, logger).behaviour
@@ -235,6 +236,7 @@ object Connection {
       }
     } yield new Connection[F] {
       val info = peerInfo
+      val extensions = handshakeResponse.extensions
       def send(msg: Command): F[Unit] = queue.enqueue1(msg)
       def events: Stream[F, Event] = eventQueue.dequeue
     }
