@@ -6,6 +6,7 @@ import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.file.{Files, Path, Paths}
 import java.util.concurrent.Executors
 
+import cats.data.Validated
 import cats.effect._
 import cats.implicits._
 import com.github.lavrov.bencode.decode
@@ -17,6 +18,7 @@ import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import scodec.bits.{BitVector, ByteVector}
 
 import scala.util.Random
 import scala.concurrent.duration._
@@ -25,9 +27,9 @@ object Main extends IOApp {
 
   val rnd = new Random
 
-  val downloadCommand = Command(
+  val downloadCommand = Opts.subcommand(
     name = "download",
-    header = "Download torrent file",
+    help = "Download files",
   ){
     val torrentFileOpt = Opts.option[String]("torrent", help = "Path to torrent file").map(Paths.get(_))
     val targetDirectoryOpt = Opts.option[String]("target-directory", help = "Path to target directory").map(Paths.get(_))
@@ -35,6 +37,26 @@ object Main extends IOApp {
       case (torrentPath, targetPath) => download(torrentPath, targetPath)
     }
   }
+
+  val findPeersCommand = Opts.subcommand(
+    name = "find-peers",
+    help = "Find peers by info-hash",
+  ){
+    val infoHashOpt = Opts
+      .option[String]("info-hash", "Info-hash of the torrent file")
+      .mapValidated(
+        string =>
+          Validated.fromEither(ByteVector.fromHexDescriptive(string)).toValidatedNel
+      )
+      .validate("Must be 20 bytes long")(_.size == 20)
+      .map(InfoHash)
+    infoHashOpt.map(findPeers)
+  }
+
+  val topLevelCommand = Command(
+    name = "get-torrent",
+    header = "Bittorrent client",
+  )(downloadCommand <+> findPeersCommand)
 
   val selfId = PeerId.generate(rnd)
 
@@ -50,13 +72,15 @@ object Main extends IOApp {
   } yield (a, b)
 
   def run(args: List[String]): IO[ExitCode] = {
-    downloadCommand.parse(args) match {
+    topLevelCommand.parse(args) match {
       case Right(thunk) => thunk as ExitCode.Success
       case Left(help) => IO(println(help)) as {
         if (help.errors.isEmpty) ExitCode.Success else ExitCode.Error
       }
     }
   }
+
+  def makeLogger: IO[Logger[IO]] = Slf4jLogger.fromClass[IO](getClass)
 
   def download(torrentPath: Path, targetDirectory: Path): IO[Unit] = {
     getMetaInfo(torrentPath).flatMap {
@@ -67,7 +91,7 @@ object Main extends IOApp {
             implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
 
             for {
-              logger <- Slf4jLogger.fromClass[IO](getClass)
+              logger <- makeLogger
               foundPeers <- getPeers(infoHash)
               connections = foundPeers
                 .evalMap { peer =>
@@ -126,7 +150,7 @@ object Main extends IOApp {
         downloading.completePieces
           .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
           .map(p => FileSink.Piece(p.begin, p.bytes))
-          .to(sink)
+          .through(sink)
           .compile
           .drain
           .onError {
@@ -138,4 +162,17 @@ object Main extends IOApp {
       _ <- logger.info(s"The End")
     } yield ()
   }
+
+  def findPeers(infoHash: InfoHash): IO[Unit] = for {
+    logger <- makeLogger
+    _ <- resources.use {
+      case (asg, _) =>
+        getPeers(infoHash)(asg).flatMap { stream =>
+          stream
+            .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
+            .compile.drain
+        }
+    }
+  } yield ()
+
 }
