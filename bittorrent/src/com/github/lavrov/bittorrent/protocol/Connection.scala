@@ -1,5 +1,6 @@
 package com.github.lavrov.bittorrent.protocol
 
+import java.nio.channels.InterruptedByTimeoutException
 import java.util.concurrent.TimeUnit
 
 import cats.effect.concurrent.{Deferred, Ref}
@@ -52,7 +53,8 @@ object Connection {
       metadata: ByteVector
   ) {
     def messageIdFor(extension: String): Option[Long] = messageIds.find(_._1 == extension).map(_._2)
-    def extensionNameFor(messageId: Long): Option[String] = messageIds.find(_._2 == messageId).map(_._1)
+    def extensionNameFor(messageId: Long): Option[String] =
+      messageIds.find(_._2 == messageId).map(_._1)
   }
 
   trait Effects[F[_]] {
@@ -90,7 +92,7 @@ object Connection {
 
     def initialize: F[Unit] = {
       logger.debug(s"Initialize connection") *>
-      effects.send(Extensions.handshake).whenA(handshake.extensionProtocol)
+        effects.send(Extensions.handshake).whenA(handshake.extensionProtocol)
     }
 
     def receive: Command => F[Unit] = {
@@ -126,16 +128,15 @@ object Connection {
                 .processHandshake(payload.toBitVector, logger)
                 .flatMap { handshake =>
                   logger.debug(s"Extension handshake $handshake") >>
-                  effects.state.modify(
-                    _.copy(
-                      extensionProtocol =
-                        ExtensionProtocolState(
+                    effects.state.modify(
+                      _.copy(
+                        extensionProtocol = ExtensionProtocolState(
                           handshake.extensions.toList,
                           handshake.metadataSize.getOrElse(0L),
                           ByteVector.empty
                         ).some
+                      )
                     )
-                  )
                 } >>
                 effects.completeMetadataExtension(0)
             } else
@@ -146,32 +147,33 @@ object Connection {
                     F.fromEither(MetadataMessage.decode(payload))
                       .flatMap {
                         case MetadataMessage.Data(piece, bytes) =>
-                          val downloadedMetadata = if (piece == 0) bytes else state.metadata ++ bytes
+                          val downloadedMetadata =
+                            if (piece == 0) bytes else state.metadata ++ bytes
                           (
                             if (downloadedMetadata.size == state.metadataSize)
                               logger.debug(s"Downloaded metadata") *>
-                              (
-                                if (downloadedMetadata.digest("SHA-1") == handshake.infoHash.bytes)
-                                  logger.debug("Metadata hash is valid") *>
-                                  effects.emit(Event.DownloadedMetadata(downloadedMetadata))
-                                else
-                                  logger.debug("Metadata hash does not match info-hash")
-                              )
+                                (
+                                  if (downloadedMetadata.digest("SHA-1") == handshake.infoHash.bytes)
+                                    logger.debug("Metadata hash is valid") *>
+                                      effects.emit(Event.DownloadedMetadata(downloadedMetadata))
+                                  else
+                                    logger.debug("Metadata hash does not match info-hash")
+                                )
                             else
                               requestMetadataPiece(piece + 1)
                           ) *>
-                          F.pure(
-                            state.copy(
-                              metadata = downloadedMetadata
+                            F.pure(
+                              state.copy(
+                                metadata = downloadedMetadata
+                              )
                             )
-                          )
                         case _ =>
                           logger.warn(s"Unsupported metadata extension message")
                           F.pure(state)
                       }
                   case _ =>
                     logger.warn(s"Unsupported extension message") *>
-                    F.pure(state)
+                      F.pure(state)
                 }
               }
           case _ => Monad[F].unit
@@ -265,24 +267,24 @@ object Connection {
       if (state.metadataSize > 0)
         state.messageIdFor("ut_metadata") match {
           case Some(messageId) =>
-            val message = Message.Extended(messageId, MetadataMessage.encode(MetadataMessage.Request(piece)))
+            val message =
+              Message.Extended(messageId, MetadataMessage.encode(MetadataMessage.Request(piece)))
             effects.send(message) *>
-            F.pure(state)
+              F.pure(state)
           case None =>
             F.pure(state)
-        }
-      else
+        } else
         F.pure(state)
     }
 
-    private def inExtensionProtocol(f: ExtensionProtocolState => F[ExtensionProtocolState]): F[Unit] = {
+    private def inExtensionProtocol(
+        f: ExtensionProtocolState => F[ExtensionProtocolState]
+    ): F[Unit] = {
       for {
         state <- effects.state.get
         _ <- state.extensionProtocol match {
           case Some(v) =>
-            f(v).flatMap(s =>
-              effects.state.modify(_.copy(extensionProtocol = s.some))
-            )
+            f(v).flatMap(s => effects.state.modify(_.copy(extensionProtocol = s.some)))
           case None => F.raiseError[Unit](new Exception("Extension protocol not initialized"))
         }
       } yield ()
@@ -342,8 +344,7 @@ object Connection {
           .race(enqueueFiber.join, dequeueFiber.join)
           .onError {
             case e =>
-              logger.info(s"Disconnected $peerInfo") *>
-                logger.debug(e)(s"Connection error") *>
+              logger.debug(e)(s"Connection error $peerInfo") *>
                 eventQueue.enqueue1(None)
           }
       }
@@ -368,13 +369,18 @@ object Connection {
         bytes = Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector),
         timeout = Some(5.seconds)
       )
-      maybeBytes <- socket.readN(
-        Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8,
-        timeout = Some(5.seconds)
-      )
+      handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
+      maybeBytes <- socket
+        .readN(
+          handshakeMessageSize,
+          timeout = Some(5.seconds)
+        )
+        .adaptError {
+          case e: InterruptedByTimeoutException => new Exception("Timeout waiting for handshake", e)
+        }
       bytes <- F.fromOption(
-        maybeBytes,
-        new Exception("Connection was closed unexpectedly")
+        maybeBytes.filter(_.size == handshakeMessageSize),
+        new Exception("Unsuccessful handshake: connection prematurely closed")
       )
       bv = ByteVector(bytes.toArray)
       response <- F.fromTry(
@@ -401,7 +407,12 @@ object Connection {
   }
 }
 
-class Connection0[F[_]](val handshake: Handshake, peerInfo: PeerInfo, socket: Socket[F], logger: Logger[F])(
+class Connection0[F[_]](
+    val handshake: Handshake,
+    peerInfo: PeerInfo,
+    socket: Socket[F],
+    logger: Logger[F]
+)(
     implicit F: MonadError[F, Throwable]
 ) {
 

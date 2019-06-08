@@ -198,7 +198,7 @@ object Main extends IOApp {
             .evalMap { peer =>
               logger.debug(s"Connecting to $peer") *>
               connectToPeer(peer, selfId, infoHash, logger)(acg)
-                .allocated
+                .allocated.start.flatMap(_.join.timeout(1.second))
                 .flatMap {
                   case (connection, release) =>
                     logger.info(s"Connected to $peer") >>
