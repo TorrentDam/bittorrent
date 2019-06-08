@@ -402,7 +402,7 @@ object Connection {
 }
 
 class Connection0[F[_]](val handshake: Handshake, peerInfo: PeerInfo, socket: Socket[F], logger: Logger[F])(
-    implicit F: Concurrent[F]
+    implicit F: MonadError[F, Throwable]
 ) {
 
   def send(message: Message): F[Unit] =
@@ -413,18 +413,24 @@ class Connection0[F[_]](val handshake: Handshake, peerInfo: PeerInfo, socket: So
 
   def receive: F[Message] =
     for {
-      maybeChunk <- socket.readN(4)
-      chunk <- F.fromOption(maybeChunk, new Exception("Connection was closed unexpectedly"))
-      size <- F fromTry Message.MessageSizeCodec.decodeValue(BitVector(chunk.toArray)).toTry
-      maybeChunk <- socket.readN(size.toInt)
-      chunk <- F.fromOption(maybeChunk, new Exception("Connection was closed unexpectedly"))
-      bv = ByteVector(chunk.toArray)
+      bytes <- readExactlyN(4)
+      size <- F fromTry Message.MessageSizeCodec.decodeValue(bytes.toBitVector).toTry
+      bytes <- readExactlyN(size.toInt)
       message <- F.fromTry(
         Message.MessageBodyCodec
-          .decodeValue(bv.toBitVector)
+          .decodeValue(bytes.toBitVector)
           .toTry
       )
       _ <- logger.debug(s"Received $message")
     } yield message
+
+  private def readExactlyN(numBytes: Int): F[ByteVector] =
+    for {
+      maybeChunk <- socket.readN(numBytes)
+      chunk <- F.fromOption(
+        maybeChunk.filter(_.size == numBytes),
+        new Exception("Connection was interrupted by peer")
+      )
+    } yield ByteVector(chunk.toArray)
 
 }

@@ -195,7 +195,6 @@ object Main extends IOApp {
       case (asg, acg) =>
         getPeers(infoHash)(asg).flatMap { stream =>
           stream
-            .take(20)
             .evalMap { peer =>
               logger.debug(s"Connecting to $peer") *>
               connectToPeer(peer, selfId, infoHash, logger)(acg)
@@ -232,9 +231,9 @@ object Main extends IOApp {
             .last
         }
     }
-    _ <- IO.delay {
-      result match {
-        case Some(metadata) =>
+    _ <- result match {
+      case Some(metadata) =>
+        IO.delay {
           val bytes = BencodeCodec.instance.encode(
             Bencode.Dictionary(
               ("info", BencodeCodec.instance.decodeValue(metadata.toBitVector).require),
@@ -242,8 +241,10 @@ object Main extends IOApp {
             )
           ).require
           Files.write(targetFile, bytes.toByteArray)
-        case None =>
-      }
+        } *>
+        logger.info("Successfully downloaded torrent file")
+      case None =>
+        logger.info("Could not download torrent file")
     }
   } yield ()
 

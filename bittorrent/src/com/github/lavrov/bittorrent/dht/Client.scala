@@ -78,7 +78,7 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
         }
       .recoverWith {
         case e =>
-          Stream.eval(logger.error(e)("Failed query")) *> Stream.empty
+          Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
       }
     for {
       _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage(transactionId, Query.Ping(selfId)))
