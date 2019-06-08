@@ -3,11 +3,12 @@ package com.github.lavrov.bittorrent.protocol
 import java.nio.channels.InterruptedByTimeoutException
 import java.util.concurrent.TimeUnit
 
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.{Deferred, MVar, Ref}
 import cats.effect.{Concurrent, Timer}
 import cats.mtl._
 import cats.syntax.all._
 import cats.{Monad, MonadError}
+import com.github.lavrov.bencode.BencodeCodec
 import com.github.lavrov.bittorrent.protocol.Connection.Event
 import com.github.lavrov.bittorrent.protocol.extensions.Extensions
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.MetadataExtension
@@ -80,6 +81,7 @@ object Connection {
     case class SendKeepAlive() extends Command
     case class Download(request: Message.Request) extends Command
     case class CheckRequest(request: Message.Request) extends Command
+    case class InitExtensionProtocol() extends Command
     case class RequestMetadata(piece: Long) extends Command
   }
 
@@ -90,16 +92,12 @@ object Connection {
       logger: Logger[F]
   )(implicit F: MonadError[F, Throwable]) {
 
-    def initialize: F[Unit] = {
-      logger.debug(s"Initialize connection") *>
-        effects.send(Extensions.handshake).whenA(handshake.extensionProtocol)
-    }
-
     def receive: Command => F[Unit] = {
       case Command.PeerMessage(message) => handleMessage(message)
       case Command.SendKeepAlive() => sendKeepAlive
       case Command.Download(request) => requestPiece(request)
       case Command.CheckRequest(request) => checkRequest(request)
+      case Command.InitExtensionProtocol() => initExtensionProtocol
       case Command.RequestMetadata(piece) => requestMetadataPiece(piece)
     }
 
@@ -123,59 +121,61 @@ object Connection {
           case Message.Bitfield(bytes) =>
             effects.state.modify(_.copy(bitfield = bytes.bits.some))
           case Message.Extended(id, payload) =>
-            if (id == 0) {
-              Extensions
-                .processHandshake(payload.toBitVector, logger)
-                .flatMap { handshake =>
-                  logger.debug(s"Extension handshake $handshake") >>
-                    effects.state.modify(
-                      _.copy(
-                        extensionProtocol = ExtensionProtocolState(
-                          handshake.extensions.toList,
-                          handshake.metadataSize.getOrElse(0L),
-                          ByteVector.empty
-                        ).some
+            id match {
+              case 0 =>
+                Extensions
+                  .processHandshake(payload.toBitVector, logger)
+                  .flatMap { handshake =>
+                    logger.debug(s"Extension handshake $handshake") >>
+                      effects.state.modify(
+                        _.copy(
+                          extensionProtocol = ExtensionProtocolState(
+                            handshake.extensions.toList,
+                            handshake.metadataSize.getOrElse(0L),
+                            ByteVector.empty
+                          ).some
+                        )
                       )
-                    )
-                } >>
-                effects.completeMetadataExtension(0)
-            } else
-              inExtensionProtocol { state =>
-                val extensionName = state.extensionNameFor(id).get
-                extensionName match {
-                  case "ut_metadata" =>
-                    F.fromEither(MetadataMessage.decode(payload))
-                      .flatMap {
-                        case MetadataMessage.Data(piece, bytes) =>
-                          val downloadedMetadata =
-                            if (piece == 0) bytes else state.metadata ++ bytes
-                          (
-                            if (downloadedMetadata.size == state.metadataSize)
-                              logger.debug(s"Downloaded metadata") *>
-                                (
-                                  if (downloadedMetadata.digest("SHA-1") == handshake.infoHash.bytes)
-                                    logger.debug("Metadata hash is valid") *>
-                                      effects.emit(Event.DownloadedMetadata(downloadedMetadata))
-                                  else
-                                    logger.debug("Metadata hash does not match info-hash")
-                                )
-                            else
-                              requestMetadataPiece(piece + 1)
-                          ) *>
-                            F.pure(
-                              state.copy(
-                                metadata = downloadedMetadata
-                              )
+                  } >>
+                  effects.completeMetadataExtension(0)
+              case Extensions.MessageId.Metadata =>
+                inExtensionProtocol { state =>
+                  F.fromEither(MetadataMessage.decode(payload)).flatMap {
+                    case MetadataMessage.Data(piece, bytes) =>
+                      val downloadedMetadata =
+                        if (piece == 0) bytes else state.metadata ++ bytes
+                      (
+                        if (downloadedMetadata.size == state.metadataSize)
+                          logger.debug(s"Downloaded metadata") *>
+                            (
+                              if (downloadedMetadata
+                                  .digest("SHA-1") == handshake.infoHash.bytes)
+                                logger.debug("Metadata hash is valid") *>
+                                  effects.emit(Event.DownloadedMetadata(downloadedMetadata))
+                              else
+                                logger.debug("Metadata hash does not match info-hash")
                             )
-                        case _ =>
-                          logger.warn(s"Unsupported metadata extension message")
-                          F.pure(state)
-                      }
-                  case _ =>
-                    logger.warn(s"Unsupported extension message") *>
+                        else
+                          requestMetadataPiece(piece + 1)
+                      ) *>
+                        F.pure(
+                          state.copy(
+                            metadata = downloadedMetadata
+                          )
+                        )
+
+                    case unsupported =>
+                      logger.warn(s"Unsupported metadata extension message $unsupported")
                       F.pure(state)
+                  }
                 }
-              }
+
+              case unsupported =>
+                logger.warn(s"Unsupported extension message: $unsupported") *>
+                  logger.warn(
+                    s"Payload: ${BencodeCodec.instance.decodeValue(payload.toBitVector)}"
+                  )
+            }
           case _ => Monad[F].unit
         }
         _ <- effects.state.modify(_.copy(lastMessageAt = time))
@@ -263,6 +263,12 @@ object Connection {
       } yield ()
     }
 
+    def initExtensionProtocol: F[Unit] =
+      F.whenA(handshake.extensionProtocol)(
+        logger.info("Initialise extension protocol") *>
+        effects.send(Extensions.handshake)
+      )
+
     def requestMetadataPiece(piece: Long): F[Unit] = inExtensionProtocol { state =>
       if (state.metadataSize > 0)
         state.messageIdFor("ut_metadata") match {
@@ -304,6 +310,7 @@ object Connection {
       queue <- Queue.unbounded[F, Command]
       eventQueue <- Queue.noneTerminated[F, Event]
       stateRef <- Ref.of[F, State](State())
+      metadataExtensionInit <- MVar[F].empty[Unit]
       metadataExtensionDeferred <- Deferred[F, MetadataExtension[F]]
       effects = new Effects[F] {
         def currentTime: F[Long] =
@@ -335,7 +342,6 @@ object Connection {
         .compile
         .drain
       behaviour = new Behaviour(connection.handshake, 10.seconds, effects, logger)
-      _ <- behaviour.initialize
       dequeueFiber <- Concurrent[F] start {
         queue.dequeue.evalTap(behaviour.receive).compile.drain
       }
@@ -354,7 +360,12 @@ object Connection {
         val extensionProtocol = connection.handshake.extensionProtocol
         def download(request: Message.Request): F[Unit] = queue.enqueue1(Command.Download(request))
         def events: Stream[F, Event] = eventQueue.dequeue
-        def metadataExtension: F[MetadataExtension[F]] = metadataExtensionDeferred.get
+        def metadataExtension: F[MetadataExtension[F]] =
+          metadataExtensionInit.tryPut(()).flatMap {
+            case true => queue.enqueue1(Command.InitExtensionProtocol())
+            case false => Concurrent[F].unit
+          } >>
+          metadataExtensionDeferred.get
       }
     }
   }

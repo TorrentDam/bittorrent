@@ -92,16 +92,16 @@ object Main extends IOApp {
 
   def makeLogger: IO[Logger[IO]] = Slf4jLogger.fromClass[IO](getClass)
 
-  def download(torrentPath: Path, targetDirectory: Path): IO[Unit] = {
-    getMetaInfo(torrentPath).flatMap {
-      case (infoHash, metaInfo) =>
-        resources.use {
+  def download(torrentPath: Path, targetDirectory: Path): IO[Unit] = for {
+    logger <- makeLogger
+    metaInfoResult <- getMetaInfo(torrentPath)
+    (infoHash, metaInfo) = metaInfoResult
+    _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
+    _ <- resources.use {
           case (asg, acg) =>
             implicit val asyncSocketGroup: AsynchronousSocketGroup = asg
             implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
-
             for {
-              logger <- makeLogger
               foundPeers <- getPeers(infoHash)
               connections = foundPeers
                 .evalMap { peer =>
@@ -124,8 +124,7 @@ object Main extends IOApp {
               _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
             } yield ()
         }
-    }
-  }
+  } yield ()
 
   def getMetaInfo(torrentPath: Path): IO[(InfoHash, MetaInfo)] = {
     for {

@@ -10,16 +10,21 @@ import scodec.bits.BitVector
 
 object Extensions {
 
+  object MessageId {
+    val Handshake = 0L
+    val Metadata = 1L
+  }
+
   def handshake: Message.Extended =
     Message.Extended(
-      0,
+      MessageId.Handshake,
       BencodeCodec.instance
         .encode(
           ExtensionHandshake.Format
             .write(
               ExtensionHandshake(
                 Map(
-                  ("ut_metadata", 1L)
+                  ("ut_metadata", MessageId.Metadata)
                 ),
                 None
               )
