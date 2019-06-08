@@ -9,8 +9,9 @@ import java.util.concurrent.Executors
 import cats.data.Validated
 import cats.effect._
 import cats.implicits._
-import com.github.lavrov.bencode.decode
+import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode}
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
+import com.github.lavrov.bittorrent.protocol.Connection.Event
 import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
@@ -27,11 +28,12 @@ object Main extends IOApp {
 
   val rnd = new Random
 
+  val torrentFileOpt = Opts.option[String]("torrent", help = "Path to torrent file").map(Paths.get(_))
+
   val downloadCommand = Opts.subcommand(
     name = "download",
     help = "Download files",
   ){
-    val torrentFileOpt = Opts.option[String]("torrent", help = "Path to torrent file").map(Paths.get(_))
     val targetDirectoryOpt = Opts.option[String]("target-directory", help = "Path to target directory").map(Paths.get(_))
     (torrentFileOpt, targetDirectoryOpt).mapN {
       case (torrentPath, targetPath) => download(torrentPath, targetPath)
@@ -58,7 +60,7 @@ object Main extends IOApp {
     name = "get-torrent",
     help = "Download torrent file by info-hash from peers",
   ){
-    infoHashOpt.map(getTorrent)
+    (torrentFileOpt, infoHashOpt).mapN(getTorrent)
   }
 
   val topLevelCommand = Command(
@@ -187,25 +189,61 @@ object Main extends IOApp {
     }
   } yield ()
 
-  def getTorrent(infoHash: InfoHash): IO[Unit] = for {
+  def getTorrent(targetFile: Path, infoHash: InfoHash): IO[Unit] = for {
     logger <- makeLogger
-    _ <- resources.use {
+    result <- resources.use {
       case (asg, acg) =>
         getPeers(infoHash)(asg).flatMap { stream =>
           stream
+            .take(20)
             .evalMap { peer =>
               logger.debug(s"Connecting to $peer") *>
               connectToPeer(peer, selfId, infoHash, logger)(acg)
                 .allocated
                 .flatMap {
                   case (connection, release) =>
-                    logger.info(s"Connected to $peer which supports extensions ${connection.extensions}") *>
+                    logger.info(s"Connected to $peer") >>
+                    (
+                      if (connection.extensionProtocol)
+                        logger.info(s"Connected to $peer which supports extension protocol") *>
+                        connection.metadataExtension
+                          .flatMap { extension =>
+                            extension.get(0) *>
+                            connection.events
+                              .collect {
+                                case Event.DownloadedMetadata(bytes) => bytes
+                              }
+                              .head
+                              .compile
+                              .last
+                          }
+                      else
+                        logger.info(s"Connected to $peer which does not support extension protocol").as(none)
+                    ) <*
                     release
                 }
                 .attempt
             }
-            .compile.drain
+            .collect {
+              case Right(Some(metadata)) => metadata
+            }
+            .head
+            .compile
+            .last
         }
+    }
+    _ <- IO.delay {
+      result match {
+        case Some(metadata) =>
+          val bytes = BencodeCodec.instance.encode(
+            Bencode.Dictionary(
+              ("info", BencodeCodec.instance.decodeValue(metadata.toBitVector).require),
+              ("creationDate", Bencode.Integer(System.currentTimeMillis))
+            )
+          ).require
+          Files.write(targetFile, bytes.toByteArray)
+        case None =>
+      }
     }
   } yield ()
 

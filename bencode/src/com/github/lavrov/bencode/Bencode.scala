@@ -21,4 +21,8 @@ object Bencode {
   case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode {
     override def toString() = s"Dictionary(${values.mkString(", ")})"
   }
+  object Dictionary {
+    def apply(values: (java.lang.String, Bencode)*): Dictionary = new Dictionary(values.toMap)
+    val Empty: Dictionary = new Dictionary(Map.empty)
+  }
 }

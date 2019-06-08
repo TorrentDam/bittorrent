@@ -74,6 +74,33 @@ package object reader {
       )
     }
 
+    implicit def mapReader[A: BencodeFormat]: BencodeFormat[Map[String, A]] = {
+      import cats.syntax.traverse._, cats.instances.list._
+      val aReader: BencodeFormat[A] = implicitly
+      BencodeFormat(
+        ReaderT {
+          case Bencode.Dictionary(values) =>
+            values
+              .toList
+              .traverse {
+                case (key, value) =>
+                  aReader.read.run(value).tupleLeft(key)
+              }
+              .map(_.toMap)
+          case _ =>
+            Left(BencodeFormatException("Dictionary is expected"))
+        },
+        ReaderT { values: Map[String, A] =>
+          values
+            .toList
+            .traverse {
+              case (key, value) => aReader.write.run(value).tupleLeft(key)
+            }
+            .map(v => Bencode.Dictionary(v: _*))
+        }
+      )
+    }
+
     implicit val RawValueReader: BencodeFormat[Bencode] = BencodeFormat(
       ReaderT {
         case bencode => Right(bencode)
@@ -195,7 +222,7 @@ package object reader {
         case Some(value) =>
           bReader.write.run(value).map(bb => Bencode.Dictionary(Map(name -> bb)))
         case _ =>
-          Right(Bencode.Dictionary(Map.empty))
+          Right(Bencode.Dictionary.Empty)
       }
     )
 

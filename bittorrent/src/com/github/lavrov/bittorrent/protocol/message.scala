@@ -8,33 +8,32 @@ import scodec.bits.ByteVector
 import scala.util.chaining._
 
 final case class Handshake(
-    extensions: Set[ProtocolExtension],
+    extensionProtocol: Boolean,
     infoHash: InfoHash,
     peerId: PeerId
 )
 
 object Handshake {
-  val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(19, utf8.unit("BitTorrent protocol"))
-  val ReserveCodec: Codec[Set[ProtocolExtension]] = ProtocolExtension.ExtensionsCodec
+  val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(
+    19,
+    utf8.unit("BitTorrent protocol")
+  )
+  val ReserveCodec: Codec[Boolean] = bits(8 * 8).xmap(
+    bv => bv get 43,
+    supported =>
+      ByteVector
+        .fill(8)(0)
+        .toBitVector
+        .pipe(
+          v =>
+            if (supported) v.set(43)
+            else v
+        )
+  )
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] =
     (ProtocolStringCodec ~> ReserveCodec :: InfoHashCodec :: PeerIdCodec).as
-}
-
-sealed trait ProtocolExtension
-
-object ProtocolExtension {
-  case object Metadata extends ProtocolExtension
-
-  val ExtensionsCodec: Codec[Set[ProtocolExtension]] = bits(8 * 8).xmap(
-    bv => if (bv get 43) Set(Metadata) else Set.empty[ProtocolExtension],
-    set =>
-     ByteVector.fill(8)(0).toBitVector.pipe( v =>
-       if (set contains Metadata) v.set(43)
-       else v
-     )
-  )
 }
 
 sealed trait Message
@@ -51,6 +50,7 @@ object Message {
   final case class Piece(index: Long, begin: Long, bytes: ByteVector) extends Message
   final case class Cancel(index: Long, begin: Long, length: Long) extends Message
   final case class Port(port: Int) extends Message
+  final case class Extended(id: Long, payload: ByteVector) extends Message
 
   val MessageSizeCodec: Codec[Long] = uint32
 
@@ -70,6 +70,7 @@ object Message {
         .|(7) { case m: Piece => m }(identity)((uint32 :: uint32 :: bytes).as)
         .|(8) { case m: Cancel => m }(identity)((uint32 :: uint32 :: uint32).as)
         .|(9) { case Port(port) => port }(Port)(uint16)
+        .|(20) { case m: Extended => m }(identity)((ulong(8) :: bytes).as)
 
     choice(
       KeepAliveCodec.upcast,

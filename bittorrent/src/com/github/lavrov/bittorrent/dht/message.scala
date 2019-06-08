@@ -16,7 +16,7 @@ sealed trait Message {
 object Message {
   final case class QueryMessage(transactionId: ByteVector, query: Query) extends Message
   final case class ResponseMessage(transactionId: ByteVector, response: Bencode) extends Message
-  final case class ErrorMessage(transactionId: ByteVector) extends Message
+  final case class ErrorMessage(transactionId: ByteVector, details: Bencode) extends Message
 
   implicit val NodeIdFormat: BencodeFormat[NodeId] =
     BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
@@ -101,8 +101,13 @@ object Message {
   ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
-    field[ByteVector]("t")
-  ).imap(tid => ErrorMessage(tid))(v => v.transactionId)
+    optField[ByteVector]("t"),
+    field[Bencode]("e")
+  ).imapN(
+    (tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details)
+  )(
+    v => (v.transactionId.some, v.details)
+  )
 
   implicit val MessageFormat: BencodeFormat[Message] =
     field[String]("y").consume(
