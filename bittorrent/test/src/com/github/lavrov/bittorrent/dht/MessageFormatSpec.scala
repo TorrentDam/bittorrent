@@ -9,17 +9,17 @@ import org.scalatest.MustMatchers._
 class MessageFormatSpec extends FlatSpec {
 
   it should "decode ping response" in {
-    val input = Bencode.Dictionary(
+    val input = Bencode.BDictionary(
       Map(
-        "ip" -> Bencode.String(ByteVector.fromValidHex("1f14bdfa9f21")),
-        "y" -> Bencode.String("q"),
-        "t" -> Bencode.String(ByteVector.fromValidHex("6a76679c")),
-        "a" -> Bencode.Dictionary(
+        "ip" -> Bencode.BString(ByteVector.fromValidHex("1f14bdfa9f21")),
+        "y" -> Bencode.BString("q"),
+        "t" -> Bencode.BString(ByteVector.fromValidHex("6a76679c")),
+        "a" -> Bencode.BDictionary(
           Map(
-            "id" -> Bencode.String(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267"))
+            "id" -> Bencode.BString(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267"))
           )
         ),
-        "q" -> Bencode.String("ping")
+        "q" -> Bencode.BString("ping")
       )
     )
 

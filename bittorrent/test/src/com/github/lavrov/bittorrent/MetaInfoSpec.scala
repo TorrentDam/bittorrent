@@ -10,10 +10,10 @@ class MetaInfoSpec extends FlatSpec {
 
   it should "encode file class" in {
     MetaInfo.FileFormat.write(Info.File(77, "abc" :: Nil)) mustBe Right(
-      Bencode.Dictionary(
+      Bencode.BDictionary(
         Map(
-          "length" -> Bencode.Integer(77),
-          "path" -> Bencode.List(Bencode.String("abc") :: Nil)
+          "length" -> Bencode.BInteger(77),
+          "path" -> Bencode.BList(Bencode.BString("abc") :: Nil)
         )
       )
     )
@@ -33,12 +33,12 @@ class MetaInfoSpec extends FlatSpec {
   }
 
   it should "decode either a or b" in {
-    val input = Bencode.Dictionary(
+    val input = Bencode.BDictionary(
       Map(
-        "name" -> Bencode.String("file_name"),
-        "piece length" -> Bencode.Integer(10),
-        "pieces" -> Bencode.String.Emtpy,
-        "length" -> Bencode.Integer(10)
+        "name" -> Bencode.BString("file_name"),
+        "piece length" -> Bencode.BInteger(10),
+        "pieces" -> Bencode.BString.Emtpy,
+        "length" -> Bencode.BInteger(10)
       )
     )
 
@@ -46,15 +46,15 @@ class MetaInfoSpec extends FlatSpec {
       SingleFile("file_name", 10, ByteVector.empty, 10, None)
     )
 
-    val input1 = Bencode.Dictionary(
+    val input1 = Bencode.BDictionary(
       Map(
-        "piece length" -> Bencode.Integer(10),
-        "pieces" -> Bencode.String.Emtpy,
-        "files" -> Bencode.List(
-          Bencode.Dictionary(
+        "piece length" -> Bencode.BInteger(10),
+        "pieces" -> Bencode.BString.Emtpy,
+        "files" -> Bencode.BList(
+          Bencode.BDictionary(
             Map(
-              "length" -> Bencode.Integer(10),
-              "path" -> Bencode.List(Bencode.String("/root") :: Nil)
+              "length" -> Bencode.BInteger(10),
+              "path" -> Bencode.BList(Bencode.BString("/root") :: Nil)
             )
           ) :: Nil
         )
@@ -67,12 +67,12 @@ class MetaInfoSpec extends FlatSpec {
   }
 
   it should "decode dictionary" in {
-    val input = Bencode.Dictionary(
+    val input = Bencode.BDictionary(
       Map(
-        "name" -> Bencode.String("file_name"),
-        "piece length" -> Bencode.Integer(10),
-        "pieces" -> Bencode.String(ByteVector(10)),
-        "length" -> Bencode.Integer(10)
+        "name" -> Bencode.BString("file_name"),
+        "piece length" -> Bencode.BInteger(10),
+        "pieces" -> Bencode.BString(ByteVector(10)),
+        "length" -> Bencode.BInteger(10)
       )
     )
 
@@ -82,13 +82,13 @@ class MetaInfoSpec extends FlatSpec {
   }
 
   it should "decode ubuntu torrent" in {
-    decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(Bencode.Integer(56L))
-    decode(BitVector.encodeAscii("2:aa").right.get) mustBe Right(Bencode.String("aa"))
+    decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(Bencode.BInteger(56L))
+    decode(BitVector.encodeAscii("2:aa").right.get) mustBe Right(Bencode.BString("aa"))
     decode(BitVector.encodeAscii("l1:a2:bbe").right.get) mustBe Right(
-      Bencode.List(Bencode.String("a") :: Bencode.String("bb") :: Nil)
+      Bencode.BList(Bencode.BString("a") :: Bencode.BString("bb") :: Nil)
     )
     decode(BitVector.encodeAscii("d1:ai6ee").right.get) mustBe Right(
-      Bencode.Dictionary(Map("a" -> Bencode.Integer(6)))
+      Bencode.BDictionary(Map("a" -> Bencode.BInteger(6)))
     )
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")

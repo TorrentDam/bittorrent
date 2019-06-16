@@ -234,9 +234,9 @@ object Main extends IOApp {
       case Some(metadata) =>
         IO.delay {
           val bytes = BencodeCodec.instance.encode(
-            Bencode.Dictionary(
+            Bencode.BDictionary(
               ("info", BencodeCodec.instance.decodeValue(metadata.toBitVector).require),
-              ("creationDate", Bencode.Integer(System.currentTimeMillis))
+              ("creationDate", Bencode.BInteger(System.currentTimeMillis))
             )
           ).require
           Files.write(targetFile, bytes.toByteArray)

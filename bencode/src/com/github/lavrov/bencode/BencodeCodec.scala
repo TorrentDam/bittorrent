@@ -33,20 +33,20 @@ object BencodeCodec {
         integer => integer.toString.toList
       )
 
-    val stringParser: Codec[Bencode.String] =
+    val stringParser: Codec[Bencode.BString] =
       positiveNumber(':')
         .consume(
           number =>
-            bytes(number.toInt).xmap[Bencode.String](
-              bv => Bencode.String(bv),
+            bytes(number.toInt).xmap[Bencode.BString](
+              bv => Bencode.BString(bv),
               bs => bs.value
             )
         )(
           _.value.size.toInt
         )
 
-    val integerParser: Codec[Bencode.Integer] = (constant('i') ~> positiveNumber('e')).xmap(
-      number => Bencode.Integer(number),
+    val integerParser: Codec[Bencode.BInteger] = (constant('i') ~> positiveNumber('e')).xmap(
+      number => Bencode.BInteger(number),
       integer => integer.value
     )
 
@@ -64,20 +64,20 @@ object BencodeCodec {
           case head :: _ => Right(head)
         }
 
-    val listParser: Codec[Bencode.List] = (constant('l') ~> varLengthList(valueCodec)).xmap(
-      elems => Bencode.List(elems),
+    val listParser: Codec[Bencode.BList] = (constant('l') ~> varLengthList(valueCodec)).xmap(
+      elems => Bencode.BList(elems),
       list => list.values
     )
 
     val keyValueParser: Codec[String ~ Bencode] = (stringParser ~ valueCodec).xmap(
-      { case (Bencode.String(key), value) => (key.decodeAscii.right.get, value) },
-      { case (key, value) => (Bencode.String(ByteVector.encodeAscii(key).right.get), value) }
+      { case (Bencode.BString(key), value) => (key.decodeAscii.right.get, value) },
+      { case (key, value) => (Bencode.BString(ByteVector.encodeAscii(key).right.get), value) }
     )
 
-    val dictionaryParser: Codec[Bencode.Dictionary] =
+    val dictionaryParser: Codec[Bencode.BDictionary] =
       (constant('d') ~> varLengthList(keyValueParser))
         .xmap(
-          elems => Bencode.Dictionary(elems.toMap),
+          elems => Bencode.BDictionary(elems.toMap),
           dict => dict.values.toList
         )
 

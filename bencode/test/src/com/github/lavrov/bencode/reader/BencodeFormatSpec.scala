@@ -7,9 +7,9 @@ import org.scalatest.MustMatchers._
 class BencodeFormatSpec extends FlatSpec {
 
   it should "decode list" in {
-    val input = Bencode.List(
-      Bencode.String("a") ::
-        Bencode.String("b") :: Nil
+    val input = Bencode.BList(
+      Bencode.BString("a") ::
+        Bencode.BString("b") :: Nil
     )
 
     val listStringReader: BencodeFormat[List[String]] = implicitly

@@ -6,23 +6,19 @@ sealed trait Bencode
 
 object Bencode {
 
-  case class String(value: ByteVector) extends Bencode {
-    override def toString() = s"String(${value.decodeUtf8.getOrElse("0x" + value.toHex)})"
+  case class BString(value: ByteVector) extends Bencode
+  case class BInteger(value: Long) extends Bencode
+  case class BList(values: List[Bencode]) extends Bencode
+  case class BDictionary(values: Map[String, Bencode]) extends Bencode
+
+  object BString {
+    def apply(string: String): BString =
+      new BString(ByteVector.encodeUtf8(string).right.get)
+    val Emtpy = new BString(ByteVector.empty)
   }
-  object String {
-    def apply(string: java.lang.String): String =
-      new String(ByteVector.encodeUtf8(string).right.get)
-    val Emtpy = new String(ByteVector.empty)
-  }
-  case class Integer(value: scala.Long) extends Bencode
-  case class List(values: collection.immutable.List[Bencode]) extends Bencode {
-    override def toString() = s"List(${values.mkString(", ")}"
-  }
-  case class Dictionary(values: Map[java.lang.String, Bencode]) extends Bencode {
-    override def toString() = s"Dictionary(${values.mkString(", ")})"
-  }
-  object Dictionary {
-    def apply(values: (java.lang.String, Bencode)*): Dictionary = new Dictionary(values.toMap)
-    val Empty: Dictionary = new Dictionary(Map.empty)
+
+  object BDictionary {
+    def apply(values: (String, Bencode)*): BDictionary = new BDictionary(values.toMap)
+    val Empty: BDictionary = new BDictionary(Map.empty)
   }
 }
