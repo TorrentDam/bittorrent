@@ -1,13 +1,9 @@
 package com.github.lavrov.bencode
 
-import java.nio.charset.Charset
-
+import scodec.Err
 import scodec.bits.BitVector
-import scodec.{DecodeResult, Err}
 
 object `package` {
-
-  implicit private[bencode] val charset = Charset.forName("US-ASCII")
 
   def decode(source: BitVector): Either[Err, Bencode] =
     BencodeCodec.instance.decodeOnly.decodeValue(source).toEither

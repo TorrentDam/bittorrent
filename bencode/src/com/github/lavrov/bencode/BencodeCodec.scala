@@ -71,7 +71,7 @@ object BencodeCodec {
 
     val keyValueParser: Codec[String ~ Bencode] = (stringParser ~ valueCodec).xmap(
       { case (Bencode.String(key), value) => (key.decodeAscii.right.get, value) },
-      { case (key, value) => (Bencode.String(ByteVector.encodeString(key).right.get), value) }
+      { case (key, value) => (Bencode.String(ByteVector.encodeAscii(key).right.get), value) }
     )
 
     val dictionaryParser: Codec[Bencode.Dictionary] =

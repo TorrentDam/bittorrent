@@ -13,7 +13,7 @@ class HandshakeSpec extends FlatSpec {
   it should "read and write protocol extension bit" in {
     val message =
       Handshake(
-        Set(ProtocolExtension.Metadata),
+        true,
         InfoHash(ByteVector.fill(20)(0)),
         PeerId(0, 0, 0, 0, 0, 0)
       )
