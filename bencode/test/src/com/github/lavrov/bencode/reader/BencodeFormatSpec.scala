@@ -1,4 +1,4 @@
-package com.github.lavrov.bencode.reader
+package com.github.lavrov.bencode.format
 
 import com.github.lavrov.bencode.Bencode
 import org.scalatest.FlatSpec

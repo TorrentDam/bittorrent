@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent
 import java.time.Instant
 
 import com.github.lavrov.bencode.Bencode
-import com.github.lavrov.bencode.reader._
+import com.github.lavrov.bencode.format._
 import cats.syntax.invariant._
 import cats.syntax.apply._
 import scodec.bits.ByteVector

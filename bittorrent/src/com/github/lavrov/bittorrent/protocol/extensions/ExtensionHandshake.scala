@@ -1,7 +1,7 @@
 package com.github.lavrov.bittorrent.protocol.extensions
 
 import cats.syntax.all._
-import com.github.lavrov.bencode.reader._
+import com.github.lavrov.bencode.format._
 
 case class ExtensionHandshake(
     extensions: Map[String, Long],

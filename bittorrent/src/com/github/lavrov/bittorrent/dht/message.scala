@@ -5,7 +5,7 @@ import java.net.{InetAddress, InetSocketAddress}
 import cats.implicits._
 import com.github.lavrov.bencode.Bencode
 import com.github.lavrov.bittorrent.dht.{NodeId, NodeInfo}
-import com.github.lavrov.bencode.reader._
+import com.github.lavrov.bencode.format._
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.Codec
 import scodec.bits.ByteVector

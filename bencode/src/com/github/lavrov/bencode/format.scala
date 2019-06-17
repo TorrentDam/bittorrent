@@ -7,23 +7,23 @@ import scodec.Codec
 import scodec.bits.ByteVector
 import shapeless.Typeable
 
-package object reader {
+package object format {
 
-  type ER[R] = Either[BencodeFormatException, R]
-  type BReader[A] = ReaderT[ER, Bencode, A]
-  type BWriter[A] = ReaderT[ER, A, Bencode]
-  type BDWriter[A] = ReaderT[ER, A, Bencode.BDictionary]
+  type Result[A] = Either[BencodeFormatException, A]
+  type BencodeReader[A] = ReaderT[Result, Bencode, A]
+  type BencodeWriter[A] = ReaderT[Result, A, Bencode]
+  type BencodeDictionaryWriter[A] = ReaderT[Result, A, Bencode.BDictionary]
 
-  case class BencodeFormat[A](read: BReader[A], write: BWriter[A]) {
+  case class BencodeFormat[A](read: BencodeReader[A], write: BencodeWriter[A]) {
 
-    def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = reader.upcast[A, B](this)
+    def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = format.upcast[A, B](this)
 
-    def or(that: BencodeFormat[A]): BencodeFormat[A] = reader.or(this, that)
+    def or(that: BencodeFormat[A]): BencodeFormat[A] = format.or(this, that)
 
-    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = reader.and(this, that)
+    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = format.and(this, that)
 
     def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
-      reader.consume(this)(f, g)
+      format.consume(this)(f, g)
   }
 
   object BencodeFormat {

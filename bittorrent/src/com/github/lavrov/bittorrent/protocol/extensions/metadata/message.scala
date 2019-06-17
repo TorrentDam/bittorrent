@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent.protocol.extensions.metadata
 import scodec.bits.ByteVector
 import cats.syntax.all._
 import com.github.lavrov.bencode.{BencodeCodec, BencodeFormatException}
-import com.github.lavrov.bencode.reader._
+import com.github.lavrov.bencode.format._
 
 sealed trait Message
 
