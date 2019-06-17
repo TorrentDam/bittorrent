@@ -13,17 +13,18 @@ package object format {
   type BencodeReader[A] = ReaderT[Result, Bencode, A]
   type BencodeWriter[A] = ReaderT[Result, A, Bencode]
   type BencodeDictionaryWriter[A] = ReaderT[Result, A, Bencode.BDictionary]
+  case class BencodeFormat[A](read: BencodeReader[A], write: BencodeWriter[A])
 
-  case class BencodeFormat[A](read: BencodeReader[A], write: BencodeWriter[A]) {
+  implicit class BencodeFormatSyntax[A](val self: BencodeFormat[A]) extends AnyVal {
 
-    def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = format.upcast[A, B](this)
+    def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = format.upcast[A, B](self)
 
-    def or(that: BencodeFormat[A]): BencodeFormat[A] = format.or(this, that)
+    def or(that: BencodeFormat[A]): BencodeFormat[A] = format.or(self, that)
 
-    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = format.and(this, that)
+    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = format.and(self, that)
 
     def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
-      format.consume(this)(f, g)
+      format.consume(self)(f, g)
   }
 
   object BencodeFormat {
