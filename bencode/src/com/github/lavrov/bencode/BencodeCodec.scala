@@ -1,17 +1,15 @@
 package com.github.lavrov.bencode
 
-import scodec.{Codec, Err}
+import scodec.{Attempt, Codec, DecodeResult, Decoder, Encoder, Err, SizeBound}
 import scodec.Attempt.{Failure, Successful}
-import scodec.bits.ByteVector
+import scodec.bits.{BitVector, ByteVector}
 import scodec.codecs.{
   byte,
   bytes,
   choice,
   constant,
-  fallback,
   lazily,
   list,
-  provide,
   variableSizeDelimited,
   ~
 }
@@ -50,24 +48,40 @@ object BencodeCodec {
       integer => integer.value
     )
 
-    def varLengthList[A](codec: Codec[A]): Codec[List[A]] =
-      fallback(constant('e'), codec)
-        .consume[List[A]] {
-          case Left(_) => provide(Nil)
-          case Right(bc) =>
-            varLengthList(codec).xmap(
-              tail => bc :: tail,
-              list => list.tail
-            )
-        } {
-          case Nil => Left(())
-          case head :: _ => Right(head)
+    def decodeCollectSuccessful[F[_], A](dec: Decoder[A], limit: Option[Int])(
+        buffer: BitVector
+    )(implicit cbf: collection.generic.CanBuildFrom[F[A], A, F[A]]): Attempt[DecodeResult[F[A]]] = {
+      val bldr = cbf()
+      var remaining = buffer
+      var count = 0
+      val maxCount = limit getOrElse Int.MaxValue
+      var error = false
+      while (count < maxCount && !error && remaining.nonEmpty) {
+        dec.decode(remaining) match {
+          case Attempt.Successful(DecodeResult(value, rest)) =>
+            bldr += value
+            count += 1
+            remaining = rest
+          case Attempt.Failure(_) =>
+            error = true
         }
+      }
+      Attempt.successful(DecodeResult(bldr.result, remaining))
+    }
 
-    val listParser: Codec[Bencode.BList] = (constant('l') ~> varLengthList(valueCodec)).xmap(
-      elems => Bencode.BList(elems),
-      list => list.values
-    )
+    def listSuccessful[A](codec: Codec[A]): Codec[List[A]] = new Codec[List[A]] {
+      def decode(bits: BitVector): Attempt[DecodeResult[List[A]]] =
+        decodeCollectSuccessful[List, A](codec, None)(bits)
+      def encode(value: List[A]): Attempt[BitVector] =
+        Encoder.encodeSeq(codec)(value)
+      def sizeBound: SizeBound = SizeBound.unknown
+    }
+
+    val listParser: Codec[Bencode.BList] =
+      (constant('l') ~> listSuccessful(valueCodec) <~ constant('e')).xmap(
+        elems => Bencode.BList(elems),
+        list => list.values
+      )
 
     val keyValueParser: Codec[String ~ Bencode] = (stringParser ~ valueCodec).xmap(
       { case (Bencode.BString(key), value) => (key.decodeAscii.right.get, value) },
@@ -75,7 +89,7 @@ object BencodeCodec {
     )
 
     val dictionaryParser: Codec[Bencode.BDictionary] =
-      (constant('d') ~> varLengthList(keyValueParser))
+      (constant('d') ~> listSuccessful(keyValueParser) <~ constant('e'))
         .xmap(
           elems => Bencode.BDictionary(elems.toMap),
           dict => dict.values.toList
