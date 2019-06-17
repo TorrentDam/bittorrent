@@ -4,7 +4,7 @@ import org.scalatest.FlatSpec
 import org.scalatest.MustMatchers._
 import org.scalatest.Inside.inside
 import com.github.lavrov.bencode
-import com.github.lavrov.bittorrent.{Info, MetaInfo}
+import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
 
 class ProtocolSpec extends FlatSpec {
 
@@ -13,7 +13,7 @@ class ProtocolSpec extends FlatSpec {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAllBytes()
     val Right(result) = bencode.decode(source)
-    val metaInfo = MetaInfo.MetaInfoFormat.read(result).right.get
+    val metaInfo = TorrentMetadata.TorrentMetadataFormat.read(result).right.get
     inside(metaInfo.info) {
       case f: Info.SingleFile =>
         val fileSize = f.length

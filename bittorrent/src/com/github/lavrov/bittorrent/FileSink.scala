@@ -8,11 +8,13 @@ import cats.effect.Sync
 import fs2.{Sink, Stream}
 import scodec.bits.ByteVector
 
+import TorrentMetadata.Info
+
 object FileSink {
 
   case class Piece(begin: Long, bytes: ByteVector)
 
-  def apply[F[_]: Sync](metaInfo: MetaInfo, targetDirectory: Path): Sink[F, Piece] = {
+  def apply[F[_]: Sync](metaInfo: TorrentMetadata, targetDirectory: Path): Sink[F, Piece] = {
     def openChannel(filePath: Path) =
       Stream.bracket(
         Sync[F].delay {

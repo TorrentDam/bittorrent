@@ -6,36 +6,37 @@ import com.github.lavrov.bencode.Bencode
 import com.github.lavrov.bencode.format._
 import cats.syntax.invariant._
 import cats.syntax.apply._
+import com.github.lavrov.bittorrent.TorrentMetadata.Info
 import scodec.bits.ByteVector
 
-case class MetaInfo(
+case class TorrentMetadata(
     info: Info,
     creationDate: Option[Instant]
 )
 
-sealed trait Info
-object Info {
-  case class SingleFile(
-      name: String,
-      pieceLength: Long,
-      pieces: ByteVector,
-      length: Long,
-      md5sum: Option[ByteVector]
-  ) extends Info
+object TorrentMetadata {
 
-  case class MultipleFiles(
-      pieceLength: Long,
-      pieces: ByteVector,
-      files: List[File]
-  ) extends Info
+  sealed trait Info
+  object Info {
+    case class SingleFile(
+        name: String,
+        pieceLength: Long,
+        pieces: ByteVector,
+        length: Long,
+        md5sum: Option[ByteVector]
+    ) extends Info
 
-  case class File(
-      length: Long,
-      path: List[String]
-  )
-}
+    case class MultipleFiles(
+        pieceLength: Long,
+        pieces: ByteVector,
+        files: List[File]
+    ) extends Info
 
-object MetaInfo {
+    case class File(
+        length: Long,
+        path: List[String]
+    )
+  }
 
   implicit val InstantFormat: BencodeFormat[Instant] =
     BencodeFormat.LongReader.imap(Instant.ofEpochMilli)(_.toEpochMilli)
@@ -65,11 +66,11 @@ object MetaInfo {
   implicit val InfoFormat: BencodeFormat[Info] =
     SingleFileFormat.upcast[Info] or MultipleFileFormat.upcast
 
-  implicit val MetaInfoFormat: BencodeFormat[MetaInfo] =
+  implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] =
     (
       field[Info]("info"),
       optField[Instant]("creationDate")
-    ).imapN(MetaInfo.apply)(v => (v.info, v.creationDate))
+    ).imapN(TorrentMetadata.apply)(v => (v.info, v.creationDate))
 
   val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
 }

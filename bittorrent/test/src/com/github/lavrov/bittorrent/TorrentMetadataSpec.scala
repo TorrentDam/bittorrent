@@ -3,13 +3,13 @@ package com.github.lavrov.bittorrent
 import org.scalatest.FlatSpec
 import org.scalatest.MustMatchers._
 import com.github.lavrov.bencode._
-import com.github.lavrov.bittorrent.Info.{File, MultipleFiles, SingleFile}
+import com.github.lavrov.bittorrent.TorrentMetadata.Info, Info.{File, MultipleFiles, SingleFile}
 import scodec.bits.{Bases, BitVector, ByteVector}
 
-class MetaInfoSpec extends FlatSpec {
+class TorrentMetadataSpec extends FlatSpec {
 
   it should "encode file class" in {
-    MetaInfo.FileFormat.write(Info.File(77, "abc" :: Nil)) mustBe Right(
+    TorrentMetadata.FileFormat.write(Info.File(77, "abc" :: Nil)) mustBe Right(
       Bencode.BDictionary(
         Map(
           "length" -> Bencode.BInteger(77),
@@ -24,7 +24,7 @@ class MetaInfoSpec extends FlatSpec {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAllBytes()
     val Right(result) = decode(source)
-    val decodedResult = MetaInfo.RawInfoFormat.read(result)
+    val decodedResult = TorrentMetadata.RawInfoFormat.read(result)
     decodedResult
       .map(com.github.lavrov.bittorrent.util.sha1Hash)
       .map(_.toHex(Bases.Alphabets.HexUppercase)) mustBe Right(
@@ -42,7 +42,7 @@ class MetaInfoSpec extends FlatSpec {
       )
     )
 
-    MetaInfo.InfoFormat.read(input) mustBe Right(
+    TorrentMetadata.InfoFormat.read(input) mustBe Right(
       SingleFile("file_name", 10, ByteVector.empty, 10, None)
     )
 
@@ -61,7 +61,7 @@ class MetaInfoSpec extends FlatSpec {
       )
     )
 
-    MetaInfo.InfoFormat.read(input1) mustBe Right(
+    TorrentMetadata.InfoFormat.read(input1) mustBe Right(
       MultipleFiles(10, ByteVector.empty, File(10, "/root" :: Nil) :: Nil)
     )
   }
@@ -76,7 +76,7 @@ class MetaInfoSpec extends FlatSpec {
       )
     )
 
-    MetaInfo.SingleFileFormat.read(input) mustBe Right(
+    TorrentMetadata.SingleFileFormat.read(input) mustBe Right(
       SingleFile("file_name", 10, ByteVector(10), 10, None)
     )
   }
@@ -94,7 +94,7 @@ class MetaInfoSpec extends FlatSpec {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAllBytes()
     val Right(result) = decode(source)
-    val decodeResult = MetaInfo.MetaInfoFormat.read(result)
+    val decodeResult = TorrentMetadata.TorrentMetadataFormat.read(result)
     decodeResult.isRight mustBe true
   }
 

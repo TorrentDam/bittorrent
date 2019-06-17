@@ -126,12 +126,12 @@ object Main extends IOApp {
         }
   } yield ()
 
-  def getMetaInfo(torrentPath: Path): IO[(InfoHash, MetaInfo)] = {
+  def getMetaInfo(torrentPath: Path): IO[(InfoHash, TorrentMetadata)] = {
     for {
       bytes <- IO(Files.readAllBytes(torrentPath))
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
-      infoDict <- IO.fromEither(MetaInfo.RawInfoFormat.read(bc).left.map(new Exception(_)))
-      metaInfo <- IO.fromEither(MetaInfo.MetaInfoFormat.read(bc).left.map(new Exception(_)))
+      infoDict <- IO.fromEither(TorrentMetadata.RawInfoFormat.read(bc).left.map(new Exception(_)))
+      metaInfo <- IO.fromEither(TorrentMetadata.TorrentMetadataFormat.read(bc).left.map(new Exception(_)))
     } yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
   }
 
@@ -156,7 +156,7 @@ object Main extends IOApp {
     }
   }
 
-  def saveToFile[F[_]: Concurrent](targetDirectory: Path, downloading: Downloading[F], metaInfo: MetaInfo, logger: Logger[F]): F[Unit] = {
+  def saveToFile[F[_]: Concurrent](targetDirectory: Path, downloading: Downloading[F], metaInfo: TorrentMetadata, logger: Logger[F]): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
     for {
       _ <- Concurrent[F].start {

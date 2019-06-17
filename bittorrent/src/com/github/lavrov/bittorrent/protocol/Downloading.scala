@@ -11,7 +11,7 @@ import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.Downloading.CompletePiece
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-import com.github.lavrov.bittorrent.{Info, MetaInfo, PeerInfo}
+import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
 import com.olegpy.meow.effects._
 import fs2.{Pull, Stream}
 import fs2.concurrent.Queue
@@ -73,7 +73,7 @@ object Downloading {
   }
 
   def start[F[_]: Concurrent](
-      metaInfo: MetaInfo,
+      metaInfo: TorrentMetadata,
       peers: Stream[F, Connection[F]]
   ): F[Downloading[F]] = {
     for {
@@ -121,7 +121,7 @@ object Downloading {
     } yield Downloading(commandQueue.enqueue1, completePieces.dequeue, fiber)
   }
 
-  def buildQueue(metaInfo: MetaInfo): Chain[IncompletePiece] = {
+  def buildQueue(metaInfo: TorrentMetadata): Chain[IncompletePiece] = {
 
     def downloadFile(
         pieceLength: Long,
