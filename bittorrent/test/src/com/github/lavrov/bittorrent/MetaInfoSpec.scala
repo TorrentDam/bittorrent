@@ -37,7 +37,7 @@ class MetaInfoSpec extends FlatSpec {
       Map(
         "name" -> Bencode.BString("file_name"),
         "piece length" -> Bencode.BInteger(10),
-        "pieces" -> Bencode.BString.Emtpy,
+        "pieces" -> Bencode.BString.Empty,
         "length" -> Bencode.BInteger(10)
       )
     )
@@ -49,7 +49,7 @@ class MetaInfoSpec extends FlatSpec {
     val input1 = Bencode.BDictionary(
       Map(
         "piece length" -> Bencode.BInteger(10),
-        "pieces" -> Bencode.BString.Emtpy,
+        "pieces" -> Bencode.BString.Empty,
         "files" -> Bencode.BList(
           Bencode.BDictionary(
             Map(

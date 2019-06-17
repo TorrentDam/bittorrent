@@ -14,7 +14,7 @@ object Bencode {
   object BString {
     def apply(string: String): BString =
       new BString(ByteVector.encodeUtf8(string).right.get)
-    val Emtpy = new BString(ByteVector.empty)
+    val Empty = new BString(ByteVector.empty)
   }
 
   object BDictionary {
