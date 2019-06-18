@@ -101,7 +101,7 @@ object Message {
   ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
-    optField[ByteVector]("t"),
+    fieldOptional[ByteVector]("t"),
     field[Bencode]("e")
   ).imapN(
     (tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details)

@@ -200,7 +200,7 @@ package object format {
       }
     )
 
-  def optField[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[Option[A]] =
+  def fieldOptional[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[Option[A]] =
     BencodeFormat(
       ReaderT {
         case Bencode.BDictionary(values) =>

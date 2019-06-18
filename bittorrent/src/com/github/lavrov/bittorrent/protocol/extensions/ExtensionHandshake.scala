@@ -12,6 +12,6 @@ object ExtensionHandshake {
   val Format =
     (
       field[Map[String, Long]]("m"),
-      optField[Long]("metadata_size")
+      fieldOptional[Long]("metadata_size")
     ).imapN(ExtensionHandshake.apply)(v => (v.extensions, v.metadataSize))
 }

@@ -47,7 +47,7 @@ object TorrentMetadata {
       field[Long]("piece length"),
       field[ByteVector]("pieces"),
       field[Long]("length"),
-      optField[ByteVector]("md5sum")
+      fieldOptional[ByteVector]("md5sum")
     ).imapN(Info.SingleFile)(v => (v.name, v.pieceLength, v.pieces, v.length, v.md5sum))
 
   implicit val FileFormat: BencodeFormat[Info.File] =
@@ -69,7 +69,7 @@ object TorrentMetadata {
   implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] =
     (
       field[Info]("info"),
-      optField[Instant]("creationDate")
+      fieldOptional[Instant]("creationDate")
     ).imapN(TorrentMetadata.apply)(v => (v.info, v.creationDate))
 
   val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
