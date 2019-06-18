@@ -101,13 +101,9 @@ package object format {
       )
     }
 
-    implicit val RawValueReader: BencodeFormat[Bencode] = BencodeFormat(
-      ReaderT {
-        case bencode => Right(bencode)
-      },
-      ReaderT { value =>
-        Right(value)
-      }
+    implicit val BencodeValueFormat: BencodeFormat[Bencode] = BencodeFormat(
+      ReaderT { bencode => Right(bencode) },
+      ReaderT { value => Right(value) }
     )
 
     implicit val BencodeFormatInvariant: Invariant[BencodeFormat] = new Invariant[BencodeFormat] {
