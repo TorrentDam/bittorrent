@@ -24,24 +24,24 @@ object FileSink {
             fullFilePath,
             StandardOpenOption.CREATE,
             StandardOpenOption.WRITE,
-            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.TRUNCATE_EXISTING
           )
         }
       )(
-        channel =>
-          Sync[F].delay(channel.close())
+        channel => Sync[F].delay(channel.close())
       )
     metaInfo.info match {
       case Info.SingleFile(name, _, _, _, _) =>
         source =>
-          openChannel(Paths get name).flatMap( channel =>
-            source.evalMap { piece =>
-              Sync[F].delay {
-                channel.position(piece.begin)
-                channel.write(piece.bytes.toByteBuffer)
-                ()
+          openChannel(Paths get name).flatMap(
+            channel =>
+              source.evalMap { piece =>
+                Sync[F].delay {
+                  channel.position(piece.begin)
+                  channel.write(piece.bytes.toByteBuffer)
+                  ()
+                }
               }
-            }
           )
       case Info.MultipleFiles(_, _, files) =>
         val channels = {
@@ -52,9 +52,7 @@ object FileSink {
               val cons =
                 for {
                   channel <- openChannel(Paths.get(f.path.head, f.path.tail: _*))
-                }
-                yield
-                  OpenChannel(begin, until, channel)
+                } yield OpenChannel(begin, until, channel)
               cons ++ recur(until, tail)
             case Nil =>
               Stream.empty

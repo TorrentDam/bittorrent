@@ -29,7 +29,8 @@ object Extensions {
                 None
               )
             )
-            .right.get
+            .right
+            .get
         )
         .require
         .toByteVector

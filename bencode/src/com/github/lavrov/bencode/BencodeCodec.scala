@@ -3,16 +3,7 @@ package com.github.lavrov.bencode
 import scodec.{Attempt, Codec, DecodeResult, Decoder, Encoder, Err, SizeBound}
 import scodec.Attempt.{Failure, Successful}
 import scodec.bits.{BitVector, ByteVector}
-import scodec.codecs.{
-  byte,
-  bytes,
-  choice,
-  constant,
-  lazily,
-  list,
-  variableSizeDelimited,
-  ~
-}
+import scodec.codecs.{byte, bytes, choice, constant, lazily, list, variableSizeDelimited, ~}
 
 object BencodeCodec {
 

@@ -1,4 +1,4 @@
-import mill._, scalalib._
+import mill._, scalalib._, scalafmt.ScalafmtModule
 
 object bencode extends Module {
   def ivyDeps = Agg(
@@ -24,7 +24,7 @@ object bittorrent extends Module {
   object test extends TestModule
 }
 
-trait Module extends ScalaModule {
+trait Module extends ScalaModule with ScalafmtModule {
   def scalaVersion = "2.12.8"
   def scalacOptions = List(
     "-language:higherKinds",

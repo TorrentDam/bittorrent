@@ -41,7 +41,8 @@ package object format {
 
     implicit val StringReader: BencodeFormat[String] = BencodeFormat(
       ReaderT {
-        case Bencode.BString(v) => v.decodeAscii.left.map(BencodeFormatException("Unable to decode ascii", _))
+        case Bencode.BString(v) =>
+          v.decodeAscii.left.map(BencodeFormatException("Unable to decode ascii", _))
         case other => Left(BencodeFormatException(s"String is expected, $other found"))
       },
       ReaderT { value =>
@@ -81,8 +82,7 @@ package object format {
       BencodeFormat(
         ReaderT {
           case Bencode.BDictionary(values) =>
-            values
-              .toList
+            values.toList
               .traverse {
                 case (key, value) =>
                   aReader.read.run(value).tupleLeft(key)
@@ -92,8 +92,7 @@ package object format {
             Left(BencodeFormatException("Dictionary is expected"))
         },
         ReaderT { values: Map[String, A] =>
-          values
-            .toList
+          values.toList
             .traverse {
               case (key, value) => aReader.write.run(value).tupleLeft(key)
             }
@@ -190,7 +189,9 @@ package object format {
         case Bencode.BDictionary(values) =>
           values
             .get(name)
-            .toRight(BencodeFormatException(s"Field $name not found. Available fields: ${values.keys}"))
+            .toRight(
+              BencodeFormatException(s"Field $name not found. Available fields: ${values.keys}")
+            )
             .flatMap(bReader.read.run)
         case _ =>
           Left(BencodeFormatException("Dictionary is expected"))
@@ -218,13 +219,24 @@ package object format {
 
   def encodedString[A](codec: Codec[A]): BencodeFormat[A] = BencodeFormat(
     BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
-      codec.decodeValue(bv.toBitVector).toEither.left.map(err => BencodeFormatException(err.messageWithContext))
+      codec
+        .decodeValue(bv.toBitVector)
+        .toEither
+        .left
+        .map(err => BencodeFormatException(err.messageWithContext))
     },
     ReaderT { v: A =>
-      codec.encode(v).toEither.bimap(err => BencodeFormatException(err.messageWithContext), bv => Bencode.BString(bv.toByteVector))
+      codec
+        .encode(v)
+        .toEither
+        .bimap(
+          err => BencodeFormatException(err.messageWithContext),
+          bv => Bencode.BString(bv.toByteVector)
+        )
     }
   )
 
 }
 
-case class BencodeFormatException(message: String, cause: Throwable = null) extends Exception(message, cause)
+case class BencodeFormatException(message: String, cause: Throwable = null)
+    extends Exception(message, cause)

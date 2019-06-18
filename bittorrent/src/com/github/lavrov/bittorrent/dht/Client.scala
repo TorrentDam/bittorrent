@@ -18,7 +18,9 @@ import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
 
-class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(implicit M: MonadError[F, Throwable]) {
+class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
+    implicit M: MonadError[F, Throwable]
+) {
   private val transactionId = ByteVector.encodeAscii("aa").right.get
 
   def readMessage: F[Message] =
@@ -76,12 +78,15 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
               Stream.emits(peers)
           }
         }
-      .recoverWith {
-        case e =>
-          Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
-      }
+        .recoverWith {
+          case e =>
+            Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+        }
     for {
-      _ <- sendMessage(Client.BootstrapNode, Message.QueryMessage(transactionId, Query.Ping(selfId)))
+      _ <- sendMessage(
+        Client.BootstrapNode,
+        Message.QueryMessage(transactionId, Query.Ping(selfId))
+      )
       m <- readMessage
       r <- M.fromEither(
         m match {
@@ -101,6 +106,5 @@ object Client {
   def apply[F[_]: Sync](selfId: NodeId, socket: Socket[F]): F[Client[F]] =
     for {
       logger <- Slf4jLogger.fromClass[F](getClass)
-    }
-    yield new Client(selfId, socket, logger)
+    } yield new Client(selfId, socket, logger)
 }

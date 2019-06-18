@@ -266,7 +266,7 @@ object Connection {
     def initExtensionProtocol: F[Unit] =
       F.whenA(handshake.extensionProtocol)(
         logger.info("Initialise extension protocol") *>
-        effects.send(Extensions.handshake)
+          effects.send(Extensions.handshake)
       )
 
     def requestMetadataPiece(piece: Long): F[Unit] = inExtensionProtocol { state =>
@@ -365,7 +365,7 @@ object Connection {
             case true => queue.enqueue1(Command.InitExtensionProtocol())
             case false => Concurrent[F].unit
           } >>
-          metadataExtensionDeferred.get
+            metadataExtensionDeferred.get
       }
     }
   }
