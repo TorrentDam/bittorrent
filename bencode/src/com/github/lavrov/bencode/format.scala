@@ -200,17 +200,6 @@ package object format {
       }
     )
 
-  def matchField[A: Eq](name: String, value: A)(
-      implicit format: BencodeFormat[A]
-  ): BencodeFormat[Unit] = {
-    val df = field[A](name)
-    BencodeFormat(
-      df.read
-        .flatMapF(a => Either.cond(a === value, (), BencodeFormatException(s"Expected field $name='$value' but found $a"))),
-      df.write.contramap(_ => value)
-    )
-  }
-
   def optField[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[Option[A]] =
     BencodeFormat(
       ReaderT {
