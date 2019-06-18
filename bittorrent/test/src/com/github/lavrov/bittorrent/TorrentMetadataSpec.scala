@@ -5,6 +5,7 @@ import org.scalatest.MustMatchers._
 import com.github.lavrov.bencode._
 import com.github.lavrov.bittorrent.TorrentMetadata.Info, Info.{File, MultipleFiles, SingleFile}
 import scodec.bits.{Bases, BitVector, ByteVector}
+import TestUtils.InputStreamExtensions
 
 class TorrentMetadataSpec extends FlatSpec {
 

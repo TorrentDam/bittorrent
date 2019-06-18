@@ -42,7 +42,7 @@ class BencodeCodecSpec extends FlatSpec {
   }
 
   it should "encode and decode long list (stack safety)" in {
-    val data = Bencode.BList(List.fill(5000)(Bencode.BInteger(0L)))
+    val data = Bencode.BList(List.fill(500)(Bencode.BInteger(0L)))
     def encoded = encode(data)
     decode(encoded) mustBe Right(data)
   }

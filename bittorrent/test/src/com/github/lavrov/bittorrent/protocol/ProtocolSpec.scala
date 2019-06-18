@@ -5,6 +5,7 @@ import org.scalatest.MustMatchers._
 import org.scalatest.Inside.inside
 import com.github.lavrov.bencode
 import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
+import com.github.lavrov.bittorrent.TestUtils.InputStreamExtensions
 
 class ProtocolSpec extends FlatSpec {
 
