@@ -12,7 +12,10 @@ object BencodeCodec {
     val valueCodec = lazily(instance)
 
     val asciiNumber: Codec[Char] = byte.exmap(
-      b => if (b.toChar.isDigit) Successful(b.toChar) else Failure(Err("not a digit")),
+      b => {
+        val char = b.toChar
+        if (char.isDigit) Successful(char) else Failure(Err(s"$char not a digit"))
+      },
       c => Successful(c.toByte)
     )
 
