@@ -19,7 +19,7 @@ import fs2.io.tcp.{Socket => TCPSocket}
 import fs2.io.udp.{AsynchronousSocketGroup, Socket}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import scodec.bits.ByteVector
+import scodec.bits.{Bases, ByteVector}
 
 import scala.concurrent.duration._
 import scala.util.Random
@@ -64,10 +64,17 @@ object Main extends IOApp {
     (torrentFileOpt, infoHashOpt).mapN(getTorrent)
   }
 
+  val readTorrentCommand = Opts.subcommand(
+    name = "read-torrent",
+    help = "Read torrent file from file and print it out"
+  ) {
+    torrentFileOpt.map(printTorrentMetadata)
+  }
+
   val topLevelCommand = Command(
     name = "get-torrent",
     header = "Bittorrent client"
-  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand)
+  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand)
 
   val selfId = PeerId.generate(rnd)
 
@@ -138,6 +145,19 @@ object Main extends IOApp {
         TorrentMetadata.TorrentMetadataFormat.read(bc).left.map(new Exception(_))
       )
     } yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
+  }
+
+  def printTorrentMetadata(torrentPath: Path): IO[Unit] = {
+    getMetaInfo(torrentPath)
+      .flatMap {
+        case (infoHash, torrentMetadata) =>
+          IO {
+            println("Info-hash:")
+            pprint.pprintln(infoHash.bytes.toHex(Bases.Alphabets.HexUppercase))
+            println()
+            pprint.pprintln(torrentMetadata)
+          }
+      }
   }
 
   def getPeers(
