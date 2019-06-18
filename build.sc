@@ -2,8 +2,8 @@ import mill._, scalalib._, scalafmt.ScalafmtModule
 
 object bencode extends Module {
   def ivyDeps = Agg(
-    ivy"org.scodec::core:1.10.4",
-    ivy"org.typelevel::cats-mtl-core:0.4.0",
+    ivy"org.scodec::core:1.10.4", 
+    ivy"org.typelevel::cats-core:1.6.1",
   )
   object test extends TestModule
 }
@@ -11,6 +11,7 @@ object bencode extends Module {
 object bittorrent extends Module {
   def moduleDeps = List(bencode)
   def ivyDeps = Agg(
+    ivy"org.typelevel::cats-mtl-core:0.4.0",
     ivy"org.typelevel::cats-effect::1.3.1",
     ivy"co.fs2::fs2-io:1.0.4",
     ivy"com.olegpy::meow-mtl:0.2.0",
