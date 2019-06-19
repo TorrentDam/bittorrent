@@ -21,19 +21,21 @@ object BencodeCodec {
     )
 
     // sequence of non-negative digits delimited by `delimiter`
-    def positiveNumberDelimited(delimiter: Char): Codec[Long] =
-      variableSizeDelimited(constant(delimiter), list(asciiDigit), 8).xmap[Long](
-        chars => java.lang.Long.parseLong(chars.mkString),
-        integer => integer.toString.toList
+    val positiveNumber: Codec[Long] =
+      listSuccessful(asciiDigit).exmap[Long](
+        {
+          case Nil => Attempt.failure(Err("No digits provided"))
+          case nonEmpty => Attempt.successful(nonEmpty.mkString.toLong)
+        },
+        integer => Attempt.successful(integer.toString.toList)
       )
 
-    def numberDelimited(delimiter: Char): Codec[Long] = {
-      val positive = positiveNumberDelimited(delimiter)
-      val positiveInverted = positive.xmap[Long](v => -v, v => -v)
+    def number: Codec[Long] = {
+      val positiveInverted = positiveNumber.xmap[Long](v => -v, v => -v)
       recover(constant('-'))
         .consume {
           case true => positiveInverted
-          case false => positive
+          case false => positiveNumber
         }{
           value => value < 0
         }
@@ -41,8 +43,8 @@ object BencodeCodec {
 
     // actual bencode codec
 
-    val stringParser: Codec[Bencode.BString] =
-      positiveNumberDelimited(':')
+    val stringCodec: Codec[Bencode.BString] =
+      (positiveNumber <~ constant(':'))
         .consume(
           number =>
             bytes(number.toInt).xmap[Bencode.BString](
@@ -53,34 +55,34 @@ object BencodeCodec {
           _.value.size.toInt
         )
 
-    val integerParser: Codec[Bencode.BInteger] = (constant('i') ~> numberDelimited('e')).xmap(
+    val integerCodec: Codec[Bencode.BInteger] = (constant('i') ~> number <~ constant('e')).xmap(
       number => Bencode.BInteger(number),
       integer => integer.value
     )
 
-    val listParser: Codec[Bencode.BList] =
+    val listCodec: Codec[Bencode.BList] =
       (constant('l') ~> listSuccessful(valueCodec) <~ constant('e')).xmap(
         elems => Bencode.BList(elems),
         list => list.values
       )
 
-    val keyValueParser: Codec[String ~ Bencode] = (stringParser ~ valueCodec).xmap(
+    val keyValueCodec: Codec[String ~ Bencode] = (stringCodec ~ valueCodec).xmap(
       { case (Bencode.BString(key), value) => (key.decodeAscii.right.get, value) },
       { case (key, value) => (Bencode.BString(ByteVector.encodeAscii(key).right.get), value) }
     )
 
-    val dictionaryParser: Codec[Bencode.BDictionary] =
-      (constant('d') ~> listSuccessful(keyValueParser) <~ constant('e'))
+    val dictionaryCodec: Codec[Bencode.BDictionary] =
+      (constant('d') ~> listSuccessful(keyValueCodec) <~ constant('e'))
         .xmap(
           elems => Bencode.BDictionary(elems.toMap),
           dict => dict.values.toList
         )
 
     choice(
-      stringParser.upcast[Bencode],
-      integerParser.upcast[Bencode],
-      listParser.upcast[Bencode],
-      dictionaryParser.upcast[Bencode]
+      stringCodec.upcast[Bencode],
+      integerCodec.upcast[Bencode],
+      listCodec.upcast[Bencode],
+      dictionaryCodec.upcast[Bencode]
     )
   }
 
