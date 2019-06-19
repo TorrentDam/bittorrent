@@ -24,7 +24,8 @@ object RoutingTable {
         val splitBucket: RoutingTable =
           Split(center, Bucket(from, center - 1, Map.empty), Bucket(center, until, Map.empty))
         nodes.updated(node.id, node.address).view.map(NodeInfo.tupled).foldLeft(splitBucket)(insert)
-      } else
+      }
+      else
         Bucket(from, until, nodes.updated(node.id, node.address))
   }
 
@@ -36,7 +37,8 @@ object RoutingTable {
             finalHigher.copy(from = lowerFrom)
           case (l, _) =>
             b.copy(lower = l)
-        } else
+        }
+      else
         (remove(higher, nodeId), lower) match {
           case (Bucket(_, higherUntil, nodes), finalLower: Bucket) if nodes.isEmpty =>
             finalLower.copy(until = higherUntil)

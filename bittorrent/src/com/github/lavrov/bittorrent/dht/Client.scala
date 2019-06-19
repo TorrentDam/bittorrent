@@ -27,7 +27,9 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
   def readMessage: F[Message] =
     for {
       packet <- socket.read(10.seconds.some)
-      bc <- M.fromEither(decode(BitVector(packet.bytes.toArray)).left.map(e => new Exception(e.message)))
+      bc <- M.fromEither(
+        decode(BitVector(packet.bytes.toArray)).left.map(e => new Exception(e.message))
+      )
       message <- M.fromEither(
         Message.MessageFormat
           .read(bc)

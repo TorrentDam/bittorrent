@@ -249,7 +249,8 @@ object Main extends IOApp {
                                         .head
                                         .compile
                                         .last
-                                  } else
+                                  }
+                            else
                               logger
                                 .info(
                                   s"Connected to $peer which does not support extension protocol"

@@ -279,7 +279,8 @@ object Connection {
               F.pure(state)
           case None =>
             F.pure(state)
-        } else
+        }
+      else
         F.pure(state)
     }
 
