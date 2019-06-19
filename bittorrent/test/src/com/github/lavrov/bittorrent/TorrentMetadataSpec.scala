@@ -23,7 +23,7 @@ class TorrentMetadataSpec extends FlatSpec {
   it should "calculate info_hash" in {
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAllBytes()
+      .readAll()
     val Right(result) = decode(source)
     val decodedResult = TorrentMetadata.RawInfoFormat.read(result)
     decodedResult
@@ -93,7 +93,7 @@ class TorrentMetadataSpec extends FlatSpec {
     )
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAllBytes()
+      .readAll()
     val Right(result) = decode(source)
     val decodeResult = TorrentMetadata.TorrentMetadataFormat.read(result)
     decodeResult.isRight mustBe true

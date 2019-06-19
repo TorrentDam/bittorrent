@@ -23,6 +23,7 @@ import scodec.bits.{Bases, ByteVector}
 
 import scala.concurrent.duration._
 import scala.util.Random
+import scodec.bits.BitVector
 
 object Main extends IOApp {
 
@@ -138,7 +139,7 @@ object Main extends IOApp {
 
   def getMetaInfo(torrentPath: Path): IO[(InfoHash, TorrentMetadata)] = {
     for {
-      bytes <- IO(Files.readAllBytes(torrentPath))
+      bytes <- IO(BitVector(Files.readAllBytes(torrentPath)))
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
       infoDict <- IO.fromEither(TorrentMetadata.RawInfoFormat.read(bc).left.map(new Exception(_)))
       metaInfo <- IO.fromEither(

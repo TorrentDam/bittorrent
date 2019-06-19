@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent
 import java.io.InputStream
 
 import scodec.bits.ByteVector
+import scodec.bits.BitVector
 
 object TestUtils {
 
@@ -17,6 +18,7 @@ object TestUtils {
       }
       recur(ByteVector.empty).toArray
     }
+    def readAll(): BitVector = BitVector(readAllBytes())
   }
 
 }

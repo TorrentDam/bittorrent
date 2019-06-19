@@ -17,6 +17,7 @@ import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
+import scodec.bits.BitVector
 
 class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
     implicit M: MonadError[F, Throwable]
@@ -26,7 +27,7 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
   def readMessage: F[Message] =
     for {
       packet <- socket.read(10.seconds.some)
-      bc <- M.fromEither(decode(packet.bytes.toArray).left.map(e => new Exception(e.message)))
+      bc <- M.fromEither(decode(BitVector(packet.bytes.toArray)).left.map(e => new Exception(e.message)))
       message <- M.fromEither(
         Message.MessageFormat
           .read(bc)

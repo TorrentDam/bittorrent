@@ -12,7 +12,7 @@ class ProtocolSpec extends FlatSpec {
   it should "build queue of pieces to download" in {
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAllBytes()
+      .readAll()
     val Right(result) = bencode.decode(source)
     val metaInfo = TorrentMetadata.TorrentMetadataFormat.read(result).right.get
     inside(metaInfo.info) {
