@@ -1,7 +1,6 @@
 package com.github.lavrov.bencode
 
 import scodec.{Attempt, Codec, DecodeResult, Decoder, Encoder, Err, SizeBound}
-import scodec.Attempt.{Failure, Successful}
 import scodec.bits.{BitVector, ByteVector}
 import scodec.codecs._
 
@@ -9,21 +8,26 @@ object BencodeCodec {
 
   val instance: Codec[Bencode] = {
 
+    // reference to `instance` to use it recursively in its definition
     val valueCodec = lazily(instance)
 
-    val asciiNumber: Codec[Char] = byte.exmap(
+    // [0-9] characters
+    val asciiDigit: Codec[Char] = byte.exmap(
       b => {
         val char = b.toChar
-        if (char.isDigit) Successful(char) else Failure(Err(s"$char not a digit"))
+        if (char.isDigit) Attempt.Successful(char) else Attempt.Failure(Err(s"$char not a digit"))
       },
-      c => Successful(c.toByte)
+      c => Attempt.Successful(c.toByte)
     )
 
-    def positiveNumber(delimiter: Char) =
-      variableSizeDelimited(constant(delimiter), list(asciiNumber), 8).xmap[Long](
+    // sequence of non-negative digits delimited by `delimiter`
+    def positiveNumber(delimiter: Char): Codec[Long] =
+      variableSizeDelimited(constant(delimiter), list(asciiDigit), 8).xmap[Long](
         chars => java.lang.Long.parseLong(chars.mkString),
         integer => integer.toString.toList
       )
+
+    // actual bencode codec
 
     val stringParser: Codec[Bencode.BString] =
       positiveNumber(':')
