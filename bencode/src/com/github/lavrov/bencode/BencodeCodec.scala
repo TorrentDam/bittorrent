@@ -21,16 +21,28 @@ object BencodeCodec {
     )
 
     // sequence of non-negative digits delimited by `delimiter`
-    def positiveNumber(delimiter: Char): Codec[Long] =
+    def positiveNumberDelimited(delimiter: Char): Codec[Long] =
       variableSizeDelimited(constant(delimiter), list(asciiDigit), 8).xmap[Long](
         chars => java.lang.Long.parseLong(chars.mkString),
         integer => integer.toString.toList
       )
 
+    def numberDelimited(delimiter: Char): Codec[Long] = {
+      val positive = positiveNumberDelimited(delimiter)
+      val positiveInverted = positive.xmap[Long](v => -v, v => -v)
+      recover(constant('-'))
+        .consume {
+          case true => positiveInverted
+          case false => positive
+        }{
+          value => value < 0
+        }
+    }
+
     // actual bencode codec
 
     val stringParser: Codec[Bencode.BString] =
-      positiveNumber(':')
+      positiveNumberDelimited(':')
         .consume(
           number =>
             bytes(number.toInt).xmap[Bencode.BString](
@@ -41,7 +53,7 @@ object BencodeCodec {
           _.value.size.toInt
         )
 
-    val integerParser: Codec[Bencode.BInteger] = (constant('i') ~> positiveNumber('e')).xmap(
+    val integerParser: Codec[Bencode.BInteger] = (constant('i') ~> numberDelimited('e')).xmap(
       number => Bencode.BInteger(number),
       integer => integer.value
     )

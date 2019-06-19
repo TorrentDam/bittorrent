@@ -10,8 +10,14 @@ class BencodeCodecSpec extends FlatSpec {
 
   implicit val charset = Charset.forName("UTF-8")
 
-  it should "decode integer" in {
-    decode(BitVector.encodeAscii("i56e").right.get) mustBe Right(Bencode.BInteger(56L))
+  it should "encode/decode positive integer" in {
+    val encoded =  encode(Bencode.BInteger(56L))
+    decode(encoded) mustBe Right(Bencode.BInteger(56L))
+  }
+
+  it should "encode/decode negative integer" in {
+    val encoded = encode(Bencode.BInteger(-567L))
+    decode(encoded) mustBe Right(Bencode.BInteger(-567L))
   }
 
   it should "decode byte string" in {
