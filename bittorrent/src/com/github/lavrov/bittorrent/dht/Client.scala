@@ -18,19 +18,20 @@ import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
 import scodec.bits.BitVector
+import cats.effect.concurrent.Ref
 
 class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
-    implicit M: MonadError[F, Throwable]
+    implicit F: MonadError[F, Throwable]
 ) {
   private val transactionId = ByteVector.encodeAscii("aa").right.get
 
   def readMessage: F[Message] =
     for {
       packet <- socket.read(10.seconds.some)
-      bc <- M.fromEither(
+      bc <- F.fromEither(
         decode(BitVector(packet.bytes.toArray)).left.map(e => new Exception(e.message))
       )
-      message <- M.fromEither(
+      message <- F.fromEither(
         Message.MessageFormat
           .read(bc)
           .left
@@ -40,58 +41,20 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
 
   def sendMessage(address: InetSocketAddress, message: Message): F[Unit] =
     for {
-      bc <- M.fromEither(Message.MessageFormat.write(message).left.map(new Exception(_)))
+      bc <- F.fromEither(Message.MessageFormat.write(message).left.map(new Exception(_)))
       bytes = encode(bc)
       _ <- socket.write(Packet(address, Chunk.byteVector(bytes.bytes)))
 
     } yield ()
 
-  def getPeersAlgo(infoHash: InfoHash): F[Stream[F, PeerInfo]] = {
-    def iteration(nodesToTry: NonEmptyList[NodeInfo]): Stream[F, PeerInfo] =
-      Stream[F, NodeInfo](nodesToTry.toList: _*)
-        .evalMap { nodeInfo =>
-          for {
-            _ <- sendMessage(
-              nodeInfo.address,
-              Message.QueryMessage(transactionId, Query.GetPeers(selfId, infoHash))
-            )
-            m <- readMessage
-            response <- M.fromEither(
-              m match {
-                case Message.ResponseMessage(transactionId, bc) =>
-                  val reader =
-                    Message.PeersResponseFormat.read
-                      .widen[Response]
-                      .orElse(Message.NodesResponseFormat.read.widen[Response])
-                  reader(bc).leftMap(new Exception(_))
-                case other =>
-                  Left(new Exception(s"Expected response but got $other"))
-              }
-            )
-          } yield response
-        }
-        .flatMap { response =>
-          response match {
-            case Response.Nodes(_, nodes) =>
-              nodes.sortBy(n => NodeId.distance(n.id, infoHash)).toNel match {
-                case Some(ns) => iteration(ns)
-                case _ => Stream eval M.raiseError(new Exception("Failed to find peers"))
-              }
-            case Response.Peers(_, peers) =>
-              Stream.emits(peers)
-          }
-        }
-        .recoverWith {
-          case e =>
-            Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
-        }
+  def getPeersAlgo(infoHash: InfoHash)(implicit F: Sync[F]): F[Stream[F, PeerInfo]] = {
     for {
       _ <- sendMessage(
         Client.BootstrapNode,
         Message.QueryMessage(transactionId, Query.Ping(selfId))
       )
       m <- readMessage
-      r <- M.fromEither(
+      r <- F.fromEither(
         m match {
           case Message.ResponseMessage(transactionId, response) =>
             Message.PingResponseFormat.read(response).leftMap(e => new Exception(e))
@@ -99,7 +62,54 @@ class Client[F[_]: Monad](selfId: NodeId, socket: Socket[F], logger: Logger[F])(
             Left(new Exception(s"Got wrong message $other"))
         }
       )
-    } yield iteration(NonEmptyList.one(NodeInfo(r.id, Client.BootstrapNode)))
+      seenPeers <- Ref.of(Set.empty[PeerInfo])
+    } yield {
+      def iteration(nodesToTry: NonEmptyList[NodeInfo]): Stream[F, PeerInfo] =
+        Stream[F, NodeInfo](nodesToTry.toList: _*)
+          .evalMap { nodeInfo =>
+            for {
+              _ <- sendMessage(
+                nodeInfo.address,
+                Message.QueryMessage(transactionId, Query.GetPeers(selfId, infoHash))
+              )
+              m <- readMessage
+              response <- F.fromEither(
+                m match {
+                  case Message.ResponseMessage(transactionId, bc) =>
+                    val reader =
+                      Message.PeersResponseFormat.read
+                        .widen[Response]
+                        .orElse(Message.NodesResponseFormat.read.widen[Response])
+                    reader(bc).leftMap(new Exception(_))
+                  case other =>
+                    Left(new Exception(s"Expected response but got $other"))
+                }
+              )
+            } yield response
+          }
+          .flatMap { response =>
+            response match {
+              case Response.Nodes(_, nodes) =>
+                nodes.sortBy(n => NodeId.distance(n.id, infoHash)).toNel match {
+                  case Some(ns) => iteration(ns)
+                  case _ => Stream eval F.raiseError(new Exception("Failed to find peers"))
+                }
+              case Response.Peers(_, peers) =>
+                Stream.eval(
+                  seenPeers
+                    .modify { value =>
+                      val newPeers = peers.filterNot(value)
+                      (value ++ newPeers, newPeers)
+                    }
+                ) >>= Stream.emits
+            }
+          }
+          .recoverWith {
+            case e =>
+              Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+          }
+      iteration(NonEmptyList.one(NodeInfo(r.id, Client.BootstrapNode)))
+    }
   }
 }
 
