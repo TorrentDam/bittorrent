@@ -13,6 +13,7 @@ object bittorrent extends Module {
   def ivyDeps = Agg(
     ivy"org.typelevel::cats-mtl-core:0.4.0",
     ivy"org.typelevel::cats-effect::1.3.1",
+    ivy"io.github.timwspence::cats-stm:0.4.0",
     ivy"co.fs2::fs2-io:1.0.4",
     ivy"com.olegpy::meow-mtl:0.2.0",
     ivy"io.chrisdavenport::log4cats-slf4j:0.3.0",

@@ -24,6 +24,10 @@ import scodec.bits.{Bases, ByteVector}
 import scala.concurrent.duration._
 import scala.util.Random
 import scodec.bits.BitVector
+import io.github.timwspence.cats.stm.TVar
+import io.github.timwspence.cats.stm.STM
+import fs2.concurrent.Queue
+import com.github.lavrov.bittorrent.protocol.ConnectionManager
 
 object Main extends IOApp {
 
@@ -72,10 +76,17 @@ object Main extends IOApp {
     torrentFileOpt.map(printTorrentMetadata)
   }
 
+  val connectCommand = Opts.subcommand(
+    name = "connect",
+    help = "Connect at max to 10 peers"
+  ) {
+    infoHashOpt.map(connect)
+  }
+
   val topLevelCommand = Command(
     name = "get-torrent",
     header = "Bittorrent client"
-  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand)
+  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand <+> connectCommand)
 
   val selfId = PeerId.generate(rnd)
 
@@ -287,5 +298,19 @@ object Main extends IOApp {
           logger.info("Could not download torrent file")
       }
     } yield ()
+
+  def connect(infoHash: InfoHash): IO[Unit] = resources.use {
+    case (_asg, _acg) =>
+      implicit val asg: AsynchronousSocketGroup = _asg
+      implicit val acg: AsynchronousChannelGroup = _acg
+      for {
+        logger <- makeLogger
+        peers <- getPeers(infoHash)
+        connections <- ConnectionManager.make[IO](peers, connectToPeer(_, selfId, infoHash, logger))
+        _ <- connections.evalTap { connection =>
+          logger.info(s"Received connection ${connection.info}")
+        }.compile.drain
+      } yield ()
+  }
 
 }

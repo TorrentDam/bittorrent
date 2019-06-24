@@ -32,6 +32,7 @@ trait Connection[F[_]] {
   def download(request: Message.Request): F[Unit]
   def events: Stream[F, Event]
   def metadataExtension: F[MetadataExtension[F]]
+  def disconnected: F[Unit]
 }
 
 object Connection {
@@ -346,7 +347,7 @@ object Connection {
       dequeueFiber <- Concurrent[F] start {
         queue.dequeue.evalTap(behaviour.receive).compile.drain
       }
-      _ <- Concurrent[F].start {
+      runningProcess <- Concurrent[F].start {
         Concurrent[F]
           .race(enqueueFiber.join, dequeueFiber.join)
           .onError {
@@ -367,6 +368,7 @@ object Connection {
             case false => Concurrent[F].unit
           } >>
             metadataExtensionDeferred.get
+        def disconnected: F[Unit] = runningProcess.join.void
       }
     }
   }
