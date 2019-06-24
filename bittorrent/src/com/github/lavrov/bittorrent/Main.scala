@@ -125,22 +125,7 @@ object Main extends IOApp {
           implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
           for {
             foundPeers <- getPeers(infoHash)
-            connections = foundPeers
-              .evalMap { peer =>
-                logger.info(s"Connecting to $peer") *>
-                  connectToPeer(peer, selfId, infoHash, logger).allocated
-                    .map(_._1.some)
-                    .start
-                    .flatMap(_.join.timeout(1.seconds))
-                    .recoverWith {
-                      case e =>
-                        logger.debug(e)(s"Failed to connect to [$peer]") as none
-                    }
-              }
-              .collect {
-                case Some(c) => c
-              }
-              .evalTap(_ => logger.info(s"Connected"))
+            connections <- ConnectionManager.make(foundPeers, connectToPeer(_, selfId, infoHash, logger))
             _ <- logger.info(s"Start downloading")
             downloading <- Downloading.start[IO](metaInfo, connections)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)

@@ -50,7 +50,6 @@ object Downloading {
     def send(command: Command[F]): F[Unit]
     def notifyComplete: F[Unit]
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
-    def requestPeer: F[Unit]
   }
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
@@ -86,25 +85,12 @@ object Downloading {
       )
       completePieces <- Queue.noneTerminated[F, CompletePiece]
       downloadComplete <- Deferred[F, Unit]
-      peerDemand <- Queue.unbounded[F, Unit]
-      throttledPeers: Stream[F, Connection[F]] = {
-        def recur(source: Stream[F, Connection[F]]): Pull[F, Connection[F], Unit] =
-          Pull.eval(peerDemand.dequeue1) >>
-            source.pull.uncons1.flatMap {
-              case Some((connection, tail)) => Pull.output1(connection) >> recur(tail)
-              case None => Pull.done
-            }
-        recur(peers).stream
-      }
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
-        def requestPeer: F[Unit] =
-          logger.info("Request a new connection") *>
-            peerDemand.enqueue1(())
       }
-      _ <- Concurrent[F] start throttledPeers
+      _ <- Concurrent[F] start peers
         .evalTap(c => effects.send(Command.AddPeer(c)))
         .compile
         .drain
@@ -193,9 +179,7 @@ object Downloading {
       case Command.AddDownloaded(request, bytes) => addDownloaded(request, bytes)
     }
 
-    def init: F[Unit] = {
-      effects.requestPeer
-    }
+    def init: F[Unit] = Concurrent[F].unit
 
     def addPeer(connection: Connection[F]): F[Unit] = {
       for {
@@ -222,7 +206,6 @@ object Downloading {
             .drain
         }
         _ <- tryDownload
-        _ <- requestPeer
       } yield ()
     }
 
@@ -241,12 +224,8 @@ object Downloading {
             chunkQueue = requests.toList ++ state.chunkQueue
           )
         }
-        _ <- requestPeer
       } yield ()
     }
-
-    def requestPeer: F[Unit] =
-      State.inspect(_.connections.size < maxConnections) >>= effects.requestPeer.whenA
 
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
       val pieceLens = Lenses.incompletePiece composeLens at(request.index)
