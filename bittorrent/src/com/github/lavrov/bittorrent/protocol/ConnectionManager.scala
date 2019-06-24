@@ -15,13 +15,14 @@ import cats.effect.Timer
 
 import scala.concurrent.duration._
 import fs2.concurrent.Queue
+import cats.effect.concurrent.Ref
 
 object ConnectionManager {
 
   val maxConnections = 50
 
   def make[F[_]](
-      peers: Stream[F, PeerInfo],
+      dhtPeers: Stream[F, PeerInfo],
       connectToPeer: PeerInfo => Resource[F, Connection[F]]
   )(
       implicit F: ConcurrentEffect[F],
@@ -32,6 +33,8 @@ object ConnectionManager {
       logger <- Slf4jLogger.fromClass(getClass)
       connecting <- TVar.of(0).commit[F]
       connected <- TVar.of(0).commit[F]
+      goodPeersQueue <- Queue.unbounded[F, PeerInfo]
+      peers = dhtPeers merge goodPeersQueue.dequeue
       loggingLoop = Stream
         .repeatEval(
           (connecting.get, connected.get).tupled.commit[F].flatMap {
@@ -70,7 +73,8 @@ object ConnectionManager {
                   F.start(
                     connection.disconnected *>
                       logger.debug(s"Disconnected $peer") *>
-                      connected.modify(_ - 1).commit[F]
+                      connected.modify(_ - 1).commit[F] *>
+                      timer.sleep(30.seconds) *> goodPeersQueue.enqueue1(peer)
                   ) *>
                   F.pure(connection.some)
             }
