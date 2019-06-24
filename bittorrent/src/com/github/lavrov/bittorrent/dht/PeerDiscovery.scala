@@ -26,7 +26,8 @@ object PeerDiscovery {
   val transactionId = ByteVector.encodeAscii("aa").right.get
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
-      implicit F: Sync[F], timer: Timer[F]
+      implicit F: Sync[F],
+      timer: Timer[F]
   ): F[Stream[F, PeerInfo]] = {
     import client.selfId
     for {
@@ -48,14 +49,15 @@ object PeerDiscovery {
       bootstrapNodeInfo = NodeInfo(r.id, BootstrapNode)
       nodesToTry <- Ref.of(ListSet(bootstrapNodeInfo))
     } yield {
-      def iteration: Stream[F, PeerInfo] =
-        Stream.eval(
-          nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
-            case Some(nodeInfo) => F.pure(nodeInfo)
-            case None => timer.sleep(10.seconds).as(bootstrapNodeInfo)
-          }
+      Stream
+        .repeatEval(
+            nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
+              case Some(nodeInfo) => F.pure(nodeInfo)
+              case None => timer.sleep(10.seconds).as(bootstrapNodeInfo)
+            }
         )
-          .evalMap { nodeInfo =>
+        .evalMap { nodeInfo =>
+          (
             for {
               _ <- client.sendMessage(
                 nodeInfo.address,
@@ -75,32 +77,32 @@ object PeerDiscovery {
                 }
               )
             } yield response
-          }
-          .flatMap {
-            case Response.Nodes(_, nodes) =>
-              val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
-              Stream.eval(
-                nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
-              ) >>
-              iteration
-            case Response.Peers(_, peers) =>
-              Stream
-                .eval(
-                  seenPeers
-                    .modify { value =>
-                      val newPeers = peers.filterNot(value)
-                      (value ++ newPeers, newPeers)
-                    }
-                )
-                .flatMap(Stream.emits) ++ iteration
-            case _ =>
-              iteration
-          }
-          .recoverWith {
-            case e =>
-              Stream.eval(logger.debug(e)("Failed query")) *> iteration
-          }
-      iteration
+          ).attempt
+        }
+        .flatMap {
+          case Right(response) =>
+            response match {
+              case Response.Nodes(_, nodes) =>
+                val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
+                Stream.eval(
+                  nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
+                ) *> Stream.empty
+              case Response.Peers(_, peers) =>
+                Stream
+                  .eval(
+                    seenPeers
+                      .modify { value =>
+                        val newPeers = peers.filterNot(value)
+                        (value ++ newPeers, newPeers)
+                      }
+                  )
+                  .flatMap(Stream.emits)
+              case _ =>
+                Stream.empty
+            }
+          case Left(e) =>
+            Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+        }
     }
   }
 }
