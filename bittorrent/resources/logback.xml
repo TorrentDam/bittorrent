@@ -5,6 +5,16 @@
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n</pattern>
         </encoder>
     </appender>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>logs/connection-manager.log</file>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.github.lavrov.bittorrent.protocol.ConnectionManager" level="DEBUG" additivity="false">
+        <appender-ref ref="FILE"/>
+    </logger>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
