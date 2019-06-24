@@ -17,6 +17,7 @@ import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import cats.effect.Timer
 
 import scala.concurrent.duration._
+import scala.collection.immutable.ListSet
 
 object PeerDiscovery {
 
@@ -44,10 +45,16 @@ object PeerDiscovery {
         }
       )
       seenPeers <- Ref.of(Set.empty[PeerInfo])
+      bootstrapNodeInfo = NodeInfo(r.id, BootstrapNode)
+      nodesToTry <- Ref.of(ListSet(bootstrapNodeInfo))
     } yield {
-      val bootstrapNodeList = NonEmptyList.one(NodeInfo(r.id, BootstrapNode))
-      def iteration(nodesToTry: NonEmptyList[NodeInfo]): Stream[F, PeerInfo] =
-        Stream[F, NodeInfo](nodesToTry.toList: _*)
+      def iteration: Stream[F, PeerInfo] =
+        Stream.eval(
+          nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
+            case Some(nodeInfo) => F.pure(nodeInfo)
+            case None => timer.sleep(10.seconds).as(bootstrapNodeInfo)
+          }
+        )
           .evalMap { nodeInfo =>
             for {
               _ <- client.sendMessage(
@@ -69,28 +76,31 @@ object PeerDiscovery {
               )
             } yield response
           }
-          .flatMap { response =>
-            response match {
-              case Response.Nodes(_, nodes) =>
-                nodes.sortBy(n => NodeId.distance(n.id, infoHash)).toNel match {
-                  case Some(ns) => iteration(ns)
-                  case _ => Stream.fixedDelay(10.seconds) >> iteration(bootstrapNodeList)
-                }
-              case Response.Peers(_, peers) =>
-                Stream.eval(
+          .flatMap {
+            case Response.Nodes(_, nodes) =>
+              val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
+              Stream.eval(
+                nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
+              ) >>
+              iteration
+            case Response.Peers(_, peers) =>
+              Stream
+                .eval(
                   seenPeers
                     .modify { value =>
                       val newPeers = peers.filterNot(value)
                       (value ++ newPeers, newPeers)
                     }
-                ) >>= Stream.emits
-            }
+                )
+                .flatMap(Stream.emits) ++ iteration
+            case _ =>
+              iteration
           }
           .recoverWith {
             case e =>
-              Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+              Stream.eval(logger.debug(e)("Failed query")) *> iteration
           }
-      iteration(bootstrapNodeList)
+      iteration
     }
   }
 }
