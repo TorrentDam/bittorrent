@@ -28,6 +28,7 @@ import io.github.timwspence.cats.stm.TVar
 import io.github.timwspence.cats.stm.STM
 import fs2.concurrent.Queue
 import com.github.lavrov.bittorrent.protocol.ConnectionManager
+import com.github.lavrov.bittorrent.dht.PeerDiscovery
 
 object Main extends IOApp {
 
@@ -163,7 +164,7 @@ object Main extends IOApp {
     Socket[IO](address = new InetSocketAddress(6881)).allocated.flatMap {
       case (socket, _) =>
         DHTClient[IO](NodeId.generate(rnd), socket).flatMap { dhtClient =>
-          dhtClient.getPeersAlgo(infoHash)
+          PeerDiscovery.start(infoHash, dhtClient)
         }
     }
 
