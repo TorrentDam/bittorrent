@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import cats.data.Chain
 import cats.effect.Sync
+import cats.syntax.all._
 import fs2.{Sink, Stream}
 import scodec.bits.ByteVector
 
@@ -14,7 +15,7 @@ object FileSink {
 
   case class Piece(begin: Long, bytes: ByteVector)
 
-  def apply[F[_]: Sync](metaInfo: TorrentMetadata, targetDirectory: Path): Sink[F, Piece] = {
+  def apply[F[_]](metaInfo: TorrentMetadata, targetDirectory: Path)(implicit F: Sync[F]): Sink[F, Piece] = {
     def openChannel(filePath: Path) =
       Stream.bracket(
         Sync[F].delay {
@@ -61,17 +62,21 @@ object FileSink {
         }
         source =>
           channels.map(Chain.one).reduceSemigroup.flatMap { channels =>
-            def write(begin: Long, bytes: ByteVector): F[Unit] = Sync[F].delay {
+            def writeToChannel(fileChannel: OpenChannel, position: Long, bytes: ByteVector): F[Unit] = Sync[F].delay {
+              import fileChannel.channel
+              channel.position(position)
+              channel.write(bytes.toByteBuffer)
+            }
+            def write(begin: Long, bytes: ByteVector): F[Unit] = {
               val fileChannel = channels.find(oc => oc.begin <= begin && oc.until > begin).get
               import fileChannel.channel
               val position = begin - fileChannel.begin
-              val (thisFileBytes, leftoverBytes) = bytes.splitAt(fileChannel.until - begin)
-              channel.position(position)
-              channel.write(thisFileBytes.toByteBuffer)
-              if (leftoverBytes.nonEmpty)
+              val numBytesTillFileEnd = fileChannel.until - begin
+              val (thisFileBytes, leftoverBytes) = bytes.splitAt(numBytesTillFileEnd)
+              writeToChannel(fileChannel, position, thisFileBytes) *>
+              F.whenA(leftoverBytes.nonEmpty){
                 write(fileChannel.until, leftoverBytes)
-              else
-                ()
+              }
             }
             source.evalMap { piece =>
               write(piece.begin, piece.bytes)
