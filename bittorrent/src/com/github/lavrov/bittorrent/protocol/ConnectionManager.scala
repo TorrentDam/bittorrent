@@ -70,18 +70,24 @@ object ConnectionManager {
                   STM.atomically[F] {
                     connecting.modify(_ - 1) *> connected.modify(_ + 1)
                   } *>
-                  F.start(
-                    connection.disconnected *>
-                      logger.debug(s"Disconnected $peer") *>
-                      connected.modify(_ - 1).commit[F] *>
-                      timer.sleep(30.seconds) *> goodPeersQueue.enqueue1(peer)
-                  ) *>
                   F.pure(connection.some)
             }
           } yield connectionOpt
         }
         .collect {
           case Some(value) => value
+        }
+        .flatMap { connection =>
+          val onDisconnect = Stream
+            .eval(
+              connection.disconnected *>
+                logger.debug(s"Disconnected ${connection.info}") *>
+                connected.modify(_ - 1).commit[F]
+            ) >>
+            Stream.fixedDelay(20.seconds) >>
+            Stream.eval(goodPeersQueue.enqueue1(connection.info))
+
+          onDisconnect.spawn >> Stream.emit(connection)
         }
     } yield loggingLoop.spawn >> connectionLoop
   }
