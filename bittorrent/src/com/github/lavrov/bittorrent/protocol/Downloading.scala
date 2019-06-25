@@ -21,6 +21,8 @@ import monocle.function.At.at
 import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
+import scala.util.chaining._
+
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
     completePieces: Stream[F, CompletePiece],
@@ -58,6 +60,7 @@ object Downloading {
       index: Long,
       begin: Long,
       size: Long,
+      checksum: ByteVector,
       requests: List[Message.Request],
       downloadedSize: Long = 0,
       downloaded: Map[Message.Request, ByteVector] = Map.empty
@@ -68,7 +71,11 @@ object Downloading {
         downloaded = downloaded.updated(request, bytes)
       )
     def isComplete: Boolean = size == downloadedSize
-    def joinChunks: ByteVector = downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
+    def verified: Option[ByteVector] = {
+      val joinedChunks: ByteVector = downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
+      if (joinedChunks.digest("SHA-1") == checksum) joinedChunks.some else none
+    }
+    def reset: IncompletePiece = copy(downloadedSize = 0, downloaded = Map.empty)
   }
 
   def start[F[_]: Concurrent](
@@ -120,11 +127,12 @@ object Downloading {
           math.min(pieceLength, totalLength - index * pieceLength)
         if (thisPieceLength > 0) {
           val list =
-            downloadPiece(index, thisPieceLength, pieces.drop(index * 20).take(20))
+            downloadPiece(index, thisPieceLength)
           result = result append IncompletePiece(
             index,
             index * pieceLength,
             thisPieceLength,
+            pieces.drop(index * 20).take(20),
             list.toList
           )
           loop(index + 1)
@@ -136,8 +144,7 @@ object Downloading {
 
     def downloadPiece(
         pieceIndex: Long,
-        length: Long,
-        checksum: ByteVector
+        length: Long
     ): Chain[Message.Request] = {
       val chunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
@@ -160,13 +167,14 @@ object Downloading {
     }
   }
 
-  class Behaviour[F[_]: Concurrent](
+  class Behaviour[F[_]](
       maxInflightChunks: Int,
       maxConnections: Int,
       State: MonadState[F, Downloading.State[F]],
       effects: Effects[F],
       logger: Logger[F]
-  ) extends (Command[F] => F[Unit]) {
+  )(implicit F: Concurrent[F])
+      extends (Command[F] => F[Unit]) {
 
     object Lenses {
       val incompletePiece = GenLens[State[F]](_.incompletePieces)
@@ -239,19 +247,25 @@ object Downloading {
           )
         }
         incompletePieceOpt <- State.inspect(pieceLens.get)
-        incompletePiece <- Concurrent[F]
-          .fromOption(incompletePieceOpt, new Exception("Piece not found"))
-        incompletePiece <- Monad[F] pure incompletePiece.add(request, bytes)
+        incompletePiece <- F.fromOption(incompletePieceOpt, new Exception("Piece not found"))
+        incompletePiece <- incompletePiece.add(request, bytes).pure
         _ <- {
           if (incompletePiece.isComplete)
-            State.modify(pieceLens.set(None)) *>
-              effects.notifyPieceComplete(
-                CompletePiece(
-                  incompletePiece.index,
-                  incompletePiece.begin,
-                  incompletePiece.joinChunks
-                )
-              )
+            incompletePiece.verified.pipe {
+              case Some(bytes) =>
+                logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
+                State.modify(pieceLens set none) *>
+                  effects.notifyPieceComplete(
+                    CompletePiece(
+                      incompletePiece.index,
+                      incompletePiece.begin,
+                      bytes
+                    )
+                  )
+              case None =>
+                logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
+                State.modify(pieceLens set incompletePiece.reset.some)
+            }
           else
             State.modify(pieceLens.set(incompletePiece.some))
         }
