@@ -52,7 +52,7 @@ object ConnectionManager {
               demand = maxConnections - (numConnecting + numConnected)
               _ <- STM.check(demand > 0)
               _ <- connecting.modify(_ + 1)
-            } yield demand
+            } yield ()
           }
         )
         .zipRight(peers)
