@@ -87,19 +87,32 @@ object Main extends IOApp {
   val topLevelCommand = Command(
     name = "get-torrent",
     header = "Bittorrent client"
-  )(downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand <+> connectCommand)
+  )(
+    downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand <+> connectCommand
+  )
 
   val selfId = PeerId.generate(rnd)
 
-  val resources = for {
-    a <- Resource.make(IO(AsynchronousSocketGroup()))(r => IO(r.close()))
-    b <- Resource.make(
+  val asynchronousSocketGroupResource =
+    Resource.make(IO(AsynchronousSocketGroup()))(
+      r =>
+        IO(r.close())
+    )
+
+  val asynchronousChannelGroupResource =
+    Resource.make(
       IO(
         AsynchronousChannelProvider
           .provider()
           .openAsynchronousChannelGroup(2, Executors.defaultThreadFactory())
       )
-    )(g => IO(g.shutdown()))
+    )(g =>
+      IO(g.shutdown())
+    )
+
+  val resources = for {
+    a <- asynchronousSocketGroupResource
+    b <- asynchronousChannelGroupResource
   } yield (a, b)
 
   def run(args: List[String]): IO[ExitCode] = {
@@ -126,7 +139,10 @@ object Main extends IOApp {
           implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
           for {
             foundPeers <- getPeers(infoHash)
-            connections <- ConnectionManager.make(foundPeers, connectToPeer(_, selfId, infoHash, logger))
+            connections <- ConnectionManager.make(
+              foundPeers,
+              connectToPeer(_, selfId, infoHash, logger)
+            )
             _ <- logger.info(s"Start downloading")
             downloading <- Downloading.start[IO](metaInfo, connections)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
@@ -171,13 +187,7 @@ object Main extends IOApp {
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
   ): Resource[IO, Connection[IO]] = {
-    TCPSocket.client[IO](to = peerInfo.address).flatMap { socket =>
-      val acquire =
-        logger.debug(s"Opened socket to ${peerInfo.address}") *>
-          logger.debug(s"Initiate peer connection to ${peerInfo.address}") *>
-          Connection.connect(selfId, peerInfo, infoHash, socket, timer)
-      Resource.make(acquire)(_ => IO.unit)
-    }
+    Connection.connect[IO](selfId, peerInfo, infoHash)
   }
 
   def saveToFile[F[_]: Concurrent](
@@ -219,6 +229,15 @@ object Main extends IOApp {
       }
     } yield ()
 
+  def getTorrent1(targetFile: Path, infoHash: InfoHash): IO[Unit] =
+    for {
+      logger <- makeLogger
+      result <- resources.use {
+        case (asg, acg) =>
+          logger.info("Created resources")
+      }
+    } yield ()
+
   def getTorrent(targetFile: Path, infoHash: InfoHash): IO[Unit] =
     for {
       logger <- makeLogger
@@ -226,37 +245,33 @@ object Main extends IOApp {
         case (asg, acg) =>
           getPeers(infoHash)(asg).flatMap { stream =>
             stream
-              .evalMap { peer =>
-                logger.debug(s"Connecting to $peer") *>
-                  connectToPeer(peer, selfId, infoHash, logger)(acg).allocated.start
-                    .flatMap(_.join.timeout(1.second))
-                    .flatMap {
-                      case (connection, release) =>
-                        logger.info(s"Connected to $peer") >>
-                          (
-                            if (connection.extensionProtocol)
-                              logger.info(s"Connected to $peer which supports extension protocol") *>
-                                connection.metadataExtension
-                                  .flatMap { extension =>
-                                    extension.get(0) *>
-                                      connection.events
-                                        .collect {
-                                          case Event.DownloadedMetadata(bytes) => bytes
-                                        }
-                                        .head
-                                        .compile
-                                        .last
-                                  }
-                            else
-                              logger
-                                .info(
-                                  s"Connected to $peer which does not support extension protocol"
-                                )
-                                .as(none)
-                          ) <*
-                          release
-                    }
-                    .attempt
+              .parEvalMapUnordered(10) { peer =>
+                logger.info(s"Connecting to $peer") *>
+                  connectToPeer(peer, selfId, infoHash, logger)(acg).use { connection =>
+                    logger.info(s"Connected to $peer") >>
+                      (
+                        if (connection.extensionProtocol)
+                          logger.info(s"Connected to $peer which supports extension protocol") *>
+                            connection.metadataExtension
+                              .flatMap { extension =>
+                                extension.get(0) *>
+                                  connection.events
+                                    .collect {
+                                      case Event.DownloadedMetadata(bytes) => bytes
+                                    }
+                                    .head
+                                    .compile
+                                    .last
+                              }
+                        else
+                          logger
+                            .info(
+                              s"Connected to $peer which does not support extension protocol"
+                            )
+                            .as(none)
+                      )
+                  }
+                  .attempt
               }
               .collect {
                 case Right(Some(metadata)) => metadata
@@ -293,9 +308,12 @@ object Main extends IOApp {
         logger <- makeLogger
         peers <- getPeers(infoHash)
         connections <- ConnectionManager.make[IO](peers, connectToPeer(_, selfId, infoHash, logger))
-        _ <- connections.evalTap { connection =>
-          logger.info(s"Received connection ${connection.info}")
-        }.compile.drain
+        _ <- connections
+          .evalTap { connection =>
+            logger.info(s"Received connection ${connection.info}")
+          }
+          .compile
+          .drain
       } yield ()
   }
 

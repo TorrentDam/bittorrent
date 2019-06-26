@@ -56,39 +56,37 @@ object ConnectionManager {
           }
         )
         .zipRight(peers)
-        .parEvalMapUnordered[F, Option[Connection[F]]](maxConnections) { peer =>
+        .parEvalMapUnordered[F, Stream[F, Connection[F]]](maxConnections) { peer =>
           for {
             _ <- logger.debug(s"Connecting to $peer")
             connectionResult <- connectToPeer(peer).allocated.attempt
-            connectionOpt <- connectionResult match {
+            stream <- connectionResult match {
               case Left(_) =>
                 logger.debug(s"Filed to connect $peer") *>
                   connecting.modify(_ - 1).commit[F] *>
-                  F.pure(none)
-              case Right((connection, _)) =>
+                  F.pure(Stream.empty)
+              case Right((connection, closeConnection)) =>
                 logger.debug(s"Successfully connected $peer") *>
                   STM.atomically[F] {
                     connecting.modify(_ - 1) *> connected.modify(_ + 1)
                   } *>
-                  F.pure(connection.some)
-            }
-          } yield connectionOpt
-        }
-        .collect {
-          case Some(value) => value
-        }
-        .flatMap { connection =>
-          val onDisconnect = Stream
-            .eval(
-              connection.disconnected *>
-                logger.debug(s"Disconnected ${connection.info}") *>
-                connected.modify(_ - 1).commit[F]
-            ) >>
-            Stream.fixedDelay(20.seconds) >>
-            Stream.eval(goodPeersQueue.enqueue1(connection.info))
+                  F.pure {
+                    val onDisconnect = Stream
+                      .eval(
+                        connection.disconnected *>
+                          closeConnection *>
+                          logger.debug(s"Disconnected ${connection.info}") *>
+                          connected.modify(_ - 1).commit[F]
+                      ) *>
+                      Stream.fixedDelay(20.seconds) *>
+                      Stream.eval(goodPeersQueue.enqueue1(connection.info))
 
-          onDisconnect.spawn >> Stream.emit(connection)
+                    onDisconnect.spawn >> Stream.emit(connection)
+                  }
+            }
+          } yield stream
         }
+        .flatten
     } yield loggingLoop.spawn >> connectionLoop
   }
 }

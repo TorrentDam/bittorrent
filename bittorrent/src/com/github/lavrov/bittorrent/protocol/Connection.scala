@@ -25,6 +25,9 @@ import scodec.bits.{BitVector, ByteVector}
 
 import scala.collection.immutable.ListSet
 import scala.concurrent.duration._
+import cats.effect.Resource
+import java.nio.channels.AsynchronousChannelGroup
+import cats.effect.ContextShift
 
 trait Connection[F[_]] {
   def info: PeerInfo
@@ -302,128 +305,85 @@ object Connection {
   def connect[F[_]: Concurrent](
       selfId: PeerId,
       peerInfo: PeerInfo,
-      infoHash: InfoHash,
-      socket: Socket[F],
-      timer: Timer[F]
-  ): F[Connection[F]] = {
-    for {
-      logger <- Slf4jLogger.fromClass(getClass)
-      connection <- connect0(selfId, peerInfo, infoHash, socket)
-      queue <- Queue.unbounded[F, Command]
-      eventQueue <- Queue.noneTerminated[F, Event]
-      stateRef <- Ref.of[F, State](State())
-      metadataExtensionInit <- MVar[F].empty[Unit]
-      metadataExtensionDeferred <- Deferred[F, MetadataExtension[F]]
-      effects = new Effects[F] {
-        def currentTime: F[Long] =
-          timer.clock.realTime(TimeUnit.MILLISECONDS)
+      infoHash: InfoHash
+  )(
+      implicit cs: ContextShift[F],
+      timer: Timer[F],
+      acg: AsynchronousChannelGroup
+  ): Resource[F, Connection[F]] = {
+    Connection0.connect(selfId, peerInfo, infoHash).evalMap { connection =>
+      for {
+        logger <- Slf4jLogger.fromClass(getClass)
+        queue <- Queue.unbounded[F, Command]
+        eventQueue <- Queue.noneTerminated[F, Event]
+        stateRef <- Ref.of[F, State](State())
+        metadataExtensionInit <- MVar[F].empty[Unit]
+        metadataExtensionDeferred <- Deferred[F, MetadataExtension[F]]
+        effects = new Effects[F] {
+          def currentTime: F[Long] =
+            timer.clock.realTime(TimeUnit.MILLISECONDS)
 
-        def send(message: Message): F[Unit] =
-          connection.send(message)
+          def send(message: Message): F[Unit] =
+            connection.send(message)
 
-        def schedule(in: FiniteDuration, msg: Command): F[Unit] =
-          Concurrent[F].start(timer.sleep(in) *> queue.enqueue1(msg)).void
+          def schedule(in: FiniteDuration, msg: Command): F[Unit] =
+            Concurrent[F].start(timer.sleep(in) *> queue.enqueue1(msg)).void
 
-        def emit(event: Event): F[Unit] =
-          eventQueue.enqueue1(event.some)
+          def emit(event: Event): F[Unit] =
+            eventQueue.enqueue1(event.some)
 
-        val state: MonadState[F, State] = stateRef.stateInstance
-        def completeMetadataExtension(messageId: Long): F[Unit] =
-          metadataExtensionDeferred.complete(
-            new MetadataExtension[F] {
-              def get(piece: Long): F[Unit] = {
-                queue.enqueue1(Command.RequestMetadata(piece))
+          val state: MonadState[F, State] = stateRef.stateInstance
+          def completeMetadataExtension(messageId: Long): F[Unit] =
+            metadataExtensionDeferred.complete(
+              new MetadataExtension[F] {
+                def get(piece: Long): F[Unit] = {
+                  queue.enqueue1(Command.RequestMetadata(piece))
+                }
               }
-            }
-          )
-      }
-      enqueueFiber <- Concurrent[F] start Stream
-        .repeatEval(connection.receive)
-        .map(Command.PeerMessage)
-        .through(queue.enqueue)
-        .compile
-        .drain
-      behaviour = new Behaviour(connection.handshake, 10.seconds, effects, logger)
-      dequeueFiber <- Concurrent[F] start {
-        queue.dequeue.evalTap(behaviour.receive).compile.drain
-      }
-      runningProcess <- Concurrent[F].start {
-        Concurrent[F]
-          .race(enqueueFiber.join, dequeueFiber.join)
-          .onError {
-            case e =>
-              logger.debug(e)(s"Connection error $peerInfo") *>
-                eventQueue.enqueue1(None)
-          }
-      }
-    } yield {
-      new Connection[F] {
-        val info = peerInfo
-        val extensionProtocol = connection.handshake.extensionProtocol
-        def download(request: Message.Request): F[Unit] = queue.enqueue1(Command.Download(request))
-        def events: Stream[F, Event] = eventQueue.dequeue
-        def metadataExtension: F[MetadataExtension[F]] =
-          metadataExtensionInit.tryPut(()).flatMap {
-            case true => queue.enqueue1(Command.InitExtensionProtocol())
-            case false => Concurrent[F].unit
-          } >>
-            metadataExtensionDeferred.get
-        def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
-      }
-    }
-  }
-
-  def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: Logger[F])(
-      implicit F: Concurrent[F]
-  ): F[Handshake] = {
-    val message = Handshake(extensionProtocol = true, infoHash, selfId)
-    for {
-      _ <- logger.debug(s"Initiate handshake")
-      _ <- socket.write(
-        bytes = Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector),
-        timeout = Some(5.seconds)
-      )
-      handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
-      maybeBytes <- socket
-        .readN(
-          handshakeMessageSize,
-          timeout = Some(5.seconds)
-        )
-        .adaptError {
-          case e: InterruptedByTimeoutException => new Exception("Timeout waiting for handshake", e)
+            )
         }
-      bytes <- F.fromOption(
-        maybeBytes.filter(_.size == handshakeMessageSize),
-        new Exception("Unsuccessful handshake: connection prematurely closed")
-      )
-      bv = ByteVector(bytes.toArray)
-      response <- F.fromTry(
-        Handshake.HandshakeCodec
-          .decodeValue(bv.toBitVector)
-          .toTry
-      )
-      _ <- logger.debug(s"Successful handshake")
-    } yield response
-  }
-
-  def connect0[F[_]: Concurrent](
-      selfId: PeerId,
-      peerInfo: PeerInfo,
-      infoHash: InfoHash,
-      socket: Socket[F]
-  ): F[Connection0[F]] = {
-    for {
-      logger <- Slf4jLogger.fromClass(getClass)
-      handshakeResponse <- handshake(selfId, infoHash, socket, logger)
-    } yield {
-      new Connection0(handshakeResponse, peerInfo, socket, logger)
+        enqueueFiber <- Concurrent[F] start Stream
+          .repeatEval(connection.receive)
+          .map(Command.PeerMessage)
+          .through(queue.enqueue)
+          .compile
+          .drain
+        behaviour = new Behaviour(connection.handshake, 10.seconds, effects, logger)
+        dequeueFiber <- Concurrent[F] start {
+          queue.dequeue.evalTap(behaviour.receive).compile.drain
+        }
+        runningProcess <- Concurrent[F].start {
+          Concurrent[F]
+            .race(enqueueFiber.join, dequeueFiber.join)
+            .onError {
+              case e =>
+                logger.debug(e)(s"Connection error $peerInfo") *>
+                  eventQueue.enqueue1(None)
+            }
+        }
+      } yield {
+        new Connection[F] {
+          val info = peerInfo
+          val extensionProtocol = connection.handshake.extensionProtocol
+          def download(request: Message.Request): F[Unit] =
+            queue.enqueue1(Command.Download(request))
+          def events: Stream[F, Event] = eventQueue.dequeue
+          def metadataExtension: F[MetadataExtension[F]] =
+            metadataExtensionInit.tryPut(()).flatMap {
+              case true => queue.enqueue1(Command.InitExtensionProtocol())
+              case false => Concurrent[F].unit
+            } >>
+              metadataExtensionDeferred.get
+          def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
+        }
+      }
     }
   }
 }
 
 class Connection0[F[_]](
     val handshake: Handshake,
-    peerInfo: PeerInfo,
+    val peerInfo: PeerInfo,
     socket: Socket[F],
     logger: Logger[F]
 )(
@@ -458,4 +418,55 @@ class Connection0[F[_]](
       )
     } yield ByteVector(chunk.toArray)
 
+}
+
+object Connection0 {
+  import fs2.io.tcp.{Socket => TCPSocket}
+
+  def connect[F[_]: Concurrent](
+      selfId: PeerId,
+      peerInfo: PeerInfo,
+      infoHash: InfoHash
+  )(implicit sc: ContextShift[F], acg: AsynchronousChannelGroup): Resource[F, Connection0[F]] = {
+    for {
+      logger <- Resource.liftF(Slf4jLogger.fromClass(getClass))
+      socket <- TCPSocket.client(to = peerInfo.address)
+      socket <- Resource.make(socket.pure)(_.close *> logger.debug(s"Closed socket $peerInfo"))
+      _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
+      handshakeResponse <- Resource.liftF(handshake(selfId, infoHash, socket, logger))
+    } yield new Connection0(handshakeResponse, peerInfo, socket, logger)
+  }
+
+  def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: Logger[F])(
+      implicit F: Concurrent[F]
+  ): F[Handshake] = {
+    val message = Handshake(extensionProtocol = true, infoHash, selfId)
+    for {
+      _ <- logger.debug(s"Initiate handshake")
+      _ <- socket.write(
+        bytes = Chunk.byteVector(Handshake.HandshakeCodec.encode(message).require.toByteVector),
+        timeout = Some(5.seconds)
+      )
+      handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
+      maybeBytes <- socket
+        .readN(
+          handshakeMessageSize,
+          timeout = Some(5.seconds)
+        )
+        .adaptError {
+          case e: InterruptedByTimeoutException => new Exception("Timeout waiting for handshake", e)
+        }
+      bytes <- F.fromOption(
+        maybeBytes.filter(_.size == handshakeMessageSize),
+        new Exception("Unsuccessful handshake: connection prematurely closed")
+      )
+      bv = ByteVector(bytes.toArray)
+      response <- F.fromTry(
+        Handshake.HandshakeCodec
+          .decodeValue(bv.toBitVector)
+          .toTry
+      )
+      _ <- logger.debug(s"Successful handshake")
+    } yield response
+  }
 }
