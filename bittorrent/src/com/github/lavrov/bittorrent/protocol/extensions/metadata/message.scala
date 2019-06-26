@@ -29,14 +29,19 @@ object Message {
   }
 
   def decode(bytes: ByteVector): Either[BencodeFormatException, Message] = {
-    val result = BencodeCodec.instance.decode(bytes.toBitVector).require
-    MessageFormat.read(result.value).map {
-      case (msgType, piece) =>
-        msgType match {
-          case 0 => Request(piece)
-          case 1 => Data(piece, result.remainder.toByteVector)
-          case 2 => Reject(piece)
+    BencodeCodec.instance
+      .decode(bytes.toBitVector)
+      .toEither
+      .leftMap(_ => BencodeFormatException("Failed to decode bencode"))
+      .flatMap { result =>
+        MessageFormat.read(result.value).map {
+          case (msgType, piece) =>
+            msgType match {
+              case 0 => Request(piece)
+              case 1 => Data(piece, result.remainder.toByteVector)
+              case 2 => Reject(piece)
+            }
         }
-    }
+      }
   }
 }

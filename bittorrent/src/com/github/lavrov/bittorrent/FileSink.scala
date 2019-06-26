@@ -15,7 +15,7 @@ object FileSink {
 
   case class Piece(begin: Long, bytes: ByteVector)
 
-  def apply[F[_]](metaInfo: TorrentMetadata, targetDirectory: Path)(implicit F: Sync[F]): Sink[F, Piece] = {
+  def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(implicit F: Sync[F]): Sink[F, Piece] = {
     def openChannel(filePath: Path) =
       Stream.bracket(
         Sync[F].delay {
@@ -31,7 +31,7 @@ object FileSink {
       )(
         channel => Sync[F].delay(channel.close())
       )
-    metaInfo.info match {
+    metaInfo match {
       case Info.SingleFile(name, _, _, _, _) =>
         source =>
           openChannel(Paths get name).flatMap(

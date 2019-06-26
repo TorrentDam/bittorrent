@@ -29,6 +29,8 @@ import io.github.timwspence.cats.stm.STM
 import fs2.concurrent.Queue
 import com.github.lavrov.bittorrent.protocol.ConnectionManager
 import com.github.lavrov.bittorrent.dht.PeerDiscovery
+import com.github.lavrov.bittorrent.protocol.DownloadTorrentMetadata
+import com.github.lavrov.bittorrent.protocol.Connection0
 
 object Main extends IOApp {
 
@@ -37,17 +39,6 @@ object Main extends IOApp {
   val torrentFileOpt =
     Opts.option[String]("torrent", help = "Path to torrent file").map(Paths.get(_))
 
-  val downloadCommand = Opts.subcommand(
-    name = "download",
-    help = "Download files"
-  ) {
-    val targetDirectoryOpt =
-      Opts.option[String]("target-directory", help = "Path to target directory").map(Paths.get(_))
-    (torrentFileOpt, targetDirectoryOpt).mapN {
-      case (torrentPath, targetPath) => download(torrentPath, targetPath)
-    }
-  }
-
   val infoHashOpt = Opts
     .option[String]("info-hash", "Info-hash of the torrent file")
     .mapValidated(
@@ -55,6 +46,25 @@ object Main extends IOApp {
     )
     .validate("Must be 20 bytes long")(_.size == 20)
     .map(InfoHash)
+
+  val downloadCommand = Opts.subcommand(
+    name = "download",
+    help = "Download files"
+  ) {
+    val targetDirectoryOpt =
+      Opts.option[String]("target-directory", help = "Path to target directory").map(Paths.get(_))
+    (torrentFileOpt.orNone, infoHashOpt.orNone, targetDirectoryOpt).tupled
+      .mapValidated {
+        case ((torrentPath, infoHash, targetPath)) =>
+          if (torrentPath.isEmpty && infoHash.isEmpty)
+            "Provide either torrent-file or info-hash".invalidNel
+          else
+            (torrentPath.toRight(infoHash.get), targetPath).validNel
+      }
+      .map {
+        case ((metadataSource, targetPath)) => download(metadataSource, targetPath)
+      }
+  }
 
   val findPeersCommand = Opts.subcommand(
     name = "find-peers",
@@ -67,7 +77,7 @@ object Main extends IOApp {
     name = "get-torrent",
     help = "Download torrent file by info-hash from peers"
   ) {
-    (torrentFileOpt, infoHashOpt).mapN(getTorrent)
+    (torrentFileOpt, infoHashOpt).mapN(getTorrentAndSave)
   }
 
   val readTorrentCommand = Opts.subcommand(
@@ -95,8 +105,7 @@ object Main extends IOApp {
 
   val asynchronousSocketGroupResource =
     Resource.make(IO(AsynchronousSocketGroup()))(
-      r =>
-        IO(r.close())
+      r => IO(r.close())
     )
 
   val asynchronousChannelGroupResource =
@@ -106,9 +115,7 @@ object Main extends IOApp {
           .provider()
           .openAsynchronousChannelGroup(2, Executors.defaultThreadFactory())
       )
-    )(g =>
-      IO(g.shutdown())
-    )
+    )(g => IO(g.shutdown()))
 
   val resources = for {
     a <- asynchronousSocketGroupResource
@@ -127,20 +134,28 @@ object Main extends IOApp {
 
   def makeLogger: IO[Logger[IO]] = Slf4jLogger.fromClass[IO](getClass)
 
-  def download(torrentPath: Path, targetDirectory: Path): IO[Unit] =
+  def download(metadataSource: Either[InfoHash, Path], targetDirectory: Path): IO[Unit] =
     for {
       logger <- makeLogger
-      metaInfoResult <- getMetaInfo(torrentPath)
-      (infoHash, metaInfo) = metaInfoResult
-      _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
       _ <- resources.use {
         case (asg, acg) =>
           implicit val asyncSocketGroup: AsynchronousSocketGroup = asg
           implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
           for {
-            foundPeers <- getPeers(infoHash)
+            metaInfoResult <- metadataSource.fold(
+              infoHash =>
+                logger.info("Downloading torrent file using info-hash") *>
+                  logger.info(s"Info-hash ${infoHash.bytes.toHex}") *>
+                  getTorrent(infoHash).map { bytes =>
+                    val bc = com.github.lavrov.bencode.decode(bytes.bits).right.get
+                    val metaInfo = TorrentMetadata.InfoFormat.read.run(bc).right.get
+                    (infoHash, metaInfo)
+                  },
+              torrentPath => getMetaInfo(torrentPath)
+            )
+            (infoHash, metaInfo) = metaInfoResult
             connections <- ConnectionManager.make(
-              foundPeers,
+              getPeers(infoHash),
               connectToPeer(_, selfId, infoHash, logger)
             )
             _ <- logger.info(s"Start downloading")
@@ -150,15 +165,15 @@ object Main extends IOApp {
       }
     } yield ()
 
-  def getMetaInfo(torrentPath: Path): IO[(InfoHash, TorrentMetadata)] = {
+  def getMetaInfo(torrentPath: Path): IO[(InfoHash, TorrentMetadata.Info)] = {
     for {
       bytes <- IO(BitVector(Files.readAllBytes(torrentPath)))
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
       infoDict <- IO.fromEither(TorrentMetadata.RawInfoFormat.read(bc).left.map(new Exception(_)))
-      metaInfo <- IO.fromEither(
+      torrentMetadata <- IO.fromEither(
         TorrentMetadata.TorrentMetadataFormat.read(bc).left.map(new Exception(_))
       )
-    } yield (InfoHash(util.sha1Hash(infoDict)), metaInfo)
+    } yield (InfoHash(util.sha1Hash(infoDict)), torrentMetadata.info)
   }
 
   def printTorrentMetadata(torrentPath: Path): IO[Unit] = {
@@ -176,13 +191,16 @@ object Main extends IOApp {
 
   def getPeers(
       infoHash: InfoHash
-  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): IO[Stream[IO, PeerInfo]] =
-    Socket[IO](address = new InetSocketAddress(6881)).allocated.flatMap {
-      case (socket, _) =>
-        DHTClient[IO](NodeId.generate(rnd), socket).flatMap { dhtClient =>
-          PeerDiscovery.start(infoHash, dhtClient)
-        }
-    }
+  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): Stream[IO, PeerInfo] =
+    Stream
+      .resource(Socket[IO](address = new InetSocketAddress(6881)))
+      .flatMap { socket =>
+        for {
+          dhtClient <- Stream.eval(DHTClient[IO](NodeId.generate(rnd), socket))
+          peers <- Stream.eval(PeerDiscovery.start(infoHash, dhtClient))
+          peer <- peers
+        } yield peer
+      }
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
@@ -193,7 +211,7 @@ object Main extends IOApp {
   def saveToFile[F[_]: Concurrent](
       targetDirectory: Path,
       downloading: Downloading[F],
-      metaInfo: TorrentMetadata,
+      metaInfo: TorrentMetadata.Info,
       logger: Logger[F]
   ): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
@@ -220,84 +238,50 @@ object Main extends IOApp {
       logger <- makeLogger
       _ <- resources.use {
         case (asg, _) =>
-          getPeers(infoHash)(asg).flatMap { stream =>
-            stream
-              .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
-              .compile
-              .drain
-          }
+          getPeers(infoHash)(asg)
+            .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
+            .compile
+            .drain
       }
     } yield ()
 
-  def getTorrent1(targetFile: Path, infoHash: InfoHash): IO[Unit] =
+  def getTorrent(
+      infoHash: InfoHash
+  )(implicit acg: AsynchronousChannelGroup, asg: AsynchronousSocketGroup): IO[ByteVector] = {
     for {
       logger <- makeLogger
-      result <- resources.use {
+      metadata <- resources.use {
         case (asg, acg) =>
-          logger.info("Created resources")
+          implicit val _acg: AsynchronousChannelGroup = acg
+          val connections =
+            getPeers(infoHash)(asg)
+              .map(peer => (peer, Connection0.connect[IO](selfId, peer, infoHash)))
+          DownloadTorrentMetadata.start[IO](infoHash, connections)
       }
-    } yield ()
+    } yield metadata
+  }
 
-  def getTorrent(targetFile: Path, infoHash: InfoHash): IO[Unit] =
+  def getTorrentAndSave(targetFile: Path, infoHash: InfoHash): IO[Unit] =
     for {
       logger <- makeLogger
-      result <- resources.use {
+      metadata <- resources.use {
         case (asg, acg) =>
-          getPeers(infoHash)(asg).flatMap { stream =>
-            stream
-              .parEvalMapUnordered(10) { peer =>
-                logger.info(s"Connecting to $peer") *>
-                  connectToPeer(peer, selfId, infoHash, logger)(acg).use { connection =>
-                    logger.info(s"Connected to $peer") >>
-                      (
-                        if (connection.extensionProtocol)
-                          logger.info(s"Connected to $peer which supports extension protocol") *>
-                            connection.metadataExtension
-                              .flatMap { extension =>
-                                extension.get(0) *>
-                                  connection.events
-                                    .collect {
-                                      case Event.DownloadedMetadata(bytes) => bytes
-                                    }
-                                    .head
-                                    .compile
-                                    .last
-                              }
-                        else
-                          logger
-                            .info(
-                              s"Connected to $peer which does not support extension protocol"
-                            )
-                            .as(none)
-                      )
-                  }
-                  .attempt
-              }
-              .collect {
-                case Right(Some(metadata)) => metadata
-              }
-              .head
-              .compile
-              .last
-          }
+          implicit val _acg: AsynchronousChannelGroup = acg
+          implicit val _asg: AsynchronousSocketGroup = asg
+          getTorrent(infoHash)
       }
-      _ <- result match {
-        case Some(metadata) =>
-          IO.delay {
-            val bytes = BencodeCodec.instance
-              .encode(
-                Bencode.BDictionary(
-                  ("info", BencodeCodec.instance.decodeValue(metadata.toBitVector).require),
-                  ("creationDate", Bencode.BInteger(System.currentTimeMillis))
-                )
-              )
-              .require
-            Files.write(targetFile, bytes.toByteArray)
-          } *>
-            logger.info("Successfully downloaded torrent file")
-        case None =>
-          logger.info("Could not download torrent file")
-      }
+      _ <- IO.delay {
+        val bytes = BencodeCodec.instance
+          .encode(
+            Bencode.BDictionary(
+              ("info", BencodeCodec.instance.decodeValue(metadata.toBitVector).require),
+              ("creationDate", Bencode.BInteger(System.currentTimeMillis))
+            )
+          )
+          .require
+        Files.write(targetFile, bytes.toByteArray)
+      } *>
+        logger.info("Successfully downloaded torrent file")
     } yield ()
 
   def connect(infoHash: InfoHash): IO[Unit] = resources.use {
@@ -306,7 +290,7 @@ object Main extends IOApp {
       implicit val acg: AsynchronousChannelGroup = _acg
       for {
         logger <- makeLogger
-        peers <- getPeers(infoHash)
+        peers = getPeers(infoHash)
         connections <- ConnectionManager.make[IO](peers, connectToPeer(_, selfId, infoHash, logger))
         _ <- connections
           .evalTap { connection =>

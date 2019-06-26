@@ -79,7 +79,7 @@ object Downloading {
   }
 
   def start[F[_]: Concurrent](
-      metaInfo: TorrentMetadata,
+      metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
   ): F[Downloading[F]] = {
     for {
@@ -114,7 +114,7 @@ object Downloading {
     } yield Downloading(commandQueue.enqueue1, completePieces.dequeue, fiber)
   }
 
-  def buildQueue(metaInfo: TorrentMetadata): Chain[IncompletePiece] = {
+  def buildQueue(metaInfo: TorrentMetadata.Info): Chain[IncompletePiece] = {
 
     def downloadFile(
         pieceLength: Long,
@@ -160,7 +160,7 @@ object Downloading {
       result
     }
 
-    metaInfo.info match {
+    metaInfo match {
       case info: Info.SingleFile => downloadFile(info.pieceLength, info.length, info.pieces)
       case info: Info.MultipleFiles =>
         downloadFile(info.pieceLength, info.files.map(_.length).sum, info.pieces)

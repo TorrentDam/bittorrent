@@ -15,20 +15,21 @@ object Extensions {
     val Metadata = 1L
   }
 
+  def handshakePayload =
+    ExtensionHandshake(
+      Map(
+        ("ut_metadata", MessageId.Metadata)
+      ),
+      None
+    )
+
   def handshake: Message.Extended =
     Message.Extended(
       MessageId.Handshake,
       BencodeCodec.instance
         .encode(
           ExtensionHandshake.Format
-            .write(
-              ExtensionHandshake(
-                Map(
-                  ("ut_metadata", MessageId.Metadata)
-                ),
-                None
-              )
-            )
+            .write(handshakePayload)
             .right
             .get
         )
