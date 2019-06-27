@@ -78,8 +78,11 @@ object ConnectionManager {
                           logger.debug(s"Disconnected ${connection.info}") *>
                           connected.modify(_ - 1).commit[F]
                       ) *>
-                      Stream.fixedDelay(20.seconds) *>
-                      Stream.eval(goodPeersQueue.enqueue1(connection.info))
+                      Stream.sleep(20.seconds) *>
+                      Stream.eval(
+                        logger.debug(s"Return ${connection.info} to queue") *>
+                        goodPeersQueue.enqueue1(connection.info)
+                      )
 
                     onDisconnect.spawn >> Stream.emit(connection)
                   }

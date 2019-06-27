@@ -18,12 +18,18 @@ import cats.effect.Timer
 
 import scala.concurrent.duration._
 import scala.collection.immutable.ListSet
+import scala.util.Random
 
 object PeerDiscovery {
 
   val BootstrapNode = new InetSocketAddress("router.bittorrent.com", 6881)
 
-  val transactionId = ByteVector.encodeAscii("aa").right.get
+  def transactionId[F[_]: Sync]: F[ByteVector] = {
+    val nextChar = Sync[F].delay(Random.nextPrintableChar())
+    (nextChar, nextChar).mapN((a, b) =>
+      ByteVector.encodeAscii(List(a, b).mkString).right.get
+    )
+  }
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
       implicit F: Sync[F],
@@ -32,6 +38,7 @@ object PeerDiscovery {
     import client.selfId
     for {
       logger <- Slf4jLogger.fromClass(getClass)
+      transactionId <- transactionId
       _ <- client.sendMessage(
         BootstrapNode,
         Message.QueryMessage(transactionId, Query.Ping(selfId))
@@ -53,7 +60,7 @@ object PeerDiscovery {
         .repeatEval(
             nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
               case Some(nodeInfo) => F.pure(nodeInfo)
-              case None => timer.sleep(10.seconds).as(bootstrapNodeInfo)
+              case None => timer.sleep(30.seconds).as(bootstrapNodeInfo)
             }
         )
         .evalMap { nodeInfo =>
@@ -97,6 +104,9 @@ object PeerDiscovery {
                       }
                   )
                   .flatMap(Stream.emits)
+                  .evalTap( peer =>
+                    logger.debug(s"Discovered peer $peer")
+                  )
               case _ =>
                 Stream.empty
             }
