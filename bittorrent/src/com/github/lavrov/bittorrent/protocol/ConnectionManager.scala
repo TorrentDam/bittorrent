@@ -16,6 +16,7 @@ import cats.effect.Timer
 import scala.concurrent.duration._
 import fs2.concurrent.Queue
 import cats.effect.concurrent.Ref
+import fs2.Pull
 
 object ConnectionManager {
 
@@ -33,8 +34,8 @@ object ConnectionManager {
       logger <- Slf4jLogger.fromClass(getClass)
       connecting <- TVar.of(0).commit[F]
       connected <- TVar.of(0).commit[F]
-      goodPeersQueue <- Queue.unbounded[F, PeerInfo]
-      peers = dhtPeers merge goodPeersQueue.dequeue
+      queue <- makePriorityQueue
+      peers = dhtPeers merge Stream.repeatEval(queue.dequeue)
       loggingLoop = Stream
         .repeatEval(
           (connecting.get, connected.get).tupled.commit[F].flatMap {
@@ -64,6 +65,7 @@ object ConnectionManager {
               case Left(_) =>
                 logger.debug(s"Filed to connect $peer") *>
                   connecting.modify(_ - 1).commit[F] *>
+                  queue.enqueue(peer, 1) *>
                   F.pure(Stream.empty)
               case Right((connection, closeConnection)) =>
                 logger.debug(s"Successfully connected $peer") *>
@@ -75,13 +77,13 @@ object ConnectionManager {
                       .eval(
                         connection.disconnected *>
                           closeConnection *>
-                          logger.debug(s"Disconnected ${connection.info}") *>
+                          logger.debug(s"Disconnected $peer") *>
                           connected.modify(_ - 1).commit[F]
                       ) *>
                       Stream.sleep(20.seconds) *>
                       Stream.eval(
-                        logger.debug(s"Return ${connection.info} to queue") *>
-                        goodPeersQueue.enqueue1(connection.info)
+                        logger.debug(s"Return $peer to queue") *>
+                        queue.enqueue(peer, 0)
                       )
 
                     onDisconnect.spawn >> Stream.emit(connection)
@@ -92,4 +94,25 @@ object ConnectionManager {
         .flatten
     } yield loggingLoop.spawn >> connectionLoop
   }
+
+  trait PriorityQueue[F[_]] {
+    def enqueue(peer: PeerInfo, priority: Int): F[Unit]   
+    def dequeue: F[PeerInfo]
+  }
+
+  def makePriorityQueue[F[_]: Effect] = for {
+    q <- TVar.of(List.empty[(PeerInfo, Int)]).commit[F]
+  } yield
+    new PriorityQueue[F] {
+      def enqueue(peer: PeerInfo, priority: Int): F[Unit] =
+        q.modify(list => ((peer, priority) :: list).sortBy(_._2)).commit
+      def dequeue: F[PeerInfo] =
+        STM.atomically {
+          for {
+            list <- q.get
+            _ <- STM.check(list.nonEmpty)
+            _ <- q.set(list.tail)
+          } yield list.head._1
+        }
+    }
 }
