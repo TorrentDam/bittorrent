@@ -52,6 +52,7 @@ object Downloading {
     def send(command: Command[F]): F[Unit]
     def notifyComplete: F[Unit]
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
+    def state: MonadState[F, Downloading.State[F]]
   }
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
@@ -117,8 +118,9 @@ object Downloading {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
+        val state = stateRef.stateInstance
       }
-      behaviour = new Behaviour(16, 10, stateRef.stateInstance, effects, logger)
+      behaviour = new Behaviour(16, 10, effects, logger)
       fiber <- Concurrent[F] start {
         Concurrent[F]
           .race(
@@ -186,7 +188,6 @@ object Downloading {
   class Behaviour[F[_]](
       maxInflightChunks: Int,
       maxConnections: Int,
-      State: MonadState[F, Downloading.State[F]],
       effects: Effects[F],
       logger: Logger[F]
   )(implicit F: MonadError[F, Throwable])
@@ -204,8 +205,8 @@ object Downloading {
 
     def addPeer(connection: Connection[F]): F[Unit] = {
       for {
-        state <- State.get
-        _ <- State.set(
+        state <- effects.state.get
+        _ <- effects.state.set(
           state.copy(
             connections = state.connections.updated(connection.uniqueId, connection),
             inProgressByPeer = state.inProgressByPeer.updated(connection.uniqueId, Set.empty)
@@ -218,11 +219,11 @@ object Downloading {
     def removePeer(peerId: UUID): F[Unit] = {
       for {
         _ <- logger.debug(s"Remove peer [$peerId]")
-        requests <- State.inspect { state =>
+        requests <- effects.state.inspect { state =>
           state.inProgressByPeer.getOrElse(peerId, Set.empty)
         }
         _ <- logger.debug(s"Returned ${requests.size} to the queue")
-        _ <- State.modify { state =>
+        _ <- effects.state.modify { state =>
           state.copy(
             connections = state.connections - peerId,
             inProgressByPeer = state.inProgressByPeer - peerId,
@@ -236,7 +237,7 @@ object Downloading {
     def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
       val pieceLens = Lenses.incompletePiece composeLens at(request.index)
       for {
-        _ <- State.modify { state =>
+        _ <- effects.state.modify { state =>
           val peer = state.inProgress(request)
           val peerRequests = state.inProgressByPeer(peer)
           state.copy(
@@ -244,7 +245,7 @@ object Downloading {
             inProgressByPeer = state.inProgressByPeer.updated(peer, peerRequests - request)
           )
         }
-        incompletePieceOpt <- State.inspect(pieceLens.get)
+        incompletePieceOpt <- effects.state.inspect(pieceLens.get)
         incompletePiece <- F.fromOption(incompletePieceOpt, new Exception("Piece not found"))
         incompletePiece <- incompletePiece.add(request, bytes).pure
         _ <- {
@@ -252,7 +253,7 @@ object Downloading {
             incompletePiece.verified.pipe {
               case Some(bytes) =>
                 logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
-                  State.modify(pieceLens set none) *>
+                  effects.state.modify(pieceLens set none) *>
                   effects.notifyPieceComplete(
                     CompletePiece(
                       incompletePiece.index,
@@ -262,19 +263,19 @@ object Downloading {
                   )
               case None =>
                 logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
-                  State.modify(pieceLens set incompletePiece.reset.some)
+                  effects.state.modify(pieceLens set incompletePiece.reset.some)
             }
           else
-            State.modify(pieceLens.set(incompletePiece.some))
+            effects.state.modify(pieceLens.set(incompletePiece.some))
         }
         _ <- tryDownload
       } yield ()
     }
 
     def tryDownload: F[Unit] = {
-      State.inspect(_.chunkQueue).flatMap {
+      effects.state.inspect(_.chunkQueue).flatMap {
         case Nil =>
-          State.inspect(_.inProgress.isEmpty).flatMap {
+          effects.state.inspect(_.inProgress.isEmpty).flatMap {
             case true =>
               effects.notifyComplete
             case false =>
@@ -282,7 +283,7 @@ object Downloading {
           }
 
         case nextChunk :: leftChunks =>
-          State
+          effects.state
             .inspect(
               state =>
                 state.inProgressByPeer.toSeq
@@ -303,7 +304,7 @@ object Downloading {
             .flatMap {
               case Some((peerId, connection, requests)) if requests.size < maxInflightChunks =>
                 for {
-                  _ <- State.modify(
+                  _ <- effects.state.modify(
                     state =>
                       state.copy(
                         chunkQueue = leftChunks,
