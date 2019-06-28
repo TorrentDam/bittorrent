@@ -22,6 +22,7 @@ import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
 import scala.util.chaining._
+import cats.MonadError
 
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
@@ -42,7 +43,6 @@ object Downloading {
   sealed trait Command[F[_]]
 
   object Command {
-    case class Init[F[_]]() extends Command[F]
     case class AddPeer[F[_]](connectionActor: Connection[F]) extends Command[F]
     case class RemovePeer[F[_]](id: UUID) extends Command[F]
     case class AddDownloaded[F[_]](request: Message.Request, bytes: ByteVector) extends Command[F]
@@ -87,21 +87,37 @@ object Downloading {
       commandQueue <- Queue.unbounded[F, Command[F]]
       incompletePieces = buildQueue(metaInfo)
       requestQueue = incompletePieces.map(_.requests).toList.flatten
+      completePieces <- Queue.noneTerminated[F, CompletePiece]
+      downloadComplete <- Deferred[F, Unit]
+      _ <- Concurrent[F].start(
+        peers
+          .evalTap(c => commandQueue.enqueue1(Command.AddPeer(c)))
+          .flatMap {
+            peer =>
+              val onDisconnect =
+              Stream
+                .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
+                .spawn
+              val onEvent =  
+                peer.events.evalTap {
+                  case Connection.Event.Downloaded(request, bytes) =>
+                    commandQueue.enqueue1(Command.AddDownloaded(request, bytes))
+                  case _ =>
+                    Monad[F].unit
+                }
+              onDisconnect.spawn *> onEvent.spawn
+          }
+          .compile
+          .drain
+      )
       stateRef <- Ref.of[F, State[F]](
         State(incompletePieces.toList.map(p => (p.index, p)).toMap, requestQueue)
       )
-      completePieces <- Queue.noneTerminated[F, CompletePiece]
-      downloadComplete <- Deferred[F, Unit]
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
       }
-      _ <- Concurrent[F] start peers
-        .evalTap(c => effects.send(Command.AddPeer(c)))
-        .compile
-        .drain
-      _ <- effects.send(Command.Init())
       behaviour = new Behaviour(16, 10, stateRef.stateInstance, effects, logger)
       fiber <- Concurrent[F] start {
         Concurrent[F]
@@ -173,7 +189,7 @@ object Downloading {
       State: MonadState[F, Downloading.State[F]],
       effects: Effects[F],
       logger: Logger[F]
-  )(implicit F: Concurrent[F])
+  )(implicit F: MonadError[F, Throwable])
       extends (Command[F] => F[Unit]) {
 
     object Lenses {
@@ -181,38 +197,20 @@ object Downloading {
     }
 
     def apply(command: Command[F]): F[Unit] = command match {
-      case Command.Init() => init
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
       case Command.RemovePeer(id) => removePeer(id)
       case Command.AddDownloaded(request, bytes) => addDownloaded(request, bytes)
     }
 
-    def init: F[Unit] = Concurrent[F].unit
-
     def addPeer(connection: Connection[F]): F[Unit] = {
       for {
         state <- State.get
-        uuid = UUID.randomUUID()
         _ <- State.set(
           state.copy(
-            connections = state.connections.updated(uuid, connection),
-            inProgressByPeer = state.inProgressByPeer.updated(uuid, Set.empty)
+            connections = state.connections.updated(connection.uniqueId, connection),
+            inProgressByPeer = state.inProgressByPeer.updated(connection.uniqueId, Set.empty)
           )
         )
-        _ <- Concurrent[F].start {
-          connection.events
-            .evalTap {
-              case Connection.Event.Downloaded(request, bytes) =>
-                effects.send(Command.AddDownloaded(request, bytes))
-              case _ =>
-                Monad[F].unit
-            }
-            .onFinalize {
-              effects.send(Command.RemovePeer(uuid))
-            }
-            .compile
-            .drain
-        }
         _ <- tryDownload
       } yield ()
     }
@@ -254,7 +252,7 @@ object Downloading {
             incompletePiece.verified.pipe {
               case Some(bytes) =>
                 logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
-                State.modify(pieceLens set none) *>
+                  State.modify(pieceLens set none) *>
                   effects.notifyPieceComplete(
                     CompletePiece(
                       incompletePiece.index,
@@ -264,7 +262,7 @@ object Downloading {
                   )
               case None =>
                 logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
-                State.modify(pieceLens set incompletePiece.reset.some)
+                  State.modify(pieceLens set incompletePiece.reset.some)
             }
           else
             State.modify(pieceLens.set(incompletePiece.some))

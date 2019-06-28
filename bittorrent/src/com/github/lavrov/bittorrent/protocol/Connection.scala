@@ -25,8 +25,10 @@ import scala.concurrent.duration._
 import cats.effect.Resource
 import java.nio.channels.AsynchronousChannelGroup
 import cats.effect.ContextShift
+import java.{util => ju}
 
 trait Connection[F[_]] {
+  def uniqueId: ju.UUID
   def info: PeerInfo
   def extensionProtocol: Boolean
   def download(request: Message.Request): F[Unit]
@@ -244,6 +246,7 @@ object Connection {
         }
       } yield {
         new Connection[F] {
+          val uniqueId = ju.UUID.randomUUID()
           val info = peerInfo
           val extensionProtocol = connection.handshake.extensionProtocol
           def download(request: Message.Request): F[Unit] =
