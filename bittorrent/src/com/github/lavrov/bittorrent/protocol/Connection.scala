@@ -47,6 +47,7 @@ object Connection {
       bitfield: Option[BitVector] = None,
       queue: ListSet[Message.Request] = ListSet.empty,
       pending: ListSet[Message.Request] = ListSet.empty,
+      lastPieceAt: Option[Long] = None
   )
 
   trait Effects[F[_]] {
@@ -70,7 +71,7 @@ object Connection {
     case class PeerMessage(message: Message) extends Command
     case class SendKeepAlive() extends Command
     case class Download(request: Message.Request) extends Command
-    case class CheckRequest(request: Message.Request) extends Command
+    case object CheckProgress extends Command
   }
 
   class Behaviour[F[_]](
@@ -84,7 +85,7 @@ object Connection {
       case Command.PeerMessage(message) => handleMessage(message)
       case Command.SendKeepAlive() => sendKeepAlive
       case Command.Download(request) => requestPiece(request)
-      case Command.CheckRequest(request) => checkRequest(request)
+      case Command.CheckProgress => checkProgress
     }
 
     def handleMessage(msg: Message): F[Unit] = {
@@ -156,17 +157,21 @@ object Connection {
       for {
         state <- effects.state.get
         _ <- effects.state.set(state.copy(queue = state.queue + request))
-        _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
+        _ <- effects.schedule(30.seconds, Command.CheckProgress)
         _ <- requestPieceFromQueue
       } yield ()
     }
 
-    def checkRequest(request: Message.Request): F[Unit] = {
+    def checkProgress: F[Unit] = {
       for {
-        stillPending <- effects.state.inspect(
-          s => s.pending.contains(request) || s.queue.contains(request)
-        )
-        _ <- if (stillPending) F.raiseError[Unit](new Exception("Peer doesn't respond"))
+        currentTime <- effects.currentTime
+        tooSlow <- effects.state.inspect(_.lastPieceAt).map {
+          case Some(lastPieceAt) =>
+            val sinceLastPiece = (currentTime - lastPieceAt).milliseconds
+            sinceLastPiece > 10.seconds
+          case None => false
+        }
+        _ <- if (tooSlow) F.raiseError[Unit](new Exception("Peer doesn't respond"))
         else Monad[F].unit
       } yield ()
     }
@@ -180,9 +185,11 @@ object Connection {
           if (inPending)
             for {
               _ <- effects.emit(Event.Downloaded(request, piece.bytes))
+              currentTime <- effects.currentTime
               _ <- effects.state.set(
                 state.copy(
-                  pending = state.pending.filterNot(_ == request)
+                  pending = state.pending.filterNot(_ == request),
+                  lastPieceAt = currentTime.some
                 )
               )
               _ <- requestPieceFromQueue
@@ -305,7 +312,11 @@ object Connection0 {
       selfId: PeerId,
       peerInfo: PeerInfo,
       infoHash: InfoHash
-  )(implicit F: Concurrent[F], sc: ContextShift[F], acg: AsynchronousChannelGroup): Resource[F, Connection0[F]] = {
+  )(
+      implicit F: Concurrent[F],
+      sc: ContextShift[F],
+      acg: AsynchronousChannelGroup
+  ): Resource[F, Connection0[F]] = {
     for {
       logger <- Resource.liftF(Slf4jLogger.fromClass(getClass))
       socket <- TCPSocket.client(to = peerInfo.address)
