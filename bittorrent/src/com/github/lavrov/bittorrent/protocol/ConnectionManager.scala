@@ -75,9 +75,12 @@ object ConnectionManager {
                   F.pure {
                     val onDisconnect = Stream
                       .eval(
-                        connection.disconnected *>
+                        connection.disconnected.>>=
+                          { reason => 
+                            val maybeError = reason.left.toOption.fold("")(e => s"(${e.getMessage})")
+                            logger.debug(s"Disconnected $peer $maybeError")
+                          } *>
                           closeConnection *>
-                          logger.debug(s"Disconnected $peer") *>
                           connected.modify(_ - 1).commit[F]
                       ) *>
                       Stream.sleep(20.seconds) *>

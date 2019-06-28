@@ -129,7 +129,6 @@ object Connection {
                   )
                 )
                 _ <- effects.send(request)
-                _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
               } yield ()
             case None =>
               Monad[F].unit
@@ -155,6 +154,7 @@ object Connection {
       for {
         state <- effects.state.get
         _ <- effects.state.set(state.copy(queue = state.queue + request))
+        _ <- effects.schedule(10.seconds, Command.CheckRequest(request))
         _ <- requestPieceFromQueue
       } yield ()
     }

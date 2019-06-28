@@ -18,7 +18,7 @@ class ProtocolSpec extends FlatSpec {
     inside(metaInfo.info) {
       case f: Info.SingleFile =>
         val fileSize = f.length
-        val queue = Downloading.buildQueue(metaInfo)
+        val queue = Downloading.buildQueue(f)
         queue.map(_.size).toList.sum mustEqual fileSize
         queue.toList.flatMap(_.requests).map(_.length).sum mustEqual fileSize
     }

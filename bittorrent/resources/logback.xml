@@ -17,6 +17,12 @@
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n</pattern>
         </encoder>
     </appender>
+    <appender name="connection0" class="ch.qos.logback.core.FileAppender">
+        <file>logs/connection-0.log</file>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{5} - %msg%n</pattern>
+        </encoder>
+    </appender>
     <appender name="connection" class="ch.qos.logback.core.FileAppender">
         <file>logs/connection.log</file>
         <encoder>
@@ -37,6 +43,9 @@
         <appender-ref ref="downloading"/>
     </logger>
     <logger name="com.github.lavrov.bittorrent.protocol.Connection0" level="DEBUG" additivity="false">
+        <appender-ref ref="connection0"/>
+    </logger>
+    <logger name="com.github.lavrov.bittorrent.protocol.Connection" level="DEBUG" additivity="false">
         <appender-ref ref="connection"/>
     </logger>
     <logger name="com.github.lavrov.bittorrent.dht.PeerDiscovery" level="DEBUG" additivity="false">
