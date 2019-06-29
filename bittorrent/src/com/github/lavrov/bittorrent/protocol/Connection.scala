@@ -26,14 +26,17 @@ import cats.effect.Resource
 import java.nio.channels.AsynchronousChannelGroup
 import cats.effect.ContextShift
 import java.{util => ju}
+import fs2.concurrent.Topic
 
 trait Connection[F[_]] {
   def uniqueId: ju.UUID
   def info: PeerInfo
   def extensionProtocol: Boolean
-  def download(request: Message.Request): F[Unit]
+  def interested: F[Unit]
+  def request(request: Message.Request): F[Unit]
   def cancel(request: Message.Request): F[Unit]
   def events: Stream[F, Event]
+  def choked: Stream[F, Boolean]
   def disconnected: F[Either[Throwable, Unit]]
 }
 
@@ -46,7 +49,6 @@ object Connection {
       peerChoking: Boolean = true,
       peerInterested: Boolean = false,
       bitfield: Option[BitVector] = None,
-      queue: ListSet[Message.Request] = ListSet.empty,
       pending: ListSet[Message.Request] = ListSet.empty,
       lastPieceAt: Option[Long] = None
   )
@@ -54,8 +56,9 @@ object Connection {
   trait Effects[F[_]] {
     def currentTime: F[Long]
     def send(message: Message): F[Unit]
-    def schedule(in: FiniteDuration, msg: Command): F[Unit]
+    def schedule(in: FiniteDuration, msg: Command[Unit]): F[Unit]
     def emit(event: Event): F[Unit]
+    def updateChoked(status: Boolean): F[Unit]
     def state: MonadState[F, State]
   }
 
@@ -65,14 +68,15 @@ object Connection {
     case class Downloaded(request: Message.Request, bytes: ByteVector) extends Event
   }
 
-  sealed trait Command
+  sealed trait Command[A]
 
   object Command {
-    case class PeerMessage(message: Message) extends Command
-    case class SendKeepAlive() extends Command
-    case class Download(request: Message.Request) extends Command
-    case class Cancel(request: Message.Request) extends Command
-    case object CheckProgress extends Command
+    case class PeerMessage(message: Message) extends Command[Unit]
+    case class SendKeepAlive() extends Command[Unit]
+    case object MakeInterested extends Command[Unit]
+    case class SendRequest(request: Message.Request) extends Command[Boolean]
+    case class Cancel(request: Message.Request) extends Command[Unit]
+    case object CheckProgress extends Command[Unit]
   }
 
   class Behaviour[F[_]](
@@ -82,10 +86,11 @@ object Connection {
       logger: Logger[F]
   )(implicit F: MonadError[F, Throwable]) {
 
-    def receive: Command => F[Unit] = {
+    def receive[A](command: Command[A]): F[A] = command match {
       case Command.PeerMessage(message) => handleMessage(message)
       case Command.SendKeepAlive() => sendKeepAlive
-      case Command.Download(request) => requestPiece(request)
+      case Command.MakeInterested => makeInterested
+      case Command.SendRequest(request) => sendRequest(request)
       case Command.Cancel(request) => cancelPiece(request)
       case Command.CheckProgress => checkProgress
     }
@@ -96,12 +101,11 @@ object Connection {
         _ <- msg match {
           case Message.KeepAlive => Monad[F].unit
           case Message.Choke =>
-            effects.state.modify(_.copy(peerChoking = true))
+            effects.state.modify(_.copy(peerChoking = true)) *>
+            effects.updateChoked(true)
           case Message.Unchoke =>
-            for {
-              _ <- effects.state.modify(_.copy(peerChoking = false))
-              _ <- requestPieceFromQueue
-            } yield ()
+            effects.state.modify(_.copy(peerChoking = false)) *>
+            effects.updateChoked(false)
           case Message.Interested =>
             effects.state.modify(_.copy(peerInterested = true))
           case Message.NotInterested =>
@@ -112,33 +116,6 @@ object Connection {
           case _ => Monad[F].unit
         }
         _ <- effects.state.modify(_.copy(lastMessageAt = time))
-      } yield ()
-    }
-
-    def requestPieceFromQueue: F[Unit] = {
-      for {
-        iAmInterested <- effects.state.inspect(_.interested)
-        _ <- effects.send(Message.Interested).whenA(!iAmInterested)
-        _ <- effects.state.modify(_.copy(interested = true))
-        state <- effects.state.get
-        _ <- if (state.peerChoking)
-          Monad[F].unit
-        else
-          state.queue.headOption match {
-            case Some(request) =>
-              for {
-                _ <- effects.state.set(
-                  state.copy(
-                    queue = state.queue.tail,
-                    pending = state.pending + request
-                  )
-                )
-                _ <- effects.send(request)
-              } yield ()
-            case None =>
-              Monad[F].unit
-          }
-
       } yield ()
     }
 
@@ -154,25 +131,35 @@ object Connection {
         _ <- effects.schedule(keepAliveInterval, Command.SendKeepAlive())
       } yield ()
     }
+    
+    def makeInterested: F[Unit] = {
+      for {
+        interested <- effects.state.inspect(_.interested)
+        _ <- F.whenA(!interested)(
+          effects.send(Message.Interested)
+        )
+      } yield ()
+    }
 
-    def requestPiece(request: Message.Request): F[Unit] = {
+    def sendRequest(request: Message.Request): F[Boolean] = {
       for {
         state <- effects.state.get
-        _ <- effects.state.set(state.copy(queue = state.queue + request))
-        _ <- effects.schedule(30.seconds, Command.CheckProgress)
-        _ <- requestPieceFromQueue
-      } yield ()
+        requested <- if (state.peerChoking)
+          false.pure
+        else
+          for {
+            _ <- effects.send(request)
+            _ <- effects.state.set(state.copy(pending = state.pending + request))
+            _ <- effects.schedule(30.seconds, Command.CheckProgress)
+          } yield true
+      } yield requested
     }
 
     def cancelPiece(request: Message.Request): F[Unit] = {
       for {
         state <- effects.state.get
-        _ <- if (state.queue.contains(request))
-          effects.state.set(state.copy(queue = state.queue - request))
-         else
-          effects.state.set(state.copy(pending = state.pending - request)) *>
-          effects.send(Message.Cancel(request.index, request.begin, request.length)) *>
-          requestPieceFromQueue
+        _ <- effects.state.set(state.copy(pending = state.pending - request))
+        _ <- effects.send(Message.Cancel(request.index, request.begin, request.length))
       } yield ()
     }
 
@@ -206,7 +193,6 @@ object Connection {
                   lastPieceAt = currentTime.some
                 )
               )
-              _ <- requestPieceFromQueue
             } yield ()
           else
             F.raiseError(new Exception("Unexpected piece"))
@@ -215,35 +201,37 @@ object Connection {
     }
   }
 
-  def connect[F[_]: Concurrent](
+  def connect[F[_]](
       selfId: PeerId,
       peerInfo: PeerInfo,
       infoHash: InfoHash
   )(
-      implicit cs: ContextShift[F],
+      implicit F: Concurrent[F],
+      cs: ContextShift[F],
       timer: Timer[F],
       acg: AsynchronousChannelGroup
   ): Resource[F, Connection[F]] = {
+    type PendingCommand[A] = (Command[A], A => F[Unit])
+    val Noop = (_: Unit) => F.unit
     Connection0.connect(selfId, peerInfo, infoHash).evalMap { connection =>
       for {
         logger <- Slf4jLogger.fromClass(getClass)
-        queue <- Queue.unbounded[F, Command]
+        queue <- Queue.unbounded[F, Command[_]]
         eventQueue <- Queue.noneTerminated[F, Event]
-        stateRef <- Ref.of[F, State](State())
-        metadataExtensionInit <- MVar[F].empty[Unit]
+        initState = State()
+        chokedTopic <- Topic(initState.peerChoking)
+        stateRef <- Ref.of[F, State](initState)
         effects = new Effects[F] {
           def currentTime: F[Long] =
             timer.clock.realTime(TimeUnit.MILLISECONDS)
-
           def send(message: Message): F[Unit] =
             connection.send(message)
-
-          def schedule(in: FiniteDuration, msg: Command): F[Unit] =
-            Concurrent[F].start(timer.sleep(in) *> queue.enqueue1(msg)).void
-
+          def schedule(in: FiniteDuration, msg: Command[Unit]): F[Unit] =
+            F.start(timer.sleep(in) *> queue.enqueue1(msg)).void
           def emit(event: Event): F[Unit] =
             eventQueue.enqueue1(event.some)
-
+          def updateChoked(choked: Boolean): F[Unit] =
+            chokedTopic.publish1(choked)
           val state: MonadState[F, State] = stateRef.stateInstance
         }
         enqueueFiber <- Concurrent[F] start Stream
@@ -254,7 +242,10 @@ object Connection {
           .drain
         behaviour = new Behaviour(connection.handshake, 10.seconds, effects, logger)
         dequeueFiber <- Concurrent[F] start {
-          queue.dequeue.evalTap(behaviour.receive).compile.drain
+          queue.dequeue
+            .evalTap { command => behaviour.receive(command).void }
+            .compile
+            .drain
         }
         runningProcess <- Concurrent[F].start {
           Concurrent[F]
@@ -270,11 +261,13 @@ object Connection {
           val uniqueId = ju.UUID.randomUUID()
           val info = peerInfo
           val extensionProtocol = connection.handshake.extensionProtocol
-          def download(request: Message.Request): F[Unit] =
-            queue.enqueue1(Command.Download(request))
+          def interested: F[Unit] = queue.enqueue1(Command.MakeInterested)
+          def request(request: Message.Request): F[Unit] =
+            queue.enqueue1(Command.SendRequest(request))
           def cancel(request: Message.Request): F[Unit] =
             queue.enqueue1(Command.Cancel(request))
           def events: Stream[F, Event] = eventQueue.dequeue
+          def choked: Stream[F,Boolean] = chokedTopic.subscribe(Int.MaxValue)
           def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
         }
       }

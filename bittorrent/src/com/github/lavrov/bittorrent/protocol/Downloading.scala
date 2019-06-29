@@ -26,6 +26,7 @@ import scodec.bits.ByteVector
 import scala.concurrent.duration._
 import scala.util.chaining._
 import cats.effect.Timer
+import com.github.lavrov.bittorrent.protocol.Downloading.Command.UpdateChokeStatus
 
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
@@ -39,6 +40,7 @@ object Downloading {
       incompletePieces: Map[Long, IncompletePiece],
       chunkQueue: List[Message.Request] = Nil,
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
+      activeConnections: Set[UUID] = Set.empty,
       inProgress: Map[Message.Request, Set[UUID]] = Map.empty,
       inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
   )
@@ -48,6 +50,7 @@ object Downloading {
   object Command {
     case class AddPeer[F[_]](connectionActor: Connection[F]) extends Command[F]
     case class RemovePeer[F[_]](id: UUID) extends Command[F]
+    case class UpdateChokeStatus[F[_]](id: UUID, choked: Boolean) extends Command[F]
     case class RedispatchRequest[F[_]](request: Request) extends Command[F]
     case class AddDownloaded[F[_]](peerId: UUID, request: Message.Request, bytes: ByteVector)
         extends Command[F]
@@ -111,7 +114,11 @@ object Downloading {
                 case _ =>
                   Monad[F].unit
               }
-            onDisconnect.spawn *> onEvent.spawn
+            val onChokedStatusChanged =
+              peer.choked.evalTap(
+                choked => commandQueue.enqueue1(Command.UpdateChokeStatus(peer.uniqueId, choked))
+              )
+            onDisconnect.spawn *> onEvent.spawn *> onChokedStatusChanged.spawn
           }
           .compile
           .drain
@@ -207,6 +214,7 @@ object Downloading {
     def apply(command: Command[F]): F[Unit] = command match {
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
       case Command.RemovePeer(id) => removePeer(id)
+      case UpdateChokeStatus(id, choked) => updateChokeStatus(id, choked)
       case RedispatchRequest(request) => redispatchRequest(request)
       case Command.AddDownloaded(peerId, request, bytes) => addDownloaded(peerId, request, bytes)
     }
@@ -220,25 +228,48 @@ object Downloading {
             inProgressByPeer = state.inProgressByPeer.updated(connection.uniqueId, Set.empty)
           )
         )
-        _ <- tryDownload
+        _ <- connection.interested
+        _ <- logger.debug(s"Added peer ${connection.uniqueId} ${connection.info}")
       } yield ()
     }
 
     def removePeer(peerId: UUID): F[Unit] = {
       for {
-        _ <- logger.debug(s"Remove peer [$peerId]")
+        _ <- logger.debug(s"Removing peer $peerId")
         requests <- effects.state.inspect { state =>
           state.inProgressByPeer.getOrElse(peerId, Set.empty)
         }
-        _ <- logger.debug(s"Returned ${requests.size} to the queue")
         _ <- effects.state.modify { state =>
           state.copy(
             connections = state.connections - peerId,
+            activeConnections = state.activeConnections - peerId,
             inProgressByPeer = state.inProgressByPeer - peerId,
             inProgress = state.inProgress -- requests,
             chunkQueue = requests.toList ++ state.chunkQueue
           )
         }
+        _ <- logger.debug(s"Removed peer $peerId")
+        _ <- logger.debug(s"Returned ${requests.size} to the queue")
+      } yield ()
+    }
+
+    def updateChokeStatus(peerId: UUID, choked: Boolean): F[Unit] = {
+      for {
+        connectionExits <- effects.state.inspect(_.connections.contains(peerId))
+        _ <- F.whenA(connectionExits)(
+          effects.state.modify(
+            state =>
+              state.copy(
+                activeConnections =
+                  if (choked)
+                    state.activeConnections - peerId
+                  else
+                    state.activeConnections + peerId
+              )
+          ) *>
+            logger.debug(s"Peer $peerId is now ${if (choked) "inactive" else "active"}") *>
+            F.whenA(!choked)(tryDownload)
+        )
       } yield ()
     }
 
@@ -252,7 +283,8 @@ object Downloading {
                 state.copy(
                   chunkQueue = request :: state.chunkQueue
                 )
-            )
+            ) *>
+            tryDownload
         )
       } yield ()
     }
@@ -263,7 +295,7 @@ object Downloading {
       effects.state.inspect(_.inProgress.contains(request)).flatMap { stillInProggress =>
         F.whenA(stillInProggress)(
           for {
-            _ <- logger.debug(s"Received $request")
+            _ <- logger.debug(s"Received $request from $peerId")
             otherPeers <- effects.state.inspect { state =>
               val peerIds = state.inProgress(request) - peerId
               state.connections.filterKeys(peerIds).values.toList
@@ -327,19 +359,24 @@ object Downloading {
           effects.state
             .inspect(
               state =>
-                state.inProgressByPeer.toSeq
+                state.inProgressByPeer
+                  .filterKeys(state.activeConnections)
+                  .toSeq
                   .sortBy(_._2.size)
                   .headOption
-                  .collect {
+                  .map {
                     case (peerId, requests) =>
                       val connection = state.connections(peerId)
                       (peerId, connection, requests)
                   }
                   .orElse {
-                    state.connections.headOption.map {
-                      case (peerId, connection) =>
-                        (peerId, connection, Set.empty[Message.Request])
-                    }
+                    state.connections
+                      .filterKeys(state.activeConnections)
+                      .headOption
+                      .map {
+                        case (peerId, connection) =>
+                          (peerId, connection, Set.empty[Message.Request])
+                      }
                   }
             )
             .flatMap {
@@ -357,8 +394,9 @@ object Downloading {
                           state.inProgressByPeer.updated(peerId, requests + nextChunk)
                       )
                   )
-                  _ <- connection.download(nextChunk)
+                  _ <- connection.request(nextChunk)
                   _ <- effects.schedule(10.seconds, Command.RedispatchRequest(nextChunk))
+                  _ <- logger.debug(s"Requested $nextChunk via $peerId")
                   _ <- tryDownload
                 } yield ()
               case _ =>
