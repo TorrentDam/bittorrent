@@ -63,7 +63,6 @@ object Connection {
 
   object Event {
     case class Downloaded(request: Message.Request, bytes: ByteVector) extends Event
-    case class DownloadedMetadata(bytes: ByteVector) extends Event
   }
 
   sealed trait Command
