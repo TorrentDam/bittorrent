@@ -32,6 +32,7 @@ trait Connection[F[_]] {
   def info: PeerInfo
   def extensionProtocol: Boolean
   def download(request: Message.Request): F[Unit]
+  def cancel(request: Message.Request): F[Unit]
   def events: Stream[F, Event]
   def disconnected: F[Either[Throwable, Unit]]
 }
@@ -71,6 +72,7 @@ object Connection {
     case class PeerMessage(message: Message) extends Command
     case class SendKeepAlive() extends Command
     case class Download(request: Message.Request) extends Command
+    case class Cancel(request: Message.Request) extends Command
     case object CheckProgress extends Command
   }
 
@@ -85,6 +87,7 @@ object Connection {
       case Command.PeerMessage(message) => handleMessage(message)
       case Command.SendKeepAlive() => sendKeepAlive
       case Command.Download(request) => requestPiece(request)
+      case Command.Cancel(request) => cancelPiece(request)
       case Command.CheckProgress => checkProgress
     }
 
@@ -159,6 +162,18 @@ object Connection {
         _ <- effects.state.set(state.copy(queue = state.queue + request))
         _ <- effects.schedule(30.seconds, Command.CheckProgress)
         _ <- requestPieceFromQueue
+      } yield ()
+    }
+
+    def cancelPiece(request: Message.Request): F[Unit] = {
+      for {
+        state <- effects.state.get
+        _ <- if (state.queue.contains(request))
+          effects.state.set(state.copy(queue = state.queue - request))
+         else
+          effects.state.set(state.copy(pending = state.pending - request)) *>
+          effects.send(Message.Cancel(request.index, request.begin, request.length)) *>
+          requestPieceFromQueue
       } yield ()
     }
 
@@ -258,6 +273,8 @@ object Connection {
           val extensionProtocol = connection.handshake.extensionProtocol
           def download(request: Message.Request): F[Unit] =
             queue.enqueue1(Command.Download(request))
+          def cancel(request: Message.Request): F[Unit] =
+            queue.enqueue1(Command.Cancel(request))
           def events: Stream[F, Event] = eventQueue.dequeue
           def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
         }

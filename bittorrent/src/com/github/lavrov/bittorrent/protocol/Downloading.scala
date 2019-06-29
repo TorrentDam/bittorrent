@@ -3,6 +3,7 @@ package com.github.lavrov.bittorrent.protocol
 import java.util.UUID
 
 import cats.Monad
+import cats.MonadError
 import cats.data.Chain
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, Fiber}
@@ -12,6 +13,7 @@ import com.github.lavrov.bittorrent.protocol.Downloading.CompletePiece
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
+import com.github.lavrov.bittorrent.protocol.Downloading.Command.RedispatchRequest
 import com.olegpy.meow.effects._
 import fs2.{Pull, Stream}
 import fs2.concurrent.Queue
@@ -21,8 +23,9 @@ import monocle.function.At.at
 import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
+import scala.concurrent.duration._
 import scala.util.chaining._
-import cats.MonadError
+import cats.effect.Timer
 
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
@@ -36,7 +39,7 @@ object Downloading {
       incompletePieces: Map[Long, IncompletePiece],
       chunkQueue: List[Message.Request] = Nil,
       connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
-      inProgress: Map[Message.Request, UUID] = Map.empty,
+      inProgress: Map[Message.Request, Set[UUID]] = Map.empty,
       inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
   )
 
@@ -45,7 +48,9 @@ object Downloading {
   object Command {
     case class AddPeer[F[_]](connectionActor: Connection[F]) extends Command[F]
     case class RemovePeer[F[_]](id: UUID) extends Command[F]
-    case class AddDownloaded[F[_]](request: Message.Request, bytes: ByteVector) extends Command[F]
+    case class RedispatchRequest[F[_]](request: Request) extends Command[F]
+    case class AddDownloaded[F[_]](peerId: UUID, request: Message.Request, bytes: ByteVector)
+        extends Command[F]
   }
 
   trait Effects[F[_]] {
@@ -53,6 +58,7 @@ object Downloading {
     def notifyComplete: F[Unit]
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
     def state: MonadState[F, Downloading.State[F]]
+    def schedule(after: FiniteDuration, command: Command[F]): F[Unit]
   }
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
@@ -79,10 +85,10 @@ object Downloading {
     def reset: IncompletePiece = copy(downloadedSize = 0, downloaded = Map.empty)
   }
 
-  def start[F[_]: Concurrent](
+  def start[F[_]](
       metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
-  ): F[Downloading[F]] = {
+  )(implicit F: Concurrent[F], timer: Timer[F]): F[Downloading[F]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
@@ -93,20 +99,19 @@ object Downloading {
       _ <- Concurrent[F].start(
         peers
           .evalTap(c => commandQueue.enqueue1(Command.AddPeer(c)))
-          .flatMap {
-            peer =>
-              val onDisconnect =
+          .flatMap { peer =>
+            val onDisconnect =
               Stream
                 .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
                 .spawn
-              val onEvent =  
-                peer.events.evalTap {
-                  case Connection.Event.Downloaded(request, bytes) =>
-                    commandQueue.enqueue1(Command.AddDownloaded(request, bytes))
-                  case _ =>
-                    Monad[F].unit
-                }
-              onDisconnect.spawn *> onEvent.spawn
+            val onEvent =
+              peer.events.evalTap {
+                case Connection.Event.Downloaded(request, bytes) =>
+                  commandQueue.enqueue1(Command.AddDownloaded(peer.uniqueId, request, bytes))
+                case _ =>
+                  Monad[F].unit
+              }
+            onDisconnect.spawn *> onEvent.spawn
           }
           .compile
           .drain
@@ -119,6 +124,8 @@ object Downloading {
         def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
         val state = stateRef.stateInstance
+        def schedule(after: FiniteDuration, command: Command[F]): F[Unit] =
+          F.start(timer.sleep(after) *> commandQueue.enqueue1(command)).void
       }
       behaviour = new Behaviour(16, 10, effects, logger)
       fiber <- Concurrent[F] start {
@@ -200,7 +207,8 @@ object Downloading {
     def apply(command: Command[F]): F[Unit] = command match {
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
       case Command.RemovePeer(id) => removePeer(id)
-      case Command.AddDownloaded(request, bytes) => addDownloaded(request, bytes)
+      case RedispatchRequest(request) => redispatchRequest(request)
+      case Command.AddDownloaded(peerId, request, bytes) => addDownloaded(peerId, request, bytes)
     }
 
     def addPeer(connection: Connection[F]): F[Unit] = {
@@ -234,42 +242,75 @@ object Downloading {
       } yield ()
     }
 
-    def addDownloaded(request: Message.Request, bytes: ByteVector): F[Unit] = {
-      val pieceLens = Lenses.incompletePiece composeLens at(request.index)
+    def redispatchRequest(request: Request): F[Unit] = {
       for {
-        _ <- effects.state.modify { state =>
-          val peer = state.inProgress(request)
-          val peerRequests = state.inProgressByPeer(peer)
-          state.copy(
-            inProgress = state.inProgress - request,
-            inProgressByPeer = state.inProgressByPeer.updated(peer, peerRequests - request)
-          )
-        }
-        incompletePieceOpt <- effects.state.inspect(pieceLens.get)
-        incompletePiece <- F.fromOption(incompletePieceOpt, new Exception("Piece not found"))
-        incompletePiece <- incompletePiece.add(request, bytes).pure
-        _ <- {
-          if (incompletePiece.isComplete)
-            incompletePiece.verified.pipe {
-              case Some(bytes) =>
-                logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
-                  effects.state.modify(pieceLens set none) *>
-                  effects.notifyPieceComplete(
-                    CompletePiece(
-                      incompletePiece.index,
-                      incompletePiece.begin,
-                      bytes
-                    )
-                  )
-              case None =>
-                logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
-                  effects.state.modify(pieceLens set incompletePiece.reset.some)
-            }
-          else
-            effects.state.modify(pieceLens.set(incompletePiece.some))
-        }
-        _ <- tryDownload
+        inProgress <- effects.state.inspect(_.inProgress.contains(request))
+        _ <- F.whenA(inProgress)(
+          logger.debug(s"Redispatching $request") *>
+            effects.state.modify(
+              state =>
+                state.copy(
+                  chunkQueue = request :: state.chunkQueue
+                )
+            )
+        )
       } yield ()
+    }
+
+    def addDownloaded(peerId: UUID, request: Message.Request, bytes: ByteVector): F[Unit] = {
+      import cats.instances.list.catsStdTraverseFilterForList
+      val incompletePieceLens = Lenses.incompletePiece composeLens at(request.index)
+      effects.state.inspect(_.inProgress.contains(request)).flatMap { stillInProggress =>
+        F.whenA(stillInProggress)(
+          for {
+            _ <- logger.debug(s"Received $request")
+            otherPeers <- effects.state.inspect { state =>
+              val peerIds = state.inProgress(request) - peerId
+              state.connections.filterKeys(peerIds).values.toList
+            }
+            _ <- effects.state.modify { state =>
+              val peers = state.inProgress(request)
+              state.copy(
+                inProgress = state.inProgress - request,
+                chunkQueue = state.chunkQueue.filterNot(_ == request),
+                inProgressByPeer = peers.foldLeft(state.inProgressByPeer) { (map, peer) =>
+                  val peerRequests = map(peer)
+                  state.inProgressByPeer.updated(peer, peerRequests - request)
+                }
+              )
+            }
+            _ <- catsStdTraverseFilterForList.traverse.traverse_(otherPeers) { connection =>
+              logger.debug(s"Cancel $request for ${connection.info}") *>
+                connection.cancel(request)
+            }
+            incompletePieceOpt <- effects.state.inspect(incompletePieceLens.get)
+            incompletePiece <- F
+              .fromOption(incompletePieceOpt, new Exception(s"Piece ${request.index} not found"))
+            incompletePiece <- incompletePiece.add(request, bytes).pure
+            _ <- {
+              if (incompletePiece.isComplete)
+                incompletePiece.verified.pipe {
+                  case Some(bytes) =>
+                    logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
+                      effects.state.modify(incompletePieceLens set none) *>
+                      effects.notifyPieceComplete(
+                        CompletePiece(
+                          incompletePiece.index,
+                          incompletePiece.begin,
+                          bytes
+                        )
+                      )
+                  case None =>
+                    logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
+                      effects.state.modify(incompletePieceLens set incompletePiece.reset.some)
+                }
+              else
+                effects.state.modify(incompletePieceLens.set(incompletePiece.some))
+            }
+            _ <- tryDownload
+          } yield ()
+        )
+      }
     }
 
     def tryDownload: F[Unit] = {
@@ -308,12 +349,16 @@ object Downloading {
                     state =>
                       state.copy(
                         chunkQueue = leftChunks,
-                        inProgress = state.inProgress.updated(nextChunk, peerId),
+                        inProgress = state.inProgress.updated(
+                          nextChunk,
+                          state.inProgress.getOrElse(nextChunk, Set.empty) + peerId
+                        ),
                         inProgressByPeer =
                           state.inProgressByPeer.updated(peerId, requests + nextChunk)
                       )
                   )
                   _ <- connection.download(nextChunk)
+                  _ <- effects.schedule(10.seconds, Command.RedispatchRequest(nextChunk))
                   _ <- tryDownload
                 } yield ()
               case _ =>
