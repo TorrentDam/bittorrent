@@ -121,16 +121,14 @@ object Downloading {
               .spawn
           val onEvent =
             peer.events.evalTap {
-              case Connection.Event.Downloaded(request, bytes) =>
+              case Connection.Event.PieceReceived(request, bytes) =>
                 commandQueue.enqueue1(Command.AddDownloaded(peer.uniqueId, request, bytes))
+              case Connection.Event.ChokedUpdated(choked) =>
+                commandQueue.enqueue1(Command.UpdateChokeStatus(peer.uniqueId, choked))
               case _ =>
                 Monad[F].unit
             }
-          val onChokedStatusChanged =
-            peer.choked.evalTap(
-              choked => commandQueue.enqueue1(Command.UpdateChokeStatus(peer.uniqueId, choked))
-            )
-          onDisconnect.spawn *> onEvent.spawn *> onChokedStatusChanged.spawn
+          onDisconnect.spawn *> onEvent.spawn
         }
       fiber <- Concurrent[F].start {
         (

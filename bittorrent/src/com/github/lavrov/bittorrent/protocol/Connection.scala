@@ -36,7 +36,6 @@ trait Connection[F[_]] {
   def request(request: Message.Request): F[Unit]
   def cancel(request: Message.Request): F[Unit]
   def events: Stream[F, Event]
-  def choked: Stream[F, Boolean]
   def disconnected: F[Either[Throwable, Unit]]
 }
 
@@ -58,14 +57,14 @@ object Connection {
     def send(message: Message): F[Unit]
     def schedule(in: FiniteDuration, msg: Command[Unit]): F[Unit]
     def emit(event: Event): F[Unit]
-    def updateChoked(status: Boolean): F[Unit]
     def state: MonadState[F, State]
   }
 
   sealed trait Event
 
   object Event {
-    case class Downloaded(request: Message.Request, bytes: ByteVector) extends Event
+    case class PieceReceived(request: Message.Request, bytes: ByteVector) extends Event
+    case class ChokedUpdated(choked: Boolean) extends Event
   }
 
   sealed trait Command[A]
@@ -102,10 +101,10 @@ object Connection {
           case Message.KeepAlive => Monad[F].unit
           case Message.Choke =>
             effects.state.modify(_.copy(peerChoking = true)) *>
-              effects.updateChoked(true)
+              effects.emit(Event.ChokedUpdated(true))
           case Message.Unchoke =>
             effects.state.modify(_.copy(peerChoking = false)) *>
-              effects.updateChoked(false)
+              effects.emit(Event.ChokedUpdated(false))
           case Message.Interested =>
             effects.state.modify(_.copy(peerInterested = true))
           case Message.NotInterested =>
@@ -185,7 +184,7 @@ object Connection {
         _ <- {
           if (inPending)
             for {
-              _ <- effects.emit(Event.Downloaded(request, piece.bytes))
+              _ <- effects.emit(Event.PieceReceived(request, piece.bytes))
               currentTime <- effects.currentTime
               _ <- effects.state.set(
                 state.copy(
@@ -219,7 +218,6 @@ object Connection {
         queue <- Queue.unbounded[F, Command[_]]
         eventQueue <- Queue.noneTerminated[F, Event]
         initState = State()
-        chokedTopic <- Topic(initState.peerChoking)
         stateRef <- Ref.of[F, State](initState)
         effects = new Effects[F] {
           def currentTime: F[Long] =
@@ -230,8 +228,6 @@ object Connection {
             F.start(timer.sleep(in) *> queue.enqueue1(msg)).void
           def emit(event: Event): F[Unit] =
             eventQueue.enqueue1(event.some)
-          def updateChoked(choked: Boolean): F[Unit] =
-            chokedTopic.publish1(choked)
           val state: MonadState[F, State] = stateRef.stateInstance
         }
         enqueueFiber <- Concurrent[F] start Stream
@@ -269,7 +265,6 @@ object Connection {
           def cancel(request: Message.Request): F[Unit] =
             queue.enqueue1(Command.Cancel(request))
           def events: Stream[F, Event] = eventQueue.dequeue
-          def choked: Stream[F, Boolean] = chokedTopic.subscribe(Int.MaxValue)
           def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
         }
       }
