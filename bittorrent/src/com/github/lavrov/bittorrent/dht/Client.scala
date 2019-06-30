@@ -1,21 +1,21 @@
-package com.github.lavrov.bittorrent
-package dht
+package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
 
 import cats._
-import cats.effect.Sync
-import cats.implicits._
+import cats.effect.{Concurrent, ContextShift, Resource, Sync}
+import cats.syntax.all._
 import fs2.io.udp.{Packet, Socket}
-import com.github.lavrov.bencode.{decode, encode}
-import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import fs2.Chunk
+import fs2.io.udp.AsynchronousSocketGroup
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import scodec.bits.ByteVector
+import scodec.bits.{BitVector, ByteVector}
 
 import scala.concurrent.duration.DurationInt
-import scodec.bits.BitVector
+
+import com.github.lavrov.bencode.{decode, encode}
+import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 
 class Client[F[_]](val selfId: NodeId, socket: Socket[F], logger: Logger[F])(
     implicit F: MonadError[F, Throwable]
@@ -45,8 +45,15 @@ class Client[F[_]](val selfId: NodeId, socket: Socket[F], logger: Logger[F])(
 }
 
 object Client {
-  def apply[F[_]: Sync](selfId: NodeId, socket: Socket[F]): F[Client[F]] =
-    for {
-      logger <- Slf4jLogger.fromClass[F](getClass)
-    } yield new Client(selfId, socket, logger)
+  def apply[F[_]](selfId: NodeId)(
+      implicit F: Concurrent[F],
+      cs: ContextShift[F],
+      asg: AsynchronousSocketGroup
+  ): Resource[F, Client[F]] =
+    Socket[F](address = new InetSocketAddress(6881)).evalMap(
+      socket =>
+        for {
+          logger <- Slf4jLogger.fromClass[F](getClass)
+        } yield new Client(selfId, socket, logger)
+    )
 }

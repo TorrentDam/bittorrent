@@ -1,6 +1,5 @@
 package com.github.lavrov.bittorrent
 
-import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.file.{Files, Path, Paths}
@@ -11,10 +10,10 @@ import cats.effect._
 import cats.syntax.all._
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
-import fs2.io.udp.{AsynchronousSocketGroup, Socket}
+import fs2.io.udp.AsynchronousSocketGroup
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import scodec.bits.{Bases, ByteVector, BitVector}
+import scodec.bits.{Bases, BitVector, ByteVector}
 
 import scala.util.Random
 
@@ -118,10 +117,11 @@ object Main extends IOApp {
       )
     )(g => IO(g.shutdown()))
 
-  def resources = for {
-    a <- asynchronousSocketGroupResource
-    b <- asynchronousChannelGroupResource
-  } yield (a, b)
+  def resources =
+    for {
+      a <- asynchronousSocketGroupResource
+      b <- asynchronousChannelGroupResource
+    } yield (a, b)
 
   def makeLogger: IO[Logger[IO]] = Slf4jLogger.fromClass[IO](getClass)
 
@@ -184,15 +184,11 @@ object Main extends IOApp {
   def getPeers(
       infoHash: InfoHash
   )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): Stream[IO, PeerInfo] =
-    Stream
-      .resource(Socket[IO](address = new InetSocketAddress(6881)))
-      .flatMap { socket =>
-        for {
-          dhtClient <- Stream.eval(DHTClient[IO](NodeId.generate(rnd), socket))
-          peers <- Stream.eval(PeerDiscovery.start(infoHash, dhtClient))
-          peer <- peers
-        } yield peer
-      }
+    for {
+      dhtClient <- Stream.resource(DHTClient[IO](NodeId.generate(rnd)))
+      peers <- Stream.eval(PeerDiscovery.start(infoHash, dhtClient))
+      peer <- peers
+    } yield peer
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
