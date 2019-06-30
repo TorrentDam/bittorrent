@@ -102,10 +102,10 @@ object Connection {
           case Message.KeepAlive => Monad[F].unit
           case Message.Choke =>
             effects.state.modify(_.copy(peerChoking = true)) *>
-            effects.updateChoked(true)
+              effects.updateChoked(true)
           case Message.Unchoke =>
             effects.state.modify(_.copy(peerChoking = false)) *>
-            effects.updateChoked(false)
+              effects.updateChoked(false)
           case Message.Interested =>
             effects.state.modify(_.copy(peerInterested = true))
           case Message.NotInterested =>
@@ -131,7 +131,7 @@ object Connection {
         _ <- effects.schedule(keepAliveInterval, Command.SendKeepAlive())
       } yield ()
     }
-    
+
     def makeInterested: F[Unit] = {
       for {
         interested <- effects.state.inspect(_.interested)
@@ -243,7 +243,9 @@ object Connection {
         behaviour = new Behaviour(connection.handshake, 10.seconds, effects, logger)
         dequeueFiber <- Concurrent[F] start {
           queue.dequeue
-            .evalTap { command => behaviour.receive(command).void }
+            .evalTap { command =>
+              behaviour.receive(command).void
+            }
             .compile
             .drain
         }
@@ -267,7 +269,7 @@ object Connection {
           def cancel(request: Message.Request): F[Unit] =
             queue.enqueue1(Command.Cancel(request))
           def events: Stream[F, Event] = eventQueue.dequeue
-          def choked: Stream[F,Boolean] = chokedTopic.subscribe(Int.MaxValue)
+          def choked: Stream[F, Boolean] = chokedTopic.subscribe(Int.MaxValue)
           def disconnected: F[Either[Throwable, Unit]] = runningProcess.join.void.attempt
         }
       }

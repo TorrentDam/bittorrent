@@ -26,9 +26,7 @@ object PeerDiscovery {
 
   def transactionId[F[_]: Sync]: F[ByteVector] = {
     val nextChar = Sync[F].delay(Random.nextPrintableChar())
-    (nextChar, nextChar).mapN((a, b) =>
-      ByteVector.encodeAscii(List(a, b).mkString).right.get
-    )
+    (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).right.get)
   }
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
@@ -58,10 +56,10 @@ object PeerDiscovery {
     } yield {
       Stream
         .repeatEval(
-            nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
-              case Some(nodeInfo) => F.pure(nodeInfo)
-              case None => timer.sleep(30.seconds).as(bootstrapNodeInfo)
-            }
+          nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
+            case Some(nodeInfo) => F.pure(nodeInfo)
+            case None => timer.sleep(30.seconds).as(bootstrapNodeInfo)
+          }
         )
         .evalMap { nodeInfo =>
           (
@@ -104,9 +102,7 @@ object PeerDiscovery {
                       }
                   )
                   .flatMap(Stream.emits)
-                  .evalTap( peer =>
-                    logger.debug(s"Discovered peer $peer")
-                  )
+                  .evalTap(peer => logger.debug(s"Discovered peer $peer"))
               case _ =>
                 Stream.empty
             }

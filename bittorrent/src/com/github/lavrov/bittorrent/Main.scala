@@ -9,7 +9,7 @@ import java.util.concurrent.Executors
 import cats.data.Validated
 import cats.effect._
 import cats.implicits._
-import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode}
+import com.github.lavrov.bencode.{decode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
 import com.github.lavrov.bittorrent.protocol.Connection.Event
 import com.github.lavrov.bittorrent.protocol.{Connection, Downloading}

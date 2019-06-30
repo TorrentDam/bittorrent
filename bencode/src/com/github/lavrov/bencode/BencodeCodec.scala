@@ -36,8 +36,8 @@ object BencodeCodec {
         .consume {
           case true => positiveInverted
           case false => positiveNumber
-        }{
-          value => value < 0
+        } { value =>
+          value < 0
         }
     }
 

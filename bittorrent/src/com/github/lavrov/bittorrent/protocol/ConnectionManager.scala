@@ -79,11 +79,10 @@ object ConnectionManager {
                   F.pure {
                     val onDisconnect = Stream
                       .eval(
-                        connection.disconnected.>>=
-                          { reason => 
-                            val maybeError = reason.left.toOption.fold("")(e => s"(${e.getMessage})")
-                            logger.debug(s"Disconnected $peer $maybeError")
-                          } *>
+                        connection.disconnected.>>= { reason =>
+                          val maybeError = reason.left.toOption.fold("")(e => s"(${e.getMessage})")
+                          logger.debug(s"Disconnected $peer $maybeError")
+                        } *>
                           connectionCloseActions.update(_ - connection.uniqueId) *>
                           closeConnection *>
                           connected.modify(_ - 1).commit[F]
@@ -91,7 +90,7 @@ object ConnectionManager {
                       Stream.sleep(20.seconds) *>
                       Stream.eval(
                         logger.debug(s"Return $peer to queue") *>
-                        queue.enqueue(peer, 0)
+                          queue.enqueue(peer, 0)
                       )
 
                     onDisconnect.spawn >> Stream.emit(connection)
@@ -110,14 +109,14 @@ object ConnectionManager {
   }
 
   trait PriorityQueue[F[_]] {
-    def enqueue(peer: PeerInfo, priority: Int): F[Unit]   
+    def enqueue(peer: PeerInfo, priority: Int): F[Unit]
     def dequeue: F[PeerInfo]
   }
 
-  def makePriorityQueue[F[_]: Effect] = for {
-    q <- TVar.of(List.empty[(PeerInfo, Int)]).commit[F]
-  } yield
-    new PriorityQueue[F] {
+  def makePriorityQueue[F[_]: Effect] =
+    for {
+      q <- TVar.of(List.empty[(PeerInfo, Int)]).commit[F]
+    } yield new PriorityQueue[F] {
       def enqueue(peer: PeerInfo, priority: Int): F[Unit] =
         q.modify(list => ((peer, priority) :: list).sortBy(_._2)).commit
       def dequeue: F[PeerInfo] =

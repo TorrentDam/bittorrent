@@ -15,7 +15,9 @@ object FileSink {
 
   case class Piece(begin: Long, bytes: ByteVector)
 
-  def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(implicit F: Sync[F]): Sink[F, Piece] = {
+  def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(
+      implicit F: Sync[F]
+  ): Sink[F, Piece] = {
     def openChannel(filePath: Path) =
       Stream.bracket(
         Sync[F].delay {
@@ -62,7 +64,8 @@ object FileSink {
         }
         source =>
           channels.map(Chain.one).reduceSemigroup.flatMap { channels =>
-            def writeToChannel(fileChannel: OpenChannel, position: Long, bytes: ByteVector): F[Unit] = Sync[F].delay {
+            def writeToChannel(fileChannel: OpenChannel, position: Long, bytes: ByteVector)
+                : F[Unit] = Sync[F].delay {
               import fileChannel.channel
               channel.position(position)
               channel.write(bytes.toByteBuffer)
@@ -74,9 +77,9 @@ object FileSink {
               val numBytesTillFileEnd = fileChannel.until - begin
               val (thisFileBytes, leftoverBytes) = bytes.splitAt(numBytesTillFileEnd)
               writeToChannel(fileChannel, position, thisFileBytes) *>
-              F.whenA(leftoverBytes.nonEmpty){
-                write(fileChannel.until, leftoverBytes)
-              }
+                F.whenA(leftoverBytes.nonEmpty) {
+                  write(fileChannel.until, leftoverBytes)
+                }
             }
             source.evalMap { piece =>
               write(piece.begin, piece.bytes)
