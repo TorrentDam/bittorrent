@@ -159,8 +159,9 @@ object Main extends IOApp {
               connectToPeer(_, selfId, infoHash, logger)
             )
             _ <- logger.info(s"Start downloading")
-            downloading <- Downloading.start[IO](metaInfo, connections)
+            downloading <- Downloading.start[IO, IO.Par](metaInfo, connections)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
+            _ <- downloading.fiber.cancel
           } yield ()
       }
     } yield ()
@@ -216,20 +217,17 @@ object Main extends IOApp {
   ): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
     for {
-      _ <- Concurrent[F].start {
-        downloading.completePieces
-          .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
-          .map(p => FileSink.Piece(p.begin, p.bytes))
-          .through(sink)
-          .compile
-          .drain
-          .onError {
-            case e =>
-              logger.error(e)(s"Download failed")
-          }
-      }
-      _ <- downloading.fiber.join
-      _ <- logger.info(s"The End")
+      _ <- downloading.completePieces
+        .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
+        .map(p => FileSink.Piece(p.begin, p.bytes))
+        .through(sink)
+        .compile
+        .drain
+        .onError {
+          case e =>
+            logger.error(e)(s"Download failed")
+        }
+      _ <- logger.info(s"Download complete")
     } yield ()
   }
 

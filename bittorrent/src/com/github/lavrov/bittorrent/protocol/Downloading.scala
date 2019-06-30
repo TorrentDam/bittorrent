@@ -27,6 +27,8 @@ import scala.concurrent.duration._
 import scala.util.chaining._
 import cats.effect.Timer
 import com.github.lavrov.bittorrent.protocol.Downloading.Command.UpdateChokeStatus
+import cats.Parallel
+import cats.data.NonEmptyList
 
 case class Downloading[F[_]](
     send: Downloading.Command[F] => F[Unit],
@@ -88,62 +90,59 @@ object Downloading {
     def reset: IncompletePiece = copy(downloadedSize = 0, downloaded = Map.empty)
   }
 
-  def start[F[_]](
+  def start[F[_], F1[_]](
       metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
-  )(implicit F: Concurrent[F], timer: Timer[F]): F[Downloading[F]] = {
+  )(implicit F: Concurrent[F], P: Parallel[F, F1], timer: Timer[F]): F[Downloading[F]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
       incompletePieces = buildQueue(metaInfo)
       requestQueue = incompletePieces.map(_.requests).toList.flatten
       completePieces <- Queue.noneTerminated[F, CompletePiece]
-      downloadComplete <- Deferred[F, Unit]
-      _ <- Concurrent[F].start(
-        peers
-          .evalTap(c => commandQueue.enqueue1(Command.AddPeer(c)))
-          .flatMap { peer =>
-            val onDisconnect =
-              Stream
-                .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
-                .spawn
-            val onEvent =
-              peer.events.evalTap {
-                case Connection.Event.Downloaded(request, bytes) =>
-                  commandQueue.enqueue1(Command.AddDownloaded(peer.uniqueId, request, bytes))
-                case _ =>
-                  Monad[F].unit
-              }
-            val onChokedStatusChanged =
-              peer.choked.evalTap(
-                choked => commandQueue.enqueue1(Command.UpdateChokeStatus(peer.uniqueId, choked))
-              )
-            onDisconnect.spawn *> onEvent.spawn *> onChokedStatusChanged.spawn
-          }
-          .compile
-          .drain
-      )
       stateRef <- Ref.of[F, State[F]](
         State(incompletePieces.toList.map(p => (p.index, p)).toMap, requestQueue)
       )
       effects = new Effects[F] {
         def send(command: Command[F]): F[Unit] = commandQueue.enqueue1(command)
-        def notifyComplete: F[Unit] = downloadComplete.complete(()) *> completePieces.enqueue1(none)
+        def notifyComplete: F[Unit] = completePieces.enqueue1(none)
         def notifyPieceComplete(piece: CompletePiece): F[Unit] = completePieces.enqueue1(piece.some)
         val state = stateRef.stateInstance
         def schedule(after: FiniteDuration, command: Command[F]): F[Unit] =
           F.start(timer.sleep(after) *> commandQueue.enqueue1(command)).void
       }
       behaviour = new Behaviour(16, 10, effects, logger)
-      fiber <- Concurrent[F] start {
-        Concurrent[F]
-          .race(
-            commandQueue.dequeue.evalTap(behaviour).compile.drain,
-            downloadComplete.get
-          )
-          .void
+      getConnectionStream = peers
+        .evalTap(c => commandQueue.enqueue1(Command.AddPeer(c)))
+        .flatMap { peer =>
+          val onDisconnect =
+            Stream
+              .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
+              .spawn
+          val onEvent =
+            peer.events.evalTap {
+              case Connection.Event.Downloaded(request, bytes) =>
+                commandQueue.enqueue1(Command.AddDownloaded(peer.uniqueId, request, bytes))
+              case _ =>
+                Monad[F].unit
+            }
+          val onChokedStatusChanged =
+            peer.choked.evalTap(
+              choked => commandQueue.enqueue1(Command.UpdateChokeStatus(peer.uniqueId, choked))
+            )
+          onDisconnect.spawn *> onEvent.spawn *> onChokedStatusChanged.spawn
+        }
+      fiber <- Concurrent[F].start {
+        (
+          commandQueue.dequeue.evalTap(behaviour).compile.drain,
+          getConnectionStream.compile.drain
+        ).parTupled.void
       }
-    } yield Downloading(commandQueue.enqueue1, completePieces.dequeue, fiber)
+    } yield Downloading(
+      commandQueue.enqueue1,
+      completePieces.dequeue.concurrently(Stream.eval(fiber.join)),
+      fiber
+    )
   }
 
   def buildQueue(metaInfo: TorrentMetadata.Info): Chain[IncompletePiece] = {

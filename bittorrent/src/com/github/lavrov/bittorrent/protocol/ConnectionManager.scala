@@ -1,6 +1,7 @@
 package com.github.lavrov.bittorrent.protocol
 
 import cats.syntax.all._
+import cats.instances.list._
 import com.github.lavrov.bittorrent.InfoHash
 import cats.effect.Effect
 import fs2.Stream
@@ -17,6 +18,7 @@ import scala.concurrent.duration._
 import fs2.concurrent.Queue
 import cats.effect.concurrent.Ref
 import fs2.Pull
+import java.{util => ju}
 
 object ConnectionManager {
 
@@ -32,6 +34,7 @@ object ConnectionManager {
   ): F[Stream[F, Connection[F]]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
+      connectionCloseActions <- Ref.of(Map.empty[ju.UUID, F[Unit]])
       connecting <- TVar.of(0).commit[F]
       connected <- TVar.of(0).commit[F]
       queue <- makePriorityQueue
@@ -72,6 +75,7 @@ object ConnectionManager {
                   STM.atomically[F] {
                     connecting.modify(_ - 1) *> connected.modify(_ + 1)
                   } *>
+                  connectionCloseActions.update(_ + ((connection.uniqueId, closeConnection))) *>
                   F.pure {
                     val onDisconnect = Stream
                       .eval(
@@ -80,6 +84,7 @@ object ConnectionManager {
                             val maybeError = reason.left.toOption.fold("")(e => s"(${e.getMessage})")
                             logger.debug(s"Disconnected $peer $maybeError")
                           } *>
+                          connectionCloseActions.update(_ - connection.uniqueId) *>
                           closeConnection *>
                           connected.modify(_ - 1).commit[F]
                       ) *>
@@ -95,6 +100,12 @@ object ConnectionManager {
           } yield stream
         }
         .flatten
+        .onFinalize(
+          for {
+            actions <- connectionCloseActions.get
+            _ <- actions.values.toList.sequence
+          } yield ()
+        )
     } yield loggingLoop.spawn >> connectionLoop
   }
 
