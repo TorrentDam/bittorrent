@@ -1,6 +1,5 @@
-package com.github.lavrov.bittorrent.protocol
+package com.github.lavrov.bittorrent
 
-import com.github.lavrov.bittorrent.InfoHash
 import java.nio.channels.AsynchronousChannelGroup
 import scodec.bits.ByteVector
 import cats.syntax.all._
@@ -8,7 +7,6 @@ import cats.effect.Resource
 import cats.effect.Concurrent
 
 import fs2.Stream
-import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.Message
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scala.concurrent.duration.FiniteDuration

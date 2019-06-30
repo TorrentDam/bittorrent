@@ -1,13 +1,13 @@
-package com.github.lavrov.bittorrent.protocol
+package com.github.lavrov.bittorrent
 
 import org.scalatest.FlatSpec
 import org.scalatest.MustMatchers._
 import org.scalatest.Inside.inside
 import com.github.lavrov.bencode
-import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
-import com.github.lavrov.bittorrent.TestUtils.InputStreamExtensions
+import com.github.lavrov.bittorrent.TestUtils._
+import com.github.lavrov.bittorrent.TorrentMetadata.Info
 
-class ProtocolSpec extends FlatSpec {
+class DownloadTorrentSpec extends FlatSpec {
 
   it should "build queue of pieces to download" in {
     val source = getClass.getClassLoader
@@ -18,7 +18,7 @@ class ProtocolSpec extends FlatSpec {
     inside(metaInfo.info) {
       case f: Info.SingleFile =>
         val fileSize = f.length
-        val queue = Downloading.buildQueue(f)
+        val queue = DownloadTorrent.buildQueue(f)
         queue.map(_.size).toList.sum mustEqual fileSize
         queue.toList.flatMap(_.requests).map(_.length).sum mustEqual fileSize
     }

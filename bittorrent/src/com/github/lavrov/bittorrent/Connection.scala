@@ -1,4 +1,4 @@
-package com.github.lavrov.bittorrent.protocol
+package com.github.lavrov.bittorrent
 
 import java.nio.channels.InterruptedByTimeoutException
 import java.util.concurrent.TimeUnit
@@ -9,9 +9,7 @@ import cats.mtl._
 import cats.syntax.all._
 import cats.{Monad, MonadError}
 import com.github.lavrov.bencode.BencodeCodec
-import com.github.lavrov.bittorrent.protocol.Connection.Event
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
-import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
 import fs2.concurrent.Queue
@@ -35,7 +33,7 @@ trait Connection[F[_]] {
   def interested: F[Unit]
   def request(request: Message.Request): F[Unit]
   def cancel(request: Message.Request): F[Unit]
-  def events: Stream[F, Event]
+  def events: Stream[F, Connection.Event]
   def disconnected: F[Either[Throwable, Unit]]
 }
 

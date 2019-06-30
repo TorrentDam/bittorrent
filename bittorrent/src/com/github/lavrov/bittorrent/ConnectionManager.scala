@@ -1,14 +1,12 @@
-package com.github.lavrov.bittorrent.protocol
+package com.github.lavrov.bittorrent
 
 import cats.syntax.all._
 import cats.instances.list._
-import com.github.lavrov.bittorrent.InfoHash
 import cats.effect.Effect
 import fs2.Stream
 import java.nio.channels.AsynchronousChannelGroup
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.github.timwspence.cats.stm.TVar
-import com.github.lavrov.bittorrent.PeerInfo
 import io.github.timwspence.cats.stm.STM
 import cats.effect.Resource
 import cats.effect.ConcurrentEffect

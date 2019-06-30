@@ -20,5 +20,5 @@ Usage
 -----
 
 ```sh
-$ mill bittorrent.run --help
+$ mill cli.run --help
 ```

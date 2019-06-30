@@ -27,7 +27,7 @@ class TorrentMetadataSpec extends FlatSpec {
     val Right(result) = decode(source)
     val decodedResult = TorrentMetadata.RawInfoFormat.read(result)
     decodedResult
-      .map(com.github.lavrov.bittorrent.util.sha1Hash)
+      .map(encode(_).digest("SHA-1"))
       .map(_.toHex(Bases.Alphabets.HexUppercase)) mustBe Right(
       "8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609"
     )

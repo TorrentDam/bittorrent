@@ -1,4 +1,4 @@
-package com.github.lavrov.bittorrent.protocol
+package com.github.lavrov.bittorrent
 
 import java.util.UUID
 
@@ -9,11 +9,8 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, Fiber}
 import cats.mtl.MonadState
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.protocol.Downloading.CompletePiece
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-import com.github.lavrov.bittorrent.TorrentMetadata, TorrentMetadata.Info
-import com.github.lavrov.bittorrent.protocol.Downloading.Command.RedispatchRequest
 import com.olegpy.meow.effects._
 import fs2.{Pull, Stream}
 import fs2.concurrent.Queue
@@ -26,17 +23,16 @@ import scodec.bits.ByteVector
 import scala.concurrent.duration._
 import scala.util.chaining._
 import cats.effect.Timer
-import com.github.lavrov.bittorrent.protocol.Downloading.Command.UpdateChokeStatus
 import cats.Parallel
 import cats.data.NonEmptyList
 
-case class Downloading[F[_]](
-    send: Downloading.Command[F] => F[Unit],
-    completePieces: Stream[F, CompletePiece],
+case class DownloadTorrent[F[_]](
+    send: DownloadTorrent.Command[F] => F[Unit],
+    completePieces: Stream[F, DownloadTorrent.CompletePiece],
     fiber: Fiber[F, Unit]
 )
 
-object Downloading {
+object DownloadTorrent {
 
   case class State[F[_]](
       incompletePieces: Map[Long, IncompletePiece],
@@ -62,7 +58,7 @@ object Downloading {
     def send(command: Command[F]): F[Unit]
     def notifyComplete: F[Unit]
     def notifyPieceComplete(piece: CompletePiece): F[Unit]
-    def state: MonadState[F, Downloading.State[F]]
+    def state: MonadState[F, DownloadTorrent.State[F]]
     def schedule(after: FiniteDuration, command: Command[F]): F[Unit]
   }
 
@@ -93,7 +89,7 @@ object Downloading {
   def start[F[_], F1[_]](
       metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
-  )(implicit F: Concurrent[F], P: Parallel[F, F1], timer: Timer[F]): F[Downloading[F]] = {
+  )(implicit F: Concurrent[F], P: Parallel[F, F1], timer: Timer[F]): F[DownloadTorrent[F]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
@@ -136,7 +132,7 @@ object Downloading {
           getConnectionStream.compile.drain
         ).parTupled.void
       }
-    } yield Downloading(
+    } yield DownloadTorrent(
       commandQueue.enqueue1,
       completePieces.dequeue.concurrently(Stream.eval(fiber.join)),
       fiber
@@ -144,6 +140,7 @@ object Downloading {
   }
 
   def buildQueue(metaInfo: TorrentMetadata.Info): Chain[IncompletePiece] = {
+    import TorrentMetadata.Info
 
     def downloadFile(
         pieceLength: Long,
@@ -211,8 +208,8 @@ object Downloading {
     def apply(command: Command[F]): F[Unit] = command match {
       case Command.AddPeer(connectionActor) => addPeer(connectionActor)
       case Command.RemovePeer(id) => removePeer(id)
-      case UpdateChokeStatus(id, choked) => updateChokeStatus(id, choked)
-      case RedispatchRequest(request) => redispatchRequest(request)
+      case Command.UpdateChokeStatus(id, choked) => updateChokeStatus(id, choked)
+      case Command.RedispatchRequest(request) => redispatchRequest(request)
       case Command.AddDownloaded(peerId, request, bytes) => addDownloaded(peerId, request, bytes)
     }
 
