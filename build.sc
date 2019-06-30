@@ -39,6 +39,10 @@ trait Module extends ScalaModule with ScalafmtModule {
     "-language:higherKinds",
     "-Ypartial-unification",
   )
+
+  def scalacPluginIvyDeps = Agg(
+    ivy"com.olegpy::better-monadic-for:0.3.0",
+  )
   trait TestModule extends Tests {
     def ivyDeps = Agg(
       ivy"org.scalatest::scalatest:3.0.5",

@@ -129,11 +129,9 @@ object Main extends IOApp {
     for {
       logger <- makeLogger
       _ <- resources.use {
-        case (asg, acg) =>
-          implicit val asyncSocketGroup: AsynchronousSocketGroup = asg
-          implicit val asyncChannelGroup: AsynchronousChannelGroup = acg
+        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
           for {
-            metaInfoResult <- metadataSource.fold(
+            (infoHash, metaInfo) <- metadataSource.fold(
               infoHash =>
                 logger.info("Downloading torrent file using info-hash") *>
                   logger.info(s"Info-hash ${infoHash.bytes.toHex}") *>
@@ -144,7 +142,6 @@ object Main extends IOApp {
                   },
               torrentPath => getMetaInfo(torrentPath)
             )
-            (infoHash, metaInfo) = metaInfoResult
             connections <- ConnectionManager.make(
               getPeers(infoHash),
               connectToPeer(_, selfId, infoHash, logger)
@@ -221,9 +218,9 @@ object Main extends IOApp {
   def findPeers(infoHash: InfoHash): IO[Unit] =
     for {
       logger <- makeLogger
-      _ <- resources.use {
-        case (asg, _) =>
-          getPeers(infoHash)(asg)
+      _ <- asynchronousSocketGroupResource.use {
+        implicit asg =>
+          getPeers(infoHash)
             .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
             .compile
             .drain
@@ -236,10 +233,9 @@ object Main extends IOApp {
     for {
       logger <- makeLogger
       metadata <- resources.use {
-        case (asg, acg) =>
-          implicit val _acg: AsynchronousChannelGroup = acg
+        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
           val connections =
-            getPeers(infoHash)(asg)
+            getPeers(infoHash)
               .map(peer => (peer, Connection0.connect[IO](selfId, peer, infoHash)))
           DownloadTorrentMetadata.start[IO](infoHash, connections)
       }
@@ -250,9 +246,7 @@ object Main extends IOApp {
     for {
       logger <- makeLogger
       metadata <- resources.use {
-        case (asg, acg) =>
-          implicit val _acg: AsynchronousChannelGroup = acg
-          implicit val _asg: AsynchronousSocketGroup = asg
+        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
           getTorrent(infoHash)
       }
       _ <- IO.delay {
@@ -270,9 +264,7 @@ object Main extends IOApp {
     } yield ()
 
   def connect(infoHash: InfoHash): IO[Unit] = resources.use {
-    case (_asg, _acg) =>
-      implicit val asg: AsynchronousSocketGroup = _asg
-      implicit val acg: AsynchronousChannelGroup = _acg
+    case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
       for {
         logger <- makeLogger
         peers = getPeers(infoHash)
