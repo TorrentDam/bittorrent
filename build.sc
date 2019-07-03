@@ -1,4 +1,5 @@
 import mill._, scalalib._, scalafmt.ScalafmtModule
+import $file.release, release.ReleaseModule
 
 object bencode extends Module {
   def ivyDeps = Agg(
@@ -24,7 +25,7 @@ object bittorrent extends Module {
   object test extends TestModule
 }
 
-object cli extends Module {
+object cli extends Module with ReleaseModule {
   def moduleDeps = List(bittorrent)
   def ivyDeps = Agg(
     ivy"com.monovore::decline:0.5.0",
