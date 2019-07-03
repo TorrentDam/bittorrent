@@ -57,18 +57,18 @@ object Main extends IOApp {
         }
     }
 
+    val getTorrentCommand = Opts.subcommand(
+      name = "get-torrent",
+      help = "Download torrent metadata"
+    ) {
+      (torrentFileOpt, infoHashOpt).mapN(getTorrentAndSave)
+    }
+
     val findPeersCommand = Opts.subcommand(
       name = "find-peers",
       help = "Find peers by info-hash"
     ) {
       infoHashOpt.map(findPeers)
-    }
-
-    val getTorrentCommand = Opts.subcommand(
-      name = "get-torrent",
-      help = "Download torrent file by info-hash from peers"
-    ) {
-      (torrentFileOpt, infoHashOpt).mapN(getTorrentAndSave)
     }
 
     val readTorrentCommand = Opts.subcommand(
@@ -89,7 +89,8 @@ object Main extends IOApp {
       name = "bittorrent",
       header = "Bittorrent client"
     )(
-      downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand <+> connectCommand
+      downloadCommand <+> getTorrentCommand
+      //  <+> findPeersCommand <+> readTorrentCommand <+> connectCommand
     )
   }
 
