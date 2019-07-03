@@ -65,7 +65,7 @@ object Main extends IOApp {
     }
 
     val getTorrentCommand = Opts.subcommand(
-      name = "bittorrent",
+      name = "get-torrent",
       help = "Download torrent file by info-hash from peers"
     ) {
       (torrentFileOpt, infoHashOpt).mapN(getTorrentAndSave)
@@ -86,7 +86,7 @@ object Main extends IOApp {
     }
 
     Command(
-      name = "get-torrent",
+      name = "bittorrent",
       header = "Bittorrent client"
     )(
       downloadCommand <+> findPeersCommand <+> getTorrentCommand <+> readTorrentCommand <+> connectCommand
