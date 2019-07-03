@@ -27,7 +27,7 @@ def upload(uploadedFile: Path,
   println(uploadName)
   println(authKey)
   val body = requests.get(
-    "https://api.github.com/repos/lihaoyi/Ammonite/releases/tags/" + tagName,
+    "https://api.github.com/repos/lavrov/bittorrent/releases/tags/" + tagName,
     headers = Seq("Authorization" -> s"token $authKey"),
   )
 
@@ -39,7 +39,7 @@ def upload(uploadedFile: Path,
 
 
   val uploadUrl =
-    s"https://uploads.github.com/repos/lihaoyi/Ammonite/releases/" +
+    s"https://uploads.github.com/repos/lavrov/bittorrent/releases/" +
       s"$snapshotReleaseId/assets?name=$uploadName"
 
   val res = requests.post(
