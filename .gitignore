@@ -4,3 +4,4 @@ logs
 .idea_modules
 .metals
 .bloop
+node_modules

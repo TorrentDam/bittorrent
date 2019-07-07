@@ -16,6 +16,15 @@ Run tests:
 $ mill _.test
 ```
 
+Client requires [npm](https://www.npmjs.com/)
+```sh
+$ mill client.fastOpt
+$ cd client
+$ npm install
+$ npm start
+```
+Then open http://localhost:8080
+
 Usage
 -----
 

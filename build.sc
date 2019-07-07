@@ -1,4 +1,5 @@
 import mill._, scalalib._, scalafmt.ScalafmtModule
+import mill.scalajslib.ScalaJSModule
 import $file.release, release.ReleaseModule
 
 object bencode extends Module {
@@ -31,6 +32,26 @@ object cli extends Module with ReleaseModule {
     ivy"com.monovore::decline:0.5.0",
     ivy"ch.qos.logback:logback-classic:1.2.3",
     ivy"com.lihaoyi::pprint:0.5.5",
+  )
+}
+
+object client extends scalajslib.ScalaJSModule {
+  import mill.scalajslib.api.ModuleKind
+  def scalaVersion = "2.13.0"
+  def scalaJSVersion = "0.6.28"
+  def moduleKind = ModuleKind.CommonJSModule
+  def ivyDeps = Agg(
+    ivy"me.shadaj::slinky-core::0.6.2",
+    ivy"me.shadaj::slinky-web::0.6.2",
+    ivy"me.shadaj::slinky-hot::0.6.2"
+  )
+  // def scalacPluginIvyDeps = Agg(
+  //   ivy"org.scalamacros:::paradise:2.1.1"
+  // )
+  def scalacOptions = List(
+    "-language:higherKinds",
+    "-Ymacro-annotations",
+    "-P:scalajs:sjsDefinedByDefault"
   )
 }
 
