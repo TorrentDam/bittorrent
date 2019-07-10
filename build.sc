@@ -53,6 +53,23 @@ object client extends scalajslib.ScalaJSModule {
     "-Ymacro-annotations",
     "-P:scalajs:sjsDefinedByDefault"
   )
+
+  def webpackBundle: T[os.Path] = T {
+    val bundlePath = T.ctx().dest / "bundle.js"
+    fullOpt()
+    os
+      .proc("npm", "run", "buildProd")
+      .call(millSourcePath)
+    bundlePath
+  }
+
+  def distribution: T[PathRef] = T {
+    val resourceFiles = resources().flatMap(pathRef => os.list(pathRef.path))
+    val distributionFiles = resourceFiles ++ List(webpackBundle())
+    val desitnation = T.ctx().dest
+    distributionFiles.foreach { f => os.copy.into(f, desitnation) }
+    PathRef(desitnation)
+  }
 }
 
 trait Module extends ScalaModule with ScalafmtModule {

@@ -5,6 +5,7 @@
   "scripts": {
     "start": "webpack-dev-server --config ./webpack.config.js --mode development",
     "build": "webpack --config ./webpack.config.js",
+    "buildProd": "webpack --config ./webpack.prod.config.js",
     "test": "echo \"No test specified\" && exit 0"
   },
   "keywords": [],
