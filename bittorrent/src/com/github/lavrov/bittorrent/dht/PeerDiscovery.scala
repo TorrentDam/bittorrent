@@ -29,19 +29,19 @@ object PeerDiscovery {
     (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).right.get)
   }
 
-  def start[F[_]](infoHash: InfoHash, client: Client[F])(
+  def start[F[_]](infoHash: InfoHash, socket: MessageSocket[F])(
       implicit F: Sync[F],
       timer: Timer[F]
   ): F[Stream[F, PeerInfo]] = {
-    import client.selfId
+    import socket.selfId
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       transactionId <- transactionId
-      _ <- client.sendMessage(
+      _ <- socket.writeMessage(
         BootstrapNode,
         Message.QueryMessage(transactionId, Query.Ping(selfId))
       )
-      m <- client.readMessage
+      m <- socket.readMessage
       r <- F.fromEither(
         m match {
           case Message.ResponseMessage(transactionId, response) =>
@@ -64,11 +64,11 @@ object PeerDiscovery {
         .evalMap { nodeInfo =>
           (
             for {
-              _ <- client.sendMessage(
+              _ <- socket.writeMessage(
                 nodeInfo.address,
                 Message.QueryMessage(transactionId, Query.GetPeers(selfId, infoHash))
               )
-              m <- client.readMessage
+              m <- socket.readMessage
               response <- F.fromEither(
                 m match {
                   case Message.ResponseMessage(transactionId, bc) =>
