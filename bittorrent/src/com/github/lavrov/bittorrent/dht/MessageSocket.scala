@@ -48,12 +48,14 @@ class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(
 }
 
 object MessageSocket {
-  def apply[F[_]]()(
+  def apply[F[_]](
+    port: Int
+  )(
       implicit F: Concurrent[F],
       cs: ContextShift[F],
       asg: AsynchronousSocketGroup
   ): Resource[F, MessageSocket[F]] =
-    Socket[F](address = new InetSocketAddress(6881)).evalMap(
+    Socket[F](address = new InetSocketAddress(port)).evalMap(
       socket =>
         for {
           logger <- Slf4jLogger.fromClass[F](getClass)

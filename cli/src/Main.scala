@@ -185,7 +185,7 @@ object Main extends IOApp {
     val selfId = NodeId.generate(rnd)
     for {
       logger <- Stream.eval(makeLogger)
-      client <- Stream.resource(DhtClient.start[IO](selfId))
+      client <- Stream.resource(DhtClient.start[IO](selfId, port = 6881))
       peers <- Stream.eval(PeerDiscovery.start(infoHash, client))
       peer <- peers
     } yield peer
@@ -222,12 +222,11 @@ object Main extends IOApp {
   def findPeers(infoHash: InfoHash): IO[Unit] =
     for {
       logger <- makeLogger
-      _ <- asynchronousSocketGroupResource.use {
-        implicit asg =>
-          getPeers(infoHash)
-            .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
-            .compile
-            .drain
+      _ <- asynchronousSocketGroupResource.use { implicit asg =>
+        getPeers(infoHash)
+          .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
+          .compile
+          .drain
       }
     } yield ()
 

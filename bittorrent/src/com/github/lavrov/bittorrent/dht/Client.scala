@@ -37,7 +37,8 @@ object Client {
   }
 
   def start[F[_]](
-      selfId: NodeId
+      selfId: NodeId,
+      port: Int
   )(
       implicit F: Concurrent[F],
       timer: Timer[F],
@@ -45,7 +46,7 @@ object Client {
       asg: AsynchronousSocketGroup
   ): Resource[F, Client[F]] = {
     for {
-      messageSocket <- MessageSocket()
+      messageSocket <- MessageSocket(port)
       logger <- Resource.liftF(Slf4jLogger.fromClass(Client.getClass))
       requestResponse <- Resource.liftF {
         RequestResponse.make(
