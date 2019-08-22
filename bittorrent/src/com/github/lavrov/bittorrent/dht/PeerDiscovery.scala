@@ -8,7 +8,6 @@ import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.dht.message.Message
 import scodec.bits.ByteVector
-import java.net.InetSocketAddress
 import com.github.lavrov.bittorrent.dht.message.Query
 import cats.effect.concurrent.Ref
 import cats.data.NonEmptyList
@@ -19,96 +18,85 @@ import cats.effect.Timer
 import scala.concurrent.duration._
 import scala.collection.immutable.ListSet
 import scala.util.Random
+import cats.MonadError
+import io.chrisdavenport.log4cats.Logger
 
 object PeerDiscovery {
 
-  val BootstrapNode = new InetSocketAddress("router.bittorrent.com", 6881)
-
-  def transactionId[F[_]: Sync]: F[ByteVector] = {
-    val nextChar = Sync[F].delay(Random.nextPrintableChar())
-    (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).right.get)
-  }
-
-  def start[F[_]](infoHash: InfoHash, socket: MessageSocket[F])(
-      implicit F: Sync[F],
-      timer: Timer[F]
+  def start[F[_]](infoHash: InfoHash, client: Client[F])(
+      implicit F: Sync[F]
   ): F[Stream[F, PeerInfo]] = {
-    import socket.selfId
     for {
       logger <- Slf4jLogger.fromClass(getClass)
-      transactionId <- transactionId
-      _ <- socket.writeMessage(
-        BootstrapNode,
-        Message.QueryMessage(transactionId, Query.Ping(selfId))
-      )
-      m <- socket.readMessage
-      r <- F.fromEither(
-        m match {
-          case Message.ResponseMessage(transactionId, response) =>
-            Message.PingResponseFormat.read(response).leftMap(e => new Exception(e))
-          case other =>
-            Left(new Exception(s"Got wrong message $other"))
-        }
-      )
       seenPeers <- Ref.of(Set.empty[PeerInfo])
-      bootstrapNodeInfo = NodeInfo(r.id, BootstrapNode)
-      nodesToTry <- Ref.of(ListSet(bootstrapNodeInfo))
+      nodesToTry <- client.getTable.flatMap { nodes =>
+        Ref.of(ListSet(nodes: _*))
+      }
     } yield {
-      Stream
-        .repeatEval(
-          nodesToTry.modify(value => (value.tail, value.headOption)).flatMap {
-            case Some(nodeInfo) => F.pure(nodeInfo)
-            case None => timer.sleep(30.seconds).as(bootstrapNodeInfo)
-          }
-        )
-        .evalMap { nodeInfo =>
-          (
-            for {
-              _ <- socket.writeMessage(
-                nodeInfo.address,
-                Message.QueryMessage(transactionId, Query.GetPeers(selfId, infoHash))
-              )
-              m <- socket.readMessage
-              response <- F.fromEither(
-                m match {
-                  case Message.ResponseMessage(transactionId, bc) =>
-                    val reader =
-                      Message.PeersResponseFormat.read
-                        .widen[Response]
-                        .orElse(Message.NodesResponseFormat.read.widen[Response])
-                    reader(bc).leftMap(new Exception(_))
-                  case other =>
-                    Left(new Exception(s"Expected response but got $other"))
-                }
-              )
-            } yield response
-          ).attempt
-        }
-        .flatMap {
-          case Right(response) =>
-            response match {
-              case Response.Nodes(_, nodes) =>
-                val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
-                Stream.eval(
-                  nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
-                ) *> Stream.empty
-              case Response.Peers(_, peers) =>
-                Stream
-                  .eval(
-                    seenPeers
-                      .modify { value =>
-                        val newPeers = peers.filterNot(value)
-                        (value ++ newPeers, newPeers)
-                      }
-                  )
-                  .flatMap(Stream.emits)
-                  .evalTap(peer => logger.debug(s"Discovered peer $peer"))
-              case _ =>
-                Stream.empty
-            }
-          case Left(e) =>
-            Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
-        }
+      start(infoHash, nodesToTry, seenPeers, client.getPeers, logger)
     }
   }
+
+  private def start[F[_]](
+      infoHash: InfoHash,
+      nodesToTry: Ref[F, ListSet[NodeInfo]],
+      seenPeers: Ref[F, Set[PeerInfo]],
+      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
+      logger: Logger[F]
+  )(
+      implicit F: MonadError[F, Throwable]
+  ): Stream[F, PeerInfo] = {
+    Stream
+      .repeatEval(
+        nodesToTry
+          .modify {
+            case list if list.isEmpty => (list, none)
+            case list => (list.tail, list.head.some)
+          }
+          .flatMap {
+            case Some(nodeInfo) => F.pure(nodeInfo)
+            case None => F.raiseError[NodeInfo](ExhaustedNodeList())
+          }
+      )
+      .evalMap { nodeInfo =>
+        getPeers(nodeInfo, infoHash).attempt
+      }
+      .flatMap {
+        case Right(response) =>
+          response match {
+            case Left(Response.Nodes(_, nodes)) =>
+              Stream
+                .eval(updateNodeList(nodesToTry, nodes, infoHash)) >> Stream.empty
+            case Right(Response.Peers(_, peers)) =>
+              Stream
+                .eval(filerNewPeers(seenPeers, peers))
+                .flatMap(Stream.emits)
+                .evalTap(peer => logger.debug(s"Discovered peer $peer"))
+          }
+        case Left(e) =>
+          Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+      }
+  }
+
+  def filerNewPeers[F[_]](
+      seenPeers: Ref[F, Set[PeerInfo]],
+      peers: List[PeerInfo]
+  ): F[List[PeerInfo]] = {
+    seenPeers
+      .modify { value =>
+        val newPeers = peers.filterNot(value)
+        (value ++ newPeers, newPeers)
+      }
+  }
+
+  def updateNodeList[F[_]](
+      nodesToTry: Ref[F, ListSet[NodeInfo]],
+      nodes: List[NodeInfo],
+      infoHash: InfoHash
+  ): F[Unit] = {
+    val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
+    nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
+  }
+
+  case class ExhaustedNodeList() extends Exception
 }

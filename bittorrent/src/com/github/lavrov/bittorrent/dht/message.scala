@@ -15,7 +15,7 @@ sealed trait Message {
 }
 object Message {
   final case class QueryMessage(transactionId: ByteVector, query: Query) extends Message
-  final case class ResponseMessage(transactionId: ByteVector, response: Bencode) extends Message
+  final case class ResponseMessage(transactionId: ByteVector, response: Response) extends Message
   final case class ErrorMessage(transactionId: ByteVector, details: Bencode) extends Message
 
   implicit val NodeIdFormat: BencodeFormat[NodeId] =
@@ -95,9 +95,12 @@ object Message {
     field[List[PeerInfo]]("values")(BencodeFormat.listReader(encodedString(CompactPeerInfoCodec)))
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
+  val ResponseFormat: BencodeFormat[Response] =
+    PeersResponseFormat.upcast[Response].or(NodesResponseFormat.upcast).or(PingResponseFormat.upcast)
+
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     field[ByteVector]("t"),
-    field[Bencode]("r")
+    field[Response]("r")(ResponseFormat)
   ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
@@ -134,7 +137,7 @@ object Query {
 
 sealed trait Response
 object Response {
-  final case class Ping(id: NodeId)
+  final case class Ping(id: NodeId) extends Response
   final case class Nodes(id: NodeId, nodes: List[NodeInfo]) extends Response
   final case class Peers(id: NodeId, peers: List[PeerInfo]) extends Response
 }

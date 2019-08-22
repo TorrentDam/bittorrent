@@ -18,12 +18,12 @@ import scala.concurrent.duration.DurationInt
 import com.github.lavrov.bencode.{decode, encode}
 import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 
-class MessageSocket[F[_]](val selfId: NodeId, socket: Socket[F], logger: Logger[F])(
+class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(
     implicit F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
 
-  def readMessage: F[Message] =
+  def readMessage: F[(InetSocketAddress, Message)] =
     for {
       packet <- socket.read()
       bc <- F.fromEither(
@@ -36,18 +36,19 @@ class MessageSocket[F[_]](val selfId: NodeId, socket: Socket[F], logger: Logger[
             e => Error.MessageFormat(s"Filed to read message from bencode: $bc", e)
           )
       )
-    } yield message
+      _ <- logger.debug(s"<<< ${packet.remote} $message")
+    } yield (packet.remote, message)
 
   def writeMessage(address: InetSocketAddress, message: Message): F[Unit] = {
     val bc = Message.MessageFormat.write(message).right.get
     val bytes = encode(bc)
     val packet = Packet(address, Chunk.byteVector(bytes.bytes))
-    socket.write(packet)
+    socket.write(packet) >> logger.debug(s">>> $address $message")
   }
 }
 
 object MessageSocket {
-  def apply[F[_]](selfId: NodeId)(
+  def apply[F[_]]()(
       implicit F: Concurrent[F],
       cs: ContextShift[F],
       asg: AsynchronousSocketGroup
@@ -56,7 +57,7 @@ object MessageSocket {
       socket =>
         for {
           logger <- Slf4jLogger.fromClass[F](getClass)
-        } yield new MessageSocket(selfId, socket, logger)
+        } yield new MessageSocket(socket, logger)
     )
 
   object Error {

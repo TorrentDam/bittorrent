@@ -6,6 +6,7 @@ object bencode extends Module {
   def ivyDeps = Agg(
     ivy"org.scodec::core:1.10.4", 
     ivy"org.typelevel::cats-core:1.6.1",
+    ivy"org.typelevel::cats-free:1.6.1",
   )
   object test extends TestModule
 }
@@ -45,9 +46,6 @@ object client extends scalajslib.ScalaJSModule {
     ivy"me.shadaj::slinky-web::0.6.2",
     ivy"me.shadaj::slinky-hot::0.6.2"
   )
-  // def scalacPluginIvyDeps = Agg(
-  //   ivy"org.scalamacros:::paradise:2.1.1"
-  // )
   def scalacOptions = List(
     "-language:higherKinds",
     "-Ymacro-annotations",
@@ -81,6 +79,7 @@ trait Module extends ScalaModule with ScalafmtModule {
 
   def scalacPluginIvyDeps = Agg(
     ivy"com.olegpy::better-monadic-for:0.3.0",
+    ivy"org.typelevel::kind-projector:0.10.3",
   )
   trait TestModule extends Tests {
     def ivyDeps = Agg(

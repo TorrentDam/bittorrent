@@ -19,7 +19,7 @@ import scala.util.Random
 
 import com.github.lavrov.bittorrent.dht.PeerDiscovery
 import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
-import com.github.lavrov.bittorrent.dht.{NodeId, Client => DHTClient}
+import com.github.lavrov.bittorrent.dht.{NodeId, MessageSocket, Client => DhtClient}
 
 object Main extends IOApp {
 
@@ -90,7 +90,7 @@ object Main extends IOApp {
       header = "Bittorrent client"
     )(
       downloadCommand <+> getTorrentCommand
-      //  <+> findPeersCommand <+> readTorrentCommand <+> connectCommand
+        <+> findPeersCommand <+> readTorrentCommand <+> connectCommand
     )
   }
 
@@ -181,12 +181,15 @@ object Main extends IOApp {
 
   def getPeers(
       infoHash: InfoHash
-  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): Stream[IO, PeerInfo] =
+  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): Stream[IO, PeerInfo] = {
+    val selfId = NodeId.generate(rnd)
     for {
-      dhtClient <- Stream.resource(DHTClient[IO](NodeId.generate(rnd)))
-      peers <- Stream.eval(PeerDiscovery.start(infoHash, dhtClient))
+      logger <- Stream.eval(makeLogger)
+      client <- Stream.resource(DhtClient.start[IO](selfId))
+      peers <- Stream.eval(PeerDiscovery.start(infoHash, client))
       peer <- peers
     } yield peer
+  }
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
       implicit asynchronousChannelGroup: AsynchronousChannelGroup
