@@ -20,6 +20,7 @@ import scala.collection.immutable.ListSet
 import scala.util.Random
 import cats.MonadError
 import io.chrisdavenport.log4cats.Logger
+import cats.Monad
 
 object PeerDiscovery {
 
@@ -28,21 +29,22 @@ object PeerDiscovery {
   ): F[Stream[F, PeerInfo]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
-      seenPeers <- Ref.of(Set.empty[PeerInfo])
       nodesToTry <- client.getTable.flatMap { nodes =>
-        Ref.of(ListSet(nodes: _*))
+        Ref.of(nodes)
       }
+      seenNodes <- Ref.of(Set.empty[NodeInfo])
+      seenPeers <- Ref.of(Set.empty[PeerInfo])
     } yield {
-      start(infoHash, nodesToTry, seenPeers, client.getPeers, logger)
+      start(infoHash, nodesToTry, seenNodes, seenPeers, client.getPeers)
     }
   }
 
-  private def start[F[_]](
+  private[dht] def start[F[_]](
       infoHash: InfoHash,
-      nodesToTry: Ref[F, ListSet[NodeInfo]],
+      nodesToTry: Ref[F, List[NodeInfo]],
+      seenNodes: Ref[F, Set[NodeInfo]],
       seenPeers: Ref[F, Set[PeerInfo]],
-      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
-      logger: Logger[F]
+      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]]
   )(
       implicit F: MonadError[F, Throwable]
   ): Stream[F, PeerInfo] = {
@@ -66,15 +68,14 @@ object PeerDiscovery {
           response match {
             case Left(Response.Nodes(_, nodes)) =>
               Stream
-                .eval(updateNodeList(nodesToTry, nodes, infoHash)) >> Stream.empty
+                .eval(updateNodeList(seenNodes, nodesToTry, nodes, infoHash)) >> Stream.empty
             case Right(Response.Peers(_, peers)) =>
               Stream
                 .eval(filerNewPeers(seenPeers, peers))
                 .flatMap(Stream.emits)
-                .evalTap(peer => logger.debug(s"Discovered peer $peer"))
           }
         case Left(e) =>
-          Stream.eval(logger.debug(e)("Failed query")) *> Stream.empty
+          Stream.empty
       }
   }
 
@@ -89,13 +90,21 @@ object PeerDiscovery {
       }
   }
 
-  def updateNodeList[F[_]](
-      nodesToTry: Ref[F, ListSet[NodeInfo]],
+  def updateNodeList[F[_]: Monad](
+      seenNodes: Ref[F, Set[NodeInfo]],
+      nodesToTry: Ref[F, List[NodeInfo]],
       nodes: List[NodeInfo],
       infoHash: InfoHash
   ): F[Unit] = {
-    val nodesSorted = nodes.sortBy(n => NodeId.distance(n.id, infoHash))
-    nodesToTry.update(value => ListSet(nodesSorted: _*) ++ value)
+    seenNodes
+      .modify { value => 
+        val newNodes = nodes.filterNot(value)
+        (value ++ newNodes, newNodes)
+      }
+      .flatMap { newNodes =>
+        val nodesSorted = newNodes.sortBy(n => NodeId.distance(n.id, infoHash))
+        nodesToTry.update(nodesSorted ++ _)
+      }
   }
 
   case class ExhaustedNodeList() extends Exception
