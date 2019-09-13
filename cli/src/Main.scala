@@ -119,9 +119,11 @@ object Main extends IOApp {
     for {
       logger <- makeLogger
       _ <- resources.use {
-        case (implicit0(usg: UdpScoketGroup), implicit0(tsg: TcpSocketGroup)) =>
+        case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
+          implicit val usg0: UdpScoketGroup = usg
+          implicit val tsg0: TcpSocketGroup = tsg
           for {
-            (infoHash, metaInfo) <- metadataSource.fold(
+            result <- metadataSource.fold(
               infoHash =>
                 logger.info("Downloading torrent file using info-hash") *>
                   logger.info(s"Info-hash ${infoHash.bytes.toHex}") *>
@@ -132,6 +134,7 @@ object Main extends IOApp {
                   },
               torrentPath => getMetaInfo(torrentPath)
             )
+            (infoHash, metaInfo) = result
             connections <- ConnectionManager.make(
               getPeers(infoHash),
               connectToPeer(_, selfId, infoHash, logger)
@@ -173,7 +176,6 @@ object Main extends IOApp {
   )(implicit usg: UdpScoketGroup): Stream[IO, PeerInfo] = {
     val selfId = NodeId.generate(rnd)
     for {
-      logger <- Stream.eval(makeLogger)
       client <- Stream.resource(DhtClient.start[IO](selfId, port = 6881))
       peers <- Stream.eval(PeerDiscovery.start(infoHash, client))
       peer <- peers
@@ -223,9 +225,10 @@ object Main extends IOApp {
       infoHash: InfoHash
   ): IO[ByteVector] = {
     for {
-      logger <- makeLogger
       metadata <- resources.use {
-        case (implicit0(usg: UdpScoketGroup), implicit0(tsg: TcpSocketGroup)) =>
+        case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
+          implicit val usg0: UdpScoketGroup = usg
+          implicit val tsg0: TcpSocketGroup = tsg
           val connections =
             getPeers(infoHash)
               .map(peer => (peer, Connection0.connect[IO](selfId, peer, infoHash)))
@@ -237,10 +240,7 @@ object Main extends IOApp {
   def getTorrentAndSave(targetFile: Path, infoHash: InfoHash): IO[Unit] =
     for {
       logger <- makeLogger
-      metadata <- resources.use {
-        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
-          getTorrent(infoHash)
-      }
+      metadata <- getTorrent(infoHash)
       _ <- IO.delay {
         val bytes = BencodeCodec.instance
           .encode(
@@ -256,7 +256,9 @@ object Main extends IOApp {
     } yield ()
 
   def connect(infoHash: InfoHash): IO[Unit] = resources.use {
-    case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
+    case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
+      implicit val usg0: UdpScoketGroup = usg
+      implicit val tsg0: TcpSocketGroup = tsg
       for {
         logger <- makeLogger
         peers = getPeers(infoHash)
