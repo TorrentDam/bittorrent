@@ -96,7 +96,10 @@ object Message {
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
   val ResponseFormat: BencodeFormat[Response] =
-    PeersResponseFormat.upcast[Response].or(NodesResponseFormat.upcast).or(PingResponseFormat.upcast)
+    PeersResponseFormat
+      .upcast[Response]
+      .or(NodesResponseFormat.upcast)
+      .or(PingResponseFormat.upcast)
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     field[ByteVector]("t"),

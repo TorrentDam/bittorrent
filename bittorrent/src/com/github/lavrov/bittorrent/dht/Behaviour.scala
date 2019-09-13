@@ -60,7 +60,7 @@ class DhtBehaviour[F[_]](
             sendOut(address, Message.ResponseMessage(tid, response))
           }
       case Message.ResponseMessage(_, Response.Ping(nodeId)) =>
-          S.modify(State.table.modify(l => NodeInfo(nodeId, address) :: l))
+        S.modify(State.table.modify(l => NodeInfo(nodeId, address) :: l))
       case _ =>
         F.unit
     }
@@ -78,14 +78,14 @@ object DhtBehaviour {
   }
 
   def make[F[_]: Sync](
-    selfId: NodeId,
-    sendOut: (InetSocketAddress, Message) => F[Unit]
-  ): F[DhtBehaviour[F]] = for {
-    ref <- Ref.of(State())
-  }
-  yield ref.runState { implicit S =>
-    new DhtBehaviour(selfId, sendOut)
-  }
+      selfId: NodeId,
+      sendOut: (InetSocketAddress, Message) => F[Unit]
+  ): F[DhtBehaviour[F]] =
+    for {
+      ref <- Ref.of(State())
+    } yield ref.runState { implicit S =>
+      new DhtBehaviour(selfId, sendOut)
+    }
 }
 
 trait RequestResponse[F[_]] {
@@ -104,7 +104,8 @@ object RequestResponse {
       generateTransactionId: F[ByteVector],
       sendOut: (InetSocketAddress, Message) => F[Unit]
   )(
-    implicit F: Concurrent[F], timer: Timer[F]
+      implicit F: Concurrent[F],
+      timer: Timer[F]
   ): F[RequestResponse[F]] = {
 
     import com.olegpy.meow.effects.RefEffects
@@ -128,8 +129,9 @@ object RequestResponse {
           sendOut,
           (duration, transactionId) =>
             F.start(
-              timer.sleep(duration) >> timeoutQueue.enqueue1(In.Timeout(transactionId))
-            ).void,
+                timer.sleep(duration) >> timeoutQueue.enqueue1(In.Timeout(transactionId))
+              )
+              .void,
           (callback, result) => callback(result)
         )
       }
@@ -162,7 +164,7 @@ object RequestResponse {
             in match {
               case In.Msg(message) => behaviour.receive(message)
               case In.Timeout(transactionId) => behaviour.timeout(transactionId)
-            } 
+            }
           }
         }
       }

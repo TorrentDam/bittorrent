@@ -8,7 +8,7 @@ import cats.syntax.all._
 import com.github.lavrov.bencode.{decode, encode}
 import com.github.lavrov.bittorrent.dht.message.Message
 import fs2.Chunk
-import fs2.io.udp.{Packet, SocketGroup, Socket}
+import fs2.io.udp.{Packet, Socket, SocketGroup}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.Err
@@ -45,18 +45,20 @@ class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(
 
 object MessageSocket {
   def apply[F[_]](
-    port: Int
+      port: Int
   )(
       implicit F: Concurrent[F],
       cs: ContextShift[F],
       socketGroup: SocketGroup
   ): Resource[F, MessageSocket[F]] =
-    socketGroup.open[F](address = new InetSocketAddress(port)).evalMap(
-      socket =>
-        for {
-          logger <- Slf4jLogger.fromClass[F](getClass)
-        } yield new MessageSocket(socket, logger)
-    )
+    socketGroup
+      .open[F](address = new InetSocketAddress(port))
+      .evalMap(
+        socket =>
+          for {
+            logger <- Slf4jLogger.fromClass[F](getClass)
+          } yield new MessageSocket(socket, logger)
+      )
 
   object Error {
     case class BecodeSerialization(err: Err) extends Throwable(err.messageWithContext)

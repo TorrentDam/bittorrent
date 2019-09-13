@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path, Paths}
 import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
-import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode, encode}
+import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
@@ -103,9 +103,11 @@ object Main extends IOApp {
     }
   }
 
-  def asynchronousSocketGroupResource: Resource[IO, UdpScoketGroup] = Blocker[IO].flatMap(UdpScoketGroup(_))
+  def asynchronousSocketGroupResource: Resource[IO, UdpScoketGroup] =
+    Blocker[IO].flatMap(UdpScoketGroup(_))
 
-  def asynchronousChannelGroupResource: Resource[IO, TcpSocketGroup] = Blocker[IO].flatMap(TcpSocketGroup(_))
+  def asynchronousChannelGroupResource: Resource[IO, TcpSocketGroup] =
+    Blocker[IO].flatMap(TcpSocketGroup(_))
 
   def resources: Resource[IO, (UdpScoketGroup, TcpSocketGroup)] =
     for {

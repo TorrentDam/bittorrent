@@ -62,21 +62,28 @@ object Client {
       def getPeers(
           nodeInfo: NodeInfo,
           infoHash: InfoHash
-      ): F[Either[Response.Nodes, Response.Peers]] = 
+      ): F[Either[Response.Nodes, Response.Peers]] =
         requestResponse.getPeers(nodeInfo.address, infoHash)
     }
   }
 
-  private def boostrap[F[_]](selfId: NodeId, requestResponse: RequestResponse[F], logger: Logger[F])(
-    implicit F: MonadError[F, Throwable], timer: Timer[F]
+  private def boostrap[F[_]](
+      selfId: NodeId,
+      requestResponse: RequestResponse[F],
+      logger: Logger[F]
+  )(
+      implicit F: MonadError[F, Throwable],
+      timer: Timer[F]
   ): F[Unit] = {
     def loop: F[Unit] =
-      requestResponse.ping(BootstrapNodeAddress).void
-      .recoverWith {
-        case e =>
-          val msg = e.getMessage()
-          logger.info(e)(s"Bootstrap failed $msg") >> timer.sleep(5.seconds) >> loop
-      }
+      requestResponse
+        .ping(BootstrapNodeAddress)
+        .void
+        .recoverWith {
+          case e =>
+            val msg = e.getMessage()
+            logger.info(e)(s"Bootstrap failed $msg") >> timer.sleep(5.seconds) >> loop
+        }
     logger.info("Boostrapping") >> loop >> logger.info("Bootstrap complete")
   }
 

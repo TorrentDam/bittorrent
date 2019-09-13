@@ -1,77 +1,88 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.syntax.all._
+import cats.effect.{Concurrent, ConcurrentEffect}
 import cats.instances.all._
-import cats.effect.Sync
-import fs2.Stream
-import com.github.lavrov.bittorrent.PeerInfo
-import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.message.Message
-import scodec.bits.ByteVector
-import com.github.lavrov.bittorrent.dht.message.Query
-import cats.effect.concurrent.Ref
-import cats.data.NonEmptyList
+import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.message.Response
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import cats.effect.Timer
-
-import scala.concurrent.duration._
-import scala.collection.immutable.ListSet
-import scala.util.Random
-import cats.MonadError
+import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
+import fs2.Stream
 import io.chrisdavenport.log4cats.Logger
-import cats.Monad
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import io.github.timwspence.cats.stm.{STM, TVar}
 
 object PeerDiscovery {
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
-      implicit F: Sync[F]
+      implicit F: ConcurrentEffect[F]
   ): F[Stream[F, PeerInfo]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
-      nodesToTry <- client.getTable.flatMap { nodes =>
-        Ref.of(nodes)
-      }
-      seenNodes <- Ref.of(Set.empty[NodeInfo])
-      seenPeers <- Ref.of(Set.empty[PeerInfo])
+      nodesToTry <- client.getTable
+      tvar <- TVar.of(State(nodesToTry)).commit[F]
     } yield {
-      start(infoHash, nodesToTry, seenNodes, seenPeers, client.getPeers)
+      val next = STM.atomically {
+        tvar.get
+          .flatMap { state =>
+            val check = STM.check(state.nodesToTry.nonEmpty)
+            def update: STM[Unit] = {
+              val state1 = state.copy(nodesToTry = state.nodesToTry.tail)
+              tvar.set(state1)
+            }
+            check >> update as state.nodesToTry.headOption
+          }
+      }
+      def update(nodes: List[NodeInfo]): F[Unit] =
+        tvar.modify(updateNodeList(nodes, infoHash)).commit[F]
+      def filter(peers: List[PeerInfo]): F[List[PeerInfo]] = {
+        for {
+          state <- tvar.get
+          (state1, newPeers) = filterNewPeers(peers)(state)
+          _ <- tvar.set(state1)
+        } yield newPeers
+      }.commit[F]
+
+      start(
+        infoHash,
+        next,
+        update,
+        filter,
+        client.getPeers,
+        logger
+      )
     }
   }
 
+  case class State(
+      nodesToTry: List[NodeInfo],
+      seenNodes: Set[NodeInfo] = Set.empty,
+      seenPeers: Set[PeerInfo] = Set.empty
+  )
+
   private[dht] def start[F[_]](
       infoHash: InfoHash,
-      nodesToTry: Ref[F, List[NodeInfo]],
-      seenNodes: Ref[F, Set[NodeInfo]],
-      seenPeers: Ref[F, Set[PeerInfo]],
-      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]]
-  )(
-      implicit F: MonadError[F, Throwable]
-  ): Stream[F, PeerInfo] = {
+      nextNode: F[Option[NodeInfo]],
+      updateNodeList: List[NodeInfo] => F[Unit],
+      filter: List[PeerInfo] => F[List[PeerInfo]],
+      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
+      logger: Logger[F]
+  )(implicit F: Concurrent[F]): Stream[F, PeerInfo] = {
     Stream
-      .repeatEval(
-        nodesToTry
-          .modify {
-            case list if list.isEmpty => (list, none)
-            case list => (list.tail, list.head.some)
-          }
-          .flatMap {
-            case Some(nodeInfo) => F.pure(nodeInfo)
-            case None => F.raiseError[NodeInfo](ExhaustedNodeList())
-          }
-      )
-      .evalMap { nodeInfo =>
-        getPeers(nodeInfo, infoHash).attempt
+      .repeatEval(nextNode.flatMap {
+        case Some(nodeInfo) => F.pure(nodeInfo)
+        case None => F.raiseError[NodeInfo](ExhaustedNodeList())
+      })
+      .parEvalMapUnordered(10) { nodeInfo =>
+        logger.debug(s"Get peers $nodeInfo") >> getPeers(nodeInfo, infoHash).attempt
       }
       .flatMap {
         case Right(response) =>
           response match {
             case Left(Response.Nodes(_, nodes)) =>
               Stream
-                .eval(updateNodeList(seenNodes, nodesToTry, nodes, infoHash)) >> Stream.empty
+                .eval(updateNodeList(nodes)) >> Stream.empty
             case Right(Response.Peers(_, peers)) =>
               Stream
-                .eval(filerNewPeers(seenPeers, peers))
+                .eval(filter(peers))
                 .flatMap(Stream.emits)
           }
         case Left(e) =>
@@ -79,32 +90,24 @@ object PeerDiscovery {
       }
   }
 
-  def filerNewPeers[F[_]](
-      seenPeers: Ref[F, Set[PeerInfo]],
-      peers: List[PeerInfo]
-  ): F[List[PeerInfo]] = {
-    seenPeers
-      .modify { value =>
-        val newPeers = peers.filterNot(value)
-        (value ++ newPeers, newPeers)
-      }
+  def filterNewPeers(peers: List[PeerInfo])(state: State): (State, List[PeerInfo]) = {
+    val newPeers = peers.filterNot(state.seenPeers)
+    val state1 = state.copy(
+      seenPeers = state.seenPeers ++ newPeers
+    )
+    (state1, newPeers)
   }
 
-  def updateNodeList[F[_]: Monad](
-      seenNodes: Ref[F, Set[NodeInfo]],
-      nodesToTry: Ref[F, List[NodeInfo]],
-      nodes: List[NodeInfo],
-      infoHash: InfoHash
-  ): F[Unit] = {
-    seenNodes
-      .modify { value => 
-        val newNodes = nodes.filterNot(value)
-        (value ++ newNodes, newNodes)
-      }
-      .flatMap { newNodes =>
-        val nodesSorted = newNodes.sortBy(n => NodeId.distance(n.id, infoHash))
-        nodesToTry.update(nodesSorted ++ _)
-      }
+  def updateNodeList(nodes: List[NodeInfo], infoHash: InfoHash)(state: State): State = {
+    val (seenNodes, newNodes) = {
+      val newNodes = nodes.filterNot(state.seenNodes)
+      (state.seenNodes ++ newNodes, newNodes)
+    }
+    val nodesToTry = (newNodes ++ state.nodesToTry).sortBy(n => NodeId.distance(n.id, infoHash))
+    state.copy(
+      nodesToTry = nodesToTry,
+      seenNodes = seenNodes
+    )
   }
 
   case class ExhaustedNodeList() extends Exception
