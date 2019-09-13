@@ -1,26 +1,20 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.syntax.all._
-import cats.effect.{Concurrent, ContextShift, Resource, Sync}
-import fs2.io.udp.AsynchronousSocketGroup
-import fs2.Stream
 import java.net.InetSocketAddress
-import com.github.lavrov.bittorrent.dht.message.Message
-import cats.effect.Fiber
-import com.github.lavrov.bittorrent.dht.message.Response
-import com.github.lavrov.bittorrent.InfoHash
-import fs2.concurrent.Queue
-import cats.effect.concurrent.Deferred
-import scala.concurrent.duration.FiniteDuration
-import cats.effect.Timer
-import scodec.bits.ByteVector
-import scala.util.Random
-import com.github.lavrov.bittorrent.dht.message.Query
+
 import cats.MonadError
+import cats.effect.{Concurrent, ContextShift, Resource, Sync, Timer}
+import cats.syntax.all._
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.dht.message.Response
+import fs2.Stream
+import fs2.io.udp.SocketGroup
+import io.chrisdavenport.log4cats.Logger
+import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
+import scodec.bits.ByteVector
 
 import scala.concurrent.duration._
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
-import io.chrisdavenport.log4cats.Logger
+import scala.util.Random
 
 trait Client[F[_]] {
   def getTable: F[List[NodeInfo]]
@@ -43,7 +37,7 @@ object Client {
       implicit F: Concurrent[F],
       timer: Timer[F],
       cs: ContextShift[F],
-      asg: AsynchronousSocketGroup
+      socketGroup: SocketGroup
   ): Resource[F, Client[F]] = {
     for {
       messageSocket <- MessageSocket(port)

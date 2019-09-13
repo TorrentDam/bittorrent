@@ -1,13 +1,16 @@
 package com.github.lavrov.bittorrent
 
 import java.nio.channels.AsynchronousChannelGroup
-import java.nio.channels.spi.AsynchronousChannelProvider
+
+import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
+import fs2.io.udp.{SocketGroup => UdpScoketGroup}
 import java.nio.file.{Files, Path, Paths}
-import java.util.concurrent.Executors
 
 import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
+import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode, encode}
+import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.udp.AsynchronousSocketGroup
@@ -16,10 +19,6 @@ import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.{Bases, BitVector, ByteVector}
 
 import scala.util.Random
-
-import com.github.lavrov.bittorrent.dht.PeerDiscovery
-import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
-import com.github.lavrov.bittorrent.dht.{NodeId, MessageSocket, Client => DhtClient}
 
 object Main extends IOApp {
 
@@ -104,21 +103,11 @@ object Main extends IOApp {
     }
   }
 
-  def asynchronousSocketGroupResource =
-    Resource.make(IO(AsynchronousSocketGroup()))(
-      r => IO(r.close())
-    )
+  def asynchronousSocketGroupResource: Resource[IO, UdpScoketGroup] = Blocker[IO].flatMap(UdpScoketGroup(_))
 
-  def asynchronousChannelGroupResource =
-    Resource.make(
-      IO(
-        AsynchronousChannelProvider
-          .provider()
-          .openAsynchronousChannelGroup(2, Executors.defaultThreadFactory())
-      )
-    )(g => IO(g.shutdown()))
+  def asynchronousChannelGroupResource: Resource[IO, TcpSocketGroup] = Blocker[IO].flatMap(TcpSocketGroup(_))
 
-  def resources =
+  def resources: Resource[IO, (UdpScoketGroup, TcpSocketGroup)] =
     for {
       a <- asynchronousSocketGroupResource
       b <- asynchronousChannelGroupResource
@@ -130,7 +119,7 @@ object Main extends IOApp {
     for {
       logger <- makeLogger
       _ <- resources.use {
-        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
+        case (implicit0(usg: UdpScoketGroup), implicit0(tsg: TcpSocketGroup)) =>
           for {
             (infoHash, metaInfo) <- metadataSource.fold(
               infoHash =>
@@ -181,7 +170,7 @@ object Main extends IOApp {
 
   def getPeers(
       infoHash: InfoHash
-  )(implicit asynchronousSocketGroup: AsynchronousSocketGroup): Stream[IO, PeerInfo] = {
+  )(implicit usg: UdpScoketGroup): Stream[IO, PeerInfo] = {
     val selfId = NodeId.generate(rnd)
     for {
       logger <- Stream.eval(makeLogger)
@@ -192,7 +181,7 @@ object Main extends IOApp {
   }
 
   def connectToPeer(peerInfo: PeerInfo, selfId: PeerId, infoHash: InfoHash, logger: Logger[IO])(
-      implicit asynchronousChannelGroup: AsynchronousChannelGroup
+      implicit tsg: TcpSocketGroup
   ): Resource[IO, Connection[IO]] = {
     Connection.connect[IO](selfId, peerInfo, infoHash)
   }
@@ -232,11 +221,11 @@ object Main extends IOApp {
 
   def getTorrent(
       infoHash: InfoHash
-  )(implicit acg: AsynchronousChannelGroup, asg: AsynchronousSocketGroup): IO[ByteVector] = {
+  ): IO[ByteVector] = {
     for {
       logger <- makeLogger
       metadata <- resources.use {
-        case (implicit0(asg: AsynchronousSocketGroup), implicit0(acg: AsynchronousChannelGroup)) =>
+        case (implicit0(usg: UdpScoketGroup), implicit0(tsg: TcpSocketGroup)) =>
           val connections =
             getPeers(infoHash)
               .map(peer => (peer, Connection0.connect[IO](selfId, peer, infoHash)))

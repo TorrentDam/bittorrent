@@ -106,8 +106,8 @@ object BencodeCodec {
 
   private def decodeCollectSuccessful[F[_], A](dec: Decoder[A], limit: Option[Int])(
       buffer: BitVector
-  )(implicit cbf: collection.generic.CanBuildFrom[F[A], A, F[A]]): Attempt[DecodeResult[F[A]]] = {
-    val bldr = cbf()
+  )(implicit factory: collection.Factory[A, F[A]]): Attempt[DecodeResult[F[A]]] = {
+    val builder = factory.newBuilder
     var remaining = buffer
     var count = 0
     val maxCount = limit getOrElse Int.MaxValue
@@ -115,13 +115,13 @@ object BencodeCodec {
     while (count < maxCount && !error && remaining.nonEmpty) {
       dec.decode(remaining) match {
         case Attempt.Successful(DecodeResult(value, rest)) =>
-          bldr += value
+          builder += value
           count += 1
           remaining = rest
         case Attempt.Failure(_) =>
           error = true
       }
     }
-    Attempt.successful(DecodeResult(bldr.result, remaining))
+    Attempt.successful(DecodeResult(builder.result, remaining))
   }
 }

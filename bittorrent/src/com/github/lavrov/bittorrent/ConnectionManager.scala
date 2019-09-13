@@ -5,6 +5,7 @@ import cats.instances.list._
 import cats.effect.Effect
 import fs2.Stream
 import java.nio.channels.AsynchronousChannelGroup
+
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.github.timwspence.cats.stm.TVar
 import io.github.timwspence.cats.stm.STM
@@ -18,6 +19,8 @@ import cats.effect.concurrent.Ref
 import fs2.Pull
 import java.{util => ju}
 
+import fs2.io.tcp.SocketGroup
+
 object ConnectionManager {
 
   val maxConnections = 50
@@ -28,7 +31,7 @@ object ConnectionManager {
   )(
       implicit F: ConcurrentEffect[F],
       timer: Timer[F],
-      acg: AsynchronousChannelGroup
+      socketGroup: SocketGroup
   ): F[Stream[F, Connection[F]]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)

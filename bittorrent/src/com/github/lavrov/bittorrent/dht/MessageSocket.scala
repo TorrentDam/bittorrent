@@ -3,20 +3,16 @@ package com.github.lavrov.bittorrent.dht
 import java.net.InetSocketAddress
 
 import cats._
-import cats.effect.{Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Concurrent, ContextShift, Resource}
 import cats.syntax.all._
-import fs2.io.udp.{Packet, Socket}
+import com.github.lavrov.bencode.{decode, encode}
+import com.github.lavrov.bittorrent.dht.message.Message
 import fs2.Chunk
-import fs2.io.udp.AsynchronousSocketGroup
+import fs2.io.udp.{Packet, SocketGroup, Socket}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.Err
-import scodec.bits.{BitVector, ByteVector}
-
-import scala.concurrent.duration.DurationInt
-
-import com.github.lavrov.bencode.{decode, encode}
-import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
+import scodec.bits.BitVector
 
 class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(
     implicit F: MonadError[F, Throwable]
@@ -53,9 +49,9 @@ object MessageSocket {
   )(
       implicit F: Concurrent[F],
       cs: ContextShift[F],
-      asg: AsynchronousSocketGroup
+      socketGroup: SocketGroup
   ): Resource[F, MessageSocket[F]] =
-    Socket[F](address = new InetSocketAddress(port)).evalMap(
+    socketGroup.open[F](address = new InetSocketAddress(port)).evalMap(
       socket =>
         for {
           logger <- Slf4jLogger.fromClass[F](getClass)

@@ -13,7 +13,7 @@ import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
 import fs2.concurrent.Queue
-import fs2.io.tcp.Socket
+import fs2.io.tcp.{Socket, SocketGroup}
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.{BitVector, ByteVector}
@@ -22,8 +22,10 @@ import scala.collection.immutable.ListSet
 import scala.concurrent.duration._
 import cats.effect.Resource
 import java.nio.channels.AsynchronousChannelGroup
+
 import cats.effect.ContextShift
 import java.{util => ju}
+
 import fs2.concurrent.Topic
 
 trait Connection[F[_]] {
@@ -206,7 +208,7 @@ object Connection {
       implicit F: Concurrent[F],
       cs: ContextShift[F],
       timer: Timer[F],
-      acg: AsynchronousChannelGroup
+      socketGroup: SocketGroup
   ): Resource[F, Connection[F]] = {
     type PendingCommand[A] = (Command[A], A => F[Unit])
     val Noop = (_: Unit) => F.unit
@@ -310,20 +312,21 @@ class Connection0[F[_]](
 }
 
 object Connection0 {
-  import fs2.io.tcp.{Socket => TCPSocket}
+  import fs2.io.tcp.SocketGroup
 
   def connect[F[_]](
       selfId: PeerId,
       peerInfo: PeerInfo,
       infoHash: InfoHash
   )(
-      implicit F: Concurrent[F],
-      sc: ContextShift[F],
-      acg: AsynchronousChannelGroup
+      implicit
+      F: Concurrent[F],
+      cs: ContextShift[F],
+      socketGroup: SocketGroup
   ): Resource[F, Connection0[F]] = {
     for {
       logger <- Resource.liftF(Slf4jLogger.fromClass(getClass))
-      socket <- TCPSocket.client(to = peerInfo.address)
+      socket <- socketGroup.client(to = peerInfo.address)
       socket <- Resource.make(socket.pure)(_.close *> logger.debug(s"Closed socket $peerInfo"))
       _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
       handshakeResponse <- Resource.liftF(handshake(selfId, infoHash, socket, logger))

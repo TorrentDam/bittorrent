@@ -89,7 +89,7 @@ object DownloadTorrent {
   def start[F[_], F1[_]](
       metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
-  )(implicit F: Concurrent[F], P: Parallel[F, F1], timer: Timer[F]): F[DownloadTorrent[F]] = {
+  )(implicit F: Concurrent[F], P: Parallel[F], timer: Timer[F]): F[DownloadTorrent[F]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
