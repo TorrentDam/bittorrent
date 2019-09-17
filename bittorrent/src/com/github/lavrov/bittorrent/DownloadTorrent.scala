@@ -86,7 +86,7 @@ object DownloadTorrent {
     def reset: IncompletePiece = copy(downloadedSize = 0, downloaded = Map.empty)
   }
 
-  def start[F[_], F1[_]](
+  def start[F[_]](
       metaInfo: TorrentMetadata.Info,
       peers: Stream[F, Connection[F]]
   )(implicit F: Concurrent[F], P: Parallel[F], timer: Timer[F]): F[DownloadTorrent[F]] = {
@@ -114,7 +114,6 @@ object DownloadTorrent {
           val onDisconnect =
             Stream
               .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
-              .spawn
           val onEvent =
             peer.events.evalTap {
               case Connection.Event.PieceReceived(request, bytes) =>
@@ -124,7 +123,7 @@ object DownloadTorrent {
               case _ =>
                 Monad[F].unit
             }
-          onDisconnect.spawn *> onEvent.spawn
+          onDisconnect.spawn >> onEvent.spawn
         }
       fiber <- Concurrent[F].start {
         (

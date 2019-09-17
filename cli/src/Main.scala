@@ -142,7 +142,7 @@ object Main extends IOApp {
               connectToPeer(_, selfId, infoHash, logger)
             )
             _ <- logger.info(s"Start downloading")
-            downloading <- DownloadTorrent.start[IO, IO.Par](metaInfo, connections)
+            downloading <- DownloadTorrent.start[IO](metaInfo, connections)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
             _ <- downloading.fiber.cancel
           } yield ()
