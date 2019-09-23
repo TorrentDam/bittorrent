@@ -27,7 +27,7 @@ object bittorrent extends Module {
 object cli extends Module with ReleaseModule {
   def moduleDeps = List(bittorrent)
   def ivyDeps = Agg(
-    ivy"com.monovore::decline:0.7.0-SNAPSHOT", // todo
+    ivy"com.monovore::decline:1.0.0",
     ivy"ch.qos.logback:logback-classic:1.2.3",
     ivy"com.lihaoyi::pprint:0.5.5",
   )
