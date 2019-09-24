@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.effect.{Concurrent, ConcurrentEffect}
+import cats.effect.{Concurrent, ConcurrentEffect, Timer}
 import cats.instances.all._
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.message.Response
@@ -13,12 +13,13 @@ import io.github.timwspence.cats.stm.{STM, TVar}
 object PeerDiscovery {
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
-      implicit F: ConcurrentEffect[F]
+      implicit F: ConcurrentEffect[F], timer: Timer[F]
   ): F[Stream[F, PeerInfo]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
-      nodesToTry <- client.getTable
-      tvar <- TVar.of(State(nodesToTry)).commit[F]
+      _ <- logger.info("Start discovery")
+      bootstrapNode <- RoutingTableManager.bootstrap(client, logger)
+      tvar <- TVar.of(State(bootstrapNode :: Nil)).commit[F]
     } yield {
       val next = STM.atomically {
         tvar.get

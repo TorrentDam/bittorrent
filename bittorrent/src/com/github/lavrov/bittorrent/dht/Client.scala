@@ -2,28 +2,24 @@ package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
 
-import cats.MonadError
+import cats.effect.syntax.all._
 import cats.effect.{Concurrent, ContextShift, Resource, Sync, Timer}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.message.Response
-import fs2.Stream
+import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
+import fs2.concurrent.Queue
 import fs2.io.udp.SocketGroup
-import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.ByteVector
 
-import scala.concurrent.duration._
 import scala.util.Random
 
 trait Client[F[_]] {
-  def getTable: F[List[NodeInfo]]
   def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): F[Either[Response.Nodes, Response.Peers]]
+  def ping(address: InetSocketAddress): F[Response.Ping]
 }
 
 object Client {
-
-  val BootstrapNodeAddress = new InetSocketAddress("router.bittorrent.com", 6881)
 
   def generateTransactionId[F[_]: Sync]: F[ByteVector] = {
     val nextChar = Sync[F].delay(Random.nextPrintableChar())
@@ -41,50 +37,47 @@ object Client {
   ): Resource[F, Client[F]] = {
     for {
       messageSocket <- MessageSocket(port)
-      logger <- Resource.liftF(Slf4jLogger.fromClass(Client.getClass))
-      requestResponse <- Resource.liftF {
-        RequestResponse.make(
-          selfId,
-          generateTransactionId,
-          messageSocket.writeMessage
-        )
+      responses <- Resource.liftF {
+        Queue
+          .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
-      dhtBehaviour <- Resource.liftF(DhtBehaviour.make(selfId, messageSocket.writeMessage))
-      messages = Stream
-        .repeatEval(messageSocket.readMessage)
-      processor = messages.broadcastTo(requestResponse.pipe, dhtBehaviour.pipe)
-      fiber <- Resource.make(Concurrent[F].start(processor.compile.drain))(_.cancel)
-      _ <- Resource.liftF(boostrap(selfId, requestResponse, logger))
+      queryies <- Resource.liftF { Queue.unbounded[F, (InetSocketAddress, Message)] }
+      _ <- Resource
+        .make(
+          messageSocket.readMessage
+            .flatMap {
+              case (a, m: Message.QueryMessage) => queryies.enqueue1((a, m))
+              case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
+              case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
+            }
+            .foreverM
+            .start
+        )(_.cancel)
+      logger <- Resource.liftF(Slf4jLogger.fromClass(Client.getClass))
+      requestResponse <- RequestResponse.make(
+        generateTransactionId,
+        messageSocket.writeMessage,
+        responses.dequeue1
+      )
     } yield new Client[F] {
-
-      def getTable: F[List[NodeInfo]] = dhtBehaviour.getTable
+      import requestResponse.sendQuery
 
       def getPeers(
           nodeInfo: NodeInfo,
           infoHash: InfoHash
       ): F[Either[Response.Nodes, Response.Peers]] =
-        requestResponse.getPeers(nodeInfo.address, infoHash)
-    }
-  }
-
-  private def boostrap[F[_]](
-      selfId: NodeId,
-      requestResponse: RequestResponse[F],
-      logger: Logger[F]
-  )(
-      implicit F: MonadError[F, Throwable],
-      timer: Timer[F]
-  ): F[Unit] = {
-    def loop: F[Unit] =
-      requestResponse
-        .ping(BootstrapNodeAddress)
-        .void
-        .recoverWith {
-          case e =>
-            val msg = e.getMessage()
-            logger.info(e)(s"Bootstrap failed $msg") >> timer.sleep(5.seconds) >> loop
+        sendQuery(nodeInfo.address, Query.GetPeers(selfId, infoHash)).flatMap {
+          case nodes: Response.Nodes => nodes.asLeft.pure
+          case peers: Response.Peers => peers.asRight.pure
+          case _ => Concurrent[F].raiseError(InvalidResponse())
         }
-    logger.info("Boostrapping") >> loop >> logger.info("Bootstrap complete")
+
+      def ping(address: InetSocketAddress): F[Response.Ping] =
+        sendQuery(address, Query.Ping(selfId)).flatMap {
+          case ping: Response.Ping => ping.pure
+          case _ => Concurrent[F].raiseError(InvalidResponse())
+        }
+    }
   }
 
   case class BootstrapError(message: String) extends Throwable(message)

@@ -1,4 +1,5 @@
 package com.github.lavrov.bittorrent.dht
+
 import org.scalatest.FlatSpec
 import cats.effect.SyncIO
 import cats.effect.concurrent.Ref
