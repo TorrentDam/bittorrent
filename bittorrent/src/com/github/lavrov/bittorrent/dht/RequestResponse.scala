@@ -21,14 +21,16 @@ trait RequestResponse[F[_]] {
 object RequestResponse {
 
   def make[F[_]](
-    generateTransactionId: F[ByteVector],
-    sendMessage: (InetSocketAddress, Message) => F[Unit],
-    receiveMessage: F[
-      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
-    ]
-  )(implicit
-    F: Concurrent[F],
-    timer: Timer[F]): Resource[F, RequestResponse[F]] = Resource {
+      generateTransactionId: F[ByteVector],
+      sendMessage: (InetSocketAddress, Message) => F[Unit],
+      receiveMessage: F[
+        (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+      ]
+  )(
+      implicit
+      F: Concurrent[F],
+      timer: Timer[F]
+  ): Resource[F, RequestResponse[F]] = Resource {
     for {
       callbackRegistry <- CallbackRegistry.make[F]
       fiber <- receiveLoop(receiveMessage, callbackRegistry.complete).start
@@ -38,9 +40,9 @@ object RequestResponse {
   }
 
   private class Impl[F[_]](
-    generateTransactionId: F[ByteVector],
-    sendMessage: (InetSocketAddress, Message) => F[Unit],
-    receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
+      generateTransactionId: F[ByteVector],
+      sendMessage: (InetSocketAddress, Message) => F[Unit],
+      receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
   )(implicit F: MonadError[F, Throwable])
       extends RequestResponse[F] {
     def sendQuery(address: InetSocketAddress, query: Query): F[Response] = {
@@ -53,12 +55,14 @@ object RequestResponse {
   }
 
   private def receiveLoop[F[_]](
-    receive: F[
-      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
-    ],
-    continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
-  )(implicit
-    F: Monad[F]): F[Unit] = {
+      receive: F[
+        (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+      ],
+      continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
+  )(
+      implicit
+      F: Monad[F]
+  ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
       case Right(Message.ResponseMessage(transactionId, response)) =>
         continue(transactionId, response.asRight)
@@ -74,11 +78,9 @@ object RequestResponse {
 }
 
 trait CallbackRegistry[F[_]] {
-  def add(transactionId: ByteVector,
-          timeout: FiniteDuration): F[Either[Throwable, Response]]
+  def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]]
 
-  def complete(transactionId: ByteVector,
-               result: Either[Throwable, Response]): F[Boolean]
+  def complete(transactionId: ByteVector, result: Either[Throwable, Response]): F[Boolean]
 }
 
 object CallbackRegistry {
@@ -94,37 +96,34 @@ object CallbackRegistry {
   }
 
   private class Impl[F[_]: Concurrent: Timer](
-    ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
+      ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
   ) extends CallbackRegistry[F] {
-    def add(transactionId: ByteVector,
-            timeout: FiniteDuration): F[Either[Throwable, Response]] =
-      Deferred.uncancelable[F, Either[Throwable, Response]].flatMap {
-        deferred =>
-          val update =
-            ref.update { map =>
-              map.updated(
-                transactionId,
-                deferred.complete(_).attempt.map(_.isRight)
-              )
-            }
-          val scheduleTimeout =
-            (Timer[F].sleep(timeout) >> complete(
+    def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] =
+      Deferred.uncancelable[F, Either[Throwable, Response]].flatMap { deferred =>
+        val update =
+          ref.update { map =>
+            map.updated(
               transactionId,
-              Timeout().asLeft
-            )).start
-          val delete =
-            ref.update { map =>
-              map - transactionId
-            }
-          update *> scheduleTimeout *> deferred.get <* delete
+              deferred.complete(_).attempt.map(_.isRight)
+            )
+          }
+        val scheduleTimeout =
+          (Timer[F].sleep(timeout) >> complete(
+            transactionId,
+            Timeout().asLeft
+          )).start
+        val delete =
+          ref.update { map =>
+            map - transactionId
+          }
+        update *> scheduleTimeout *> deferred.get <* delete
       }
 
-    def complete(transactionId: ByteVector,
-                 result: Either[Throwable, Response]): F[Boolean] =
+    def complete(transactionId: ByteVector, result: Either[Throwable, Response]): F[Boolean] =
       ref.get.flatMap { map =>
         map.get(transactionId) match {
           case Some(callback) => callback(result)
-          case None           => false.pure[F]
+          case None => false.pure[F]
         }
       }
   }

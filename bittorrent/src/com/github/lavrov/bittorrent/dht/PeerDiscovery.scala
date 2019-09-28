@@ -13,7 +13,8 @@ import io.github.timwspence.cats.stm.{STM, TVar}
 object PeerDiscovery {
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
-      implicit F: ConcurrentEffect[F], timer: Timer[F]
+      implicit F: ConcurrentEffect[F],
+      timer: Timer[F]
   ): F[Stream[F, PeerInfo]] = {
     for {
       logger <- Slf4jLogger.fromClass(getClass)
