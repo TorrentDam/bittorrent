@@ -23,11 +23,10 @@ import fs2.io.tcp.SocketGroup
 
 object ConnectionManager {
 
-  val maxConnections = 50
-
   def make[F[_]](
       dhtPeers: Stream[F, PeerInfo],
-      connectToPeer: PeerInfo => Resource[F, Connection[F]]
+      connectToPeer: PeerInfo => Resource[F, Connection[F]],
+      maxConnections: Int = 50
   )(
       implicit F: ConcurrentEffect[F],
       timer: Timer[F],

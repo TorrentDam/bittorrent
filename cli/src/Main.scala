@@ -139,7 +139,8 @@ object Main extends IOApp {
             (infoHash, metaInfo) = result
             connections <- ConnectionManager.make(
               getPeers(infoHash),
-              connectToPeer(_, selfId, infoHash, logger)
+              connectToPeer(_, selfId, infoHash, logger),
+              50
             )
             _ <- logger.info(s"Start downloading")
             downloading <- DownloadTorrent.start[IO](metaInfo, connections)
@@ -264,7 +265,7 @@ object Main extends IOApp {
       for {
         logger <- makeLogger
         peers = getPeers(infoHash)
-        connections <- ConnectionManager.make[IO](peers, connectToPeer(_, selfId, infoHash, logger))
+        connections <- ConnectionManager.make[IO](peers, connectToPeer(_, selfId, infoHash, logger), 10)
         _ <- connections
           .evalTap { connection =>
             logger.info(s"Received connection ${connection.info}")
