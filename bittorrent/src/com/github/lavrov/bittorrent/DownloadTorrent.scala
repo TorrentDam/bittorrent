@@ -2,17 +2,18 @@ package com.github.lavrov.bittorrent
 
 import java.util.UUID
 
-import cats.Monad
-import cats.MonadError
+import cats.{Monad, MonadError, Parallel}
 import cats.data.Chain
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{Concurrent, Fiber}
+import cats.instances.option._
+import cats.effect.concurrent.Ref
+import cats.effect.syntax.all._
+import cats.effect.{Concurrent, Fiber, Timer}
 import cats.mtl.MonadState
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.olegpy.meow.effects._
-import fs2.{Pull, Stream}
+import fs2.Stream
 import fs2.concurrent.Queue
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
@@ -22,9 +23,6 @@ import scodec.bits.ByteVector
 
 import scala.concurrent.duration._
 import scala.util.chaining._
-import cats.effect.Timer
-import cats.Parallel
-import cats.data.NonEmptyList
 
 case class DownloadTorrent[F[_]](
     send: DownloadTorrent.Command[F] => F[Unit],
@@ -110,10 +108,10 @@ object DownloadTorrent {
       behaviour = new Behaviour(16, 10, effects, logger)
       getConnectionStream = peers
         .evalTap(c => commandQueue.enqueue1(Command.AddPeer(c)))
-        .flatMap { peer =>
-          val onDisconnect =
-            Stream
-              .eval(peer.disconnected *> commandQueue.enqueue1(Command.RemovePeer(peer.uniqueId)))
+        .evalTap { peer =>
+          val onDisconnect = peer.disconnected *> commandQueue.enqueue1(
+            Command.RemovePeer(peer.uniqueId)
+          )
           val onEvent =
             peer.events.evalTap {
               case Connection.Event.PieceReceived(request, bytes) =>
@@ -123,7 +121,7 @@ object DownloadTorrent {
               case _ =>
                 Monad[F].unit
             }
-          onDisconnect.spawn >> onEvent.spawn
+          onDisconnect.start >> onEvent.compile.drain.start
         }
       fiber <- Concurrent[F].start {
         (
@@ -309,28 +307,34 @@ object DownloadTorrent {
                 connection.cancel(request)
             }
             incompletePieceOpt <- effects.state.inspect(incompletePieceLens.get)
-            incompletePiece <- F
-              .fromOption(incompletePieceOpt, new Exception(s"Piece ${request.index} not found"))
-            incompletePiece <- incompletePiece.add(request, bytes).pure
-            _ <- {
-              if (incompletePiece.isComplete)
-                incompletePiece.verified.pipe {
-                  case Some(bytes) =>
-                    logger.debug(s"Piece ${incompletePiece.index} passed checksum verification") *>
-                      effects.state.modify(incompletePieceLens set none) *>
-                      effects.notifyPieceComplete(
-                        CompletePiece(
-                          incompletePiece.index,
-                          incompletePiece.begin,
-                          bytes
-                        )
-                      )
-                  case None =>
-                    logger.warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
-                      effects.state.modify(incompletePieceLens set incompletePiece.reset.some)
-                }
-              else
-                effects.state.modify(incompletePieceLens.set(incompletePiece.some))
+            _ <- incompletePieceOpt.traverse_ {
+              incompletePiece =>
+                for {
+                  incompletePiece <- incompletePiece.add(request, bytes).pure[F]
+                  _ <- {
+                    if (incompletePiece.isComplete)
+                      incompletePiece.verified.pipe {
+                        case Some(bytes) =>
+                          logger.debug(
+                            s"Piece ${incompletePiece.index} passed checksum verification"
+                          ) *>
+                            effects.state.modify(incompletePieceLens set none) *>
+                            effects.notifyPieceComplete(
+                              CompletePiece(
+                                incompletePiece.index,
+                                incompletePiece.begin,
+                                bytes
+                              )
+                            )
+                        case None =>
+                          logger
+                            .warn(s"Piece ${incompletePiece.index} failed checksum verification") *>
+                            effects.state.modify(incompletePieceLens set incompletePiece.reset.some)
+                      }
+                    else
+                      effects.state.modify(incompletePieceLens.set(incompletePiece.some))
+                  }
+                } yield ()
             }
             _ <- tryDownload
           } yield ()
