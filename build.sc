@@ -33,9 +33,8 @@ object cli extends Module with ReleaseModule {
   )
 }
 
-object client extends scalajslib.ScalaJSModule {
+object client extends Module with scalajslib.ScalaJSModule {
   import mill.scalajslib.api.ModuleKind
-  def scalaVersion = "2.13.0"
   def scalaJSVersion = "0.6.28"
   def moduleKind = ModuleKind.CommonJSModule
   def ivyDeps = Agg(
@@ -43,11 +42,10 @@ object client extends scalajslib.ScalaJSModule {
     ivy"me.shadaj::slinky-web::0.6.2",
     ivy"me.shadaj::slinky-hot::0.6.2"
   )
-  def scalacOptions = List(
-    "-language:higherKinds",
-    "-Ymacro-annotations",
-    "-P:scalajs:sjsDefinedByDefault"
-  )
+
+ def scalacOptions = super.scalacOptions() ++ List(
+   "-P:scalajs:sjsDefinedByDefault"
+ )
 
   def webpackBundle: T[os.Path] = T {
     val bundlePath = T.ctx().dest / "bundle.js"
@@ -71,6 +69,7 @@ trait Module extends ScalaModule with ScalafmtModule {
   def scalaVersion = "2.13.0"
   def scalacOptions = List(
     "-language:higherKinds",
+    "-Ymacro-annotations",
   )
 
   def scalacPluginIvyDeps = Agg(

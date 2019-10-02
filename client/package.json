@@ -20,9 +20,11 @@
     "css-loader": "3.0.0"
   },
   "dependencies": {
+    "@material-ui/core": "^4.4.3",
+    "@material-ui/icons": "^4.4.3",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
     "react-proxy": "1.1.8",
-    "react-md": "1.12.1"
+    "react-transition-group": "^4.3.0"
   }
 }
