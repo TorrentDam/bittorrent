@@ -6,7 +6,6 @@ import slinky.core.CustomAttribute
 import org.scalajs.dom
 import scala.scalajs.js
 import js.Dynamic
-import app.App
 import material_ui.core._
 import material_ui.icons._
 import material_ui.styles.makeStyles
