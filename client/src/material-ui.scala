@@ -21,6 +21,8 @@ package core {
       val Typography: js.Object = js.native
       val Container: js.Object = js.native
       val TextField: js.Object = js.native
+      val Paper: js.Object = js.native
+      val InputBase: js.Object = js.native
       val CssBaseline: js.Object = js.native
     }
 
@@ -64,6 +66,7 @@ package core {
     object Container extends ExternalComponent {
       case class Props(
         maxWidth: String,
+        className: UndefOr[String] = js.undefined
       )
       val component = imports.Container
     }
@@ -76,6 +79,23 @@ package core {
         label: String
       )
       val component = imports.TextField
+    }
+
+    @react
+    object Paper extends ExternalComponent {
+      case class Props(
+        className: UndefOr[String] = js.undefined
+      )
+      val component = imports.Paper
+    }
+
+    @react
+    object InputBase extends ExternalComponent {
+      case class Props(
+        placeholder: String,
+        className: UndefOr[String] = js.undefined
+      )
+      val component = imports.InputBase
     }
 
     object CssBaseline extends ExternalComponentNoProps {
