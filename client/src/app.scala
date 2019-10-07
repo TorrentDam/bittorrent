@@ -12,10 +12,11 @@ import scala.scalajs.js.Dynamic
 object App {
   case class Props()
 
-  private val useStyles = makeStyles( theme =>
-    Dynamic.literal(
-      appBarSpacer = theme.mixins.toolbar
-    )
+  private val useStyles = makeStyles(
+    theme =>
+      Dynamic.literal(
+        appBarSpacer = theme.mixins.toolbar
+      )
   )
 
   val component = FunctionalComponent[Unit] { _ =>

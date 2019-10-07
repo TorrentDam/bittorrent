@@ -11,23 +11,24 @@ import scala.scalajs.js.Dynamic
 object DownloadPanel {
   case class Props()
 
-  private val useStyles = makeStyles( theme =>
-    Dynamic.literal(
-      container = Dynamic.literal(
-        paddingTop = theme.spacing(4),
-        paddingBottom = theme.spacing(4),
-      ),
-      root = Dynamic.literal(
-        padding = theme.spacing(2),
-        display = "flex",
-        alignItems = "center", 
-      ),
-      input = Dynamic.literal(
-        marginLeft = theme.spacing(1),
-        marginRight = theme.spacing(1),
-        flex = 1,
+  private val useStyles = makeStyles(
+    theme =>
+      Dynamic.literal(
+        container = Dynamic.literal(
+          paddingTop = theme.spacing(4),
+          paddingBottom = theme.spacing(4)
+        ),
+        root = Dynamic.literal(
+          padding = theme.spacing(2),
+          display = "flex",
+          alignItems = "center"
+        ),
+        input = Dynamic.literal(
+          marginLeft = theme.spacing(1),
+          marginRight = theme.spacing(1),
+          flex = 1
+        )
       )
-    )
   )
 
   val component = FunctionalComponent[Unit] { _ =>
