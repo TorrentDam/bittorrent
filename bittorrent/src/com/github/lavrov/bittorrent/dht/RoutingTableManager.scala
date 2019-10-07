@@ -9,11 +9,11 @@ import cats.mtl._
 import cats.{Monad, MonadError}
 import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import com.olegpy.meow.effects.RefEffects
-import io.chrisdavenport.log4cats.Logger
 import monocle.Lens
 import monocle.macros.GenLens
 
 import scala.concurrent.duration._
+import logstage.LogIO
 
 object RoutingTableManager {
 
@@ -78,7 +78,7 @@ object RoutingTableManager {
 
   def bootstrap[F[_]](
       client: Client[F],
-      logger: Logger[F]
+      logger: LogIO[F]
   )(
       implicit F: MonadError[F, Throwable],
       timer: Timer[F]
@@ -90,7 +90,7 @@ object RoutingTableManager {
         .recoverWith {
           case e =>
             val msg = e.getMessage()
-            logger.info(e)(s"Bootstrap failed $msg") >> timer.sleep(5.seconds) >> loop
+            logger.info(s"Bootstrap failed $msg $e") >> timer.sleep(5.seconds) >> loop
         }
     logger.info("Boostrapping") >> loop << logger.info("Bootstrap complete")
   }

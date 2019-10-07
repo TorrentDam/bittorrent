@@ -8,7 +8,6 @@ import cats.effect.Concurrent
 
 import fs2.Stream
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.Message
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scala.concurrent.duration.FiniteDuration
 import cats.Monad
 import com.github.lavrov.bittorrent.protocol.message.Message.Extended
@@ -20,7 +19,7 @@ import com.github.lavrov.bittorrent.protocol.extensions.Extensions
 import scala.concurrent.duration._
 import com.github.lavrov.bencode.BencodeCodec
 import scodec.Err
-import io.chrisdavenport.log4cats.Logger
+import logstage.LogIO
 
 object DownloadTorrentMetadata {
 
@@ -29,10 +28,10 @@ object DownloadTorrentMetadata {
       connections: Stream[F, (PeerInfo, Resource[F, Connection0[F]])]
   )(
       implicit F: Concurrent[F],
-      timer: Timer[F]
+      timer: Timer[F],
+      logger: LogIO[F]
   ): F[ByteVector] =
     for {
-      logger <- Slf4jLogger.fromClass(getClass())
       result <- connections
         .parEvalMapUnordered(10) {
           case (peer, connectionResource) =>
@@ -94,7 +93,7 @@ object DownloadTorrentMetadata {
       peerProtocolId: Long,
       encode: M => ByteVector,
       decode: ByteVector => Either[Throwable, M],
-      logger: Logger[F]
+      logger: LogIO[F]
   )(
       implicit F: Concurrent[F],
       timer: Timer[F]
@@ -128,7 +127,7 @@ object DownloadTorrentMetadata {
 
   class ExtendedProtocolHandshakeOps[F[_]: Concurrent: Timer](
       connection: Connection0[F],
-      logger: Logger[F]
+      logger: LogIO[F]
   ) extends ExtendedProtocolOps(
         connection,
         Extensions.MessageId.Handshake,
@@ -141,7 +140,7 @@ object DownloadTorrentMetadata {
   class TorrentMetadataExtensionOps[F[_]: Concurrent: Timer](
       connection: Connection0[F],
       peerExtensionMessageId: Long,
-      logger: Logger[F]
+      logger: LogIO[F]
   ) extends ExtendedProtocolOps(
         connection,
         Extensions.MessageId.Metadata,

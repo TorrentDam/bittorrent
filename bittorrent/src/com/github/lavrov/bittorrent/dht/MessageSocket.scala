@@ -9,12 +9,11 @@ import com.github.lavrov.bencode.{decode, encode}
 import com.github.lavrov.bittorrent.dht.message.Message
 import fs2.Chunk
 import fs2.io.udp.{Packet, Socket, SocketGroup}
-import io.chrisdavenport.log4cats.Logger
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.Err
 import scodec.bits.BitVector
+import logstage.LogIO
 
-class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(
+class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(
     implicit F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
@@ -49,15 +48,13 @@ object MessageSocket {
   )(
       implicit F: Concurrent[F],
       cs: ContextShift[F],
-      socketGroup: SocketGroup
+      socketGroup: SocketGroup,
+      logger: LogIO[F]
   ): Resource[F, MessageSocket[F]] =
     socketGroup
       .open[F](address = new InetSocketAddress(port))
-      .evalMap(
-        socket =>
-          for {
-            logger <- Slf4jLogger.fromClass[F](getClass)
-          } yield new MessageSocket(socket, logger)
+      .map(
+        socket => new MessageSocket(socket, logger)
       )
 
   object Error {

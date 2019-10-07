@@ -4,9 +4,9 @@ import cats.MonadError
 import cats.syntax.all._
 import com.github.lavrov.bencode.{Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.protocol.message.Message
-import io.chrisdavenport.log4cats.Logger
 import scodec.Err
 import scodec.bits.BitVector
+import logstage.LogIO
 
 object Extensions {
 
@@ -37,7 +37,7 @@ object Extensions {
         .toByteVector
     )
 
-  def processHandshake[F[_]](payload: BitVector, logger: Logger[F])(
+  def processHandshake[F[_]](payload: BitVector, logger: LogIO[F])(
       implicit F: MonadError[F, Throwable]
   ): F[ExtensionHandshake] =
     for {

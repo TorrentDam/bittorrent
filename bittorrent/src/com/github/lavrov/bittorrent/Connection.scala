@@ -14,8 +14,6 @@ import com.olegpy.meow.effects._
 import fs2.{Chunk, Stream}
 import fs2.concurrent.Queue
 import fs2.io.tcp.{Socket, SocketGroup}
-import io.chrisdavenport.log4cats.Logger
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.{BitVector, ByteVector}
 
 import scala.collection.immutable.ListSet
@@ -27,6 +25,7 @@ import cats.effect.ContextShift
 import java.{util => ju}
 
 import fs2.concurrent.Topic
+import logstage.LogIO
 
 trait Connection[F[_]] {
   def uniqueId: ju.UUID
@@ -82,7 +81,7 @@ object Connection {
       handshake: Handshake,
       keepAliveInterval: FiniteDuration,
       effects: Effects[F],
-      logger: Logger[F]
+      logger: LogIO[F]
   )(implicit F: MonadError[F, Throwable]) {
 
     def receive[A](command: Command[A]): F[A] = command match {
@@ -208,13 +207,13 @@ object Connection {
       implicit F: Concurrent[F],
       cs: ContextShift[F],
       timer: Timer[F],
-      socketGroup: SocketGroup
+      socketGroup: SocketGroup,
+      logger: LogIO[F]
   ): Resource[F, Connection[F]] = {
     type PendingCommand[A] = (Command[A], A => F[Unit])
     val Noop = (_: Unit) => F.unit
     Connection0.connect(selfId, peerInfo, infoHash).evalMap { connection =>
       for {
-        logger <- Slf4jLogger.fromClass(getClass)
         queue <- Queue.unbounded[F, Command[_]]
         eventQueue <- Queue.noneTerminated[F, Event]
         initState = State()
@@ -250,7 +249,7 @@ object Connection {
             .race(enqueueFiber.join, dequeueFiber.join)
             .onError {
               case e =>
-                logger.debug(e)(s"Connection error $peerInfo") *>
+                logger.debug(s"Connection error $peerInfo $e") *>
                   eventQueue.enqueue1(None)
             }
         }
@@ -276,7 +275,7 @@ class Connection0[F[_]](
     val handshake: Handshake,
     val peerInfo: PeerInfo,
     socket: Socket[F],
-    logger: Logger[F]
+    logger: LogIO[F]
 )(
     implicit F: MonadError[F, Throwable]
 ) {
@@ -322,10 +321,10 @@ object Connection0 {
       implicit
       F: Concurrent[F],
       cs: ContextShift[F],
-      socketGroup: SocketGroup
+      socketGroup: SocketGroup,
+      logger: LogIO[F]
   ): Resource[F, Connection0[F]] = {
     for {
-      logger <- Resource.liftF(Slf4jLogger.fromClass(getClass))
       socket <- socketGroup.client(to = peerInfo.address)
       socket <- Resource.make(socket.pure)(_.close *> logger.debug(s"Closed socket $peerInfo"))
       _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
@@ -333,7 +332,7 @@ object Connection0 {
     } yield new Connection0(handshakeResponse, peerInfo, socket, logger)
   }
 
-  def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: Logger[F])(
+  def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: LogIO[F])(
       implicit F: Concurrent[F]
   ): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)

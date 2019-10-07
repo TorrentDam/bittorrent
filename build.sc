@@ -18,7 +18,6 @@ object bittorrent extends Module {
     ivy"io.github.timwspence::cats-stm:0.5.0",
     ivy"co.fs2::fs2-io:2.0.0",
     ivy"io.7mind.izumi::logstage-core:0.9.5",
-    ivy"io.chrisdavenport::log4cats-slf4j:1.0.0",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
     ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
   )

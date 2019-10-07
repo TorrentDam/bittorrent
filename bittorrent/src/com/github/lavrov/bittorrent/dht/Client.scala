@@ -9,10 +9,10 @@ import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import fs2.concurrent.Queue
 import fs2.io.udp.SocketGroup
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.ByteVector
 
 import scala.util.Random
+import logstage.LogIO
 
 trait Client[F[_]] {
   def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): F[Either[Response.Nodes, Response.Peers]]
@@ -33,7 +33,8 @@ object Client {
       implicit F: Concurrent[F],
       timer: Timer[F],
       cs: ContextShift[F],
-      socketGroup: SocketGroup
+      socketGroup: SocketGroup,
+      logger: LogIO[F]
   ): Resource[F, Client[F]] = {
     for {
       messageSocket <- MessageSocket(port)
@@ -53,7 +54,6 @@ object Client {
             .foreverM
             .start
         )(_.cancel)
-      logger <- Resource.liftF(Slf4jLogger.fromClass(Client.getClass))
       requestResponse <- RequestResponse.make(
         generateTransactionId,
         messageSocket.writeMessage,

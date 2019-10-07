@@ -6,7 +6,6 @@ import cats.effect.Effect
 import fs2.Stream
 import java.nio.channels.AsynchronousChannelGroup
 
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.github.timwspence.cats.stm.TVar
 import io.github.timwspence.cats.stm.STM
 import cats.effect.Resource
@@ -20,6 +19,7 @@ import fs2.Pull
 import java.{util => ju}
 
 import fs2.io.tcp.SocketGroup
+import logstage.LogIO
 
 object ConnectionManager {
 
@@ -30,10 +30,10 @@ object ConnectionManager {
   )(
       implicit F: ConcurrentEffect[F],
       timer: Timer[F],
-      socketGroup: SocketGroup
+      socketGroup: SocketGroup,
+      logger: LogIO[F]
   ): F[Stream[F, Connection[F]]] = {
     for {
-      logger <- Slf4jLogger.fromClass(getClass)
       connectionCloseActions <- Ref.of(Map.empty[ju.UUID, F[Unit]])
       connecting <- TVar.of(0).commit[F]
       connected <- TVar.of(0).commit[F]

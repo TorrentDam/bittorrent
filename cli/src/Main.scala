@@ -11,16 +11,27 @@ import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
 import fs2.io.udp.{SocketGroup => UdpScoketGroup}
-import io.chrisdavenport.log4cats.Logger
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import scodec.bits.{Bases, BitVector, ByteVector}
 
 import scala.util.Random
+import logstage.LogIO
+import izumi.logstage.api.IzLogger
 
 object Main extends IOApp {
 
   val rnd = new Random
   val selfId = PeerId.generate(rnd)
+  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger())
+
+  def run(args: List[String]): IO[ExitCode] = {
+    topLevelCommand.parse(args) match {
+      case Right(thunk) => thunk as ExitCode.Success
+      case Left(help) =>
+        IO(println(help)) as {
+          if (help.errors.isEmpty) ExitCode.Success else ExitCode.Error
+        }
+    }
+  }
 
   val topLevelCommand = {
     val torrentFileOpt =
@@ -92,16 +103,6 @@ object Main extends IOApp {
     )
   }
 
-  def run(args: List[String]): IO[ExitCode] = {
-    topLevelCommand.parse(args) match {
-      case Right(thunk) => thunk as ExitCode.Success
-      case Left(help) =>
-        IO(println(help)) as {
-          if (help.errors.isEmpty) ExitCode.Success else ExitCode.Error
-        }
-    }
-  }
-
   def asynchronousSocketGroupResource: Resource[IO, UdpScoketGroup] =
     Blocker[IO].flatMap(UdpScoketGroup(_))
 
@@ -114,11 +115,8 @@ object Main extends IOApp {
       b <- asynchronousChannelGroupResource
     } yield (a, b)
 
-  def makeLogger: IO[Logger[IO]] = Slf4jLogger.fromClass[IO](getClass)
-
   def download(metadataSource: Either[InfoHash, Path], targetDirectory: Path): IO[Unit] =
     for {
-      logger <- makeLogger
       _ <- resources.use {
         case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
           implicit val usg0: UdpScoketGroup = usg
@@ -153,7 +151,7 @@ object Main extends IOApp {
               50
             )
             _ <- logger.info(s"Start downloading")
-            downloading <- DownloadTorrent.start[IO](metaInfo, connections)
+            downloading <- DownloadTorrent.start[IO](metaInfo, connections, logger)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
             _ <- downloading.fiber.cancel
           } yield ()
@@ -191,7 +189,6 @@ object Main extends IOApp {
 
   def findPeers(infoHash: InfoHash): IO[Unit] =
     for {
-      logger <- makeLogger
       _ <- asynchronousSocketGroupResource.use { implicit asg =>
         discoverPeers(infoHash)
           .evalTap(peerInfo => logger.info(s"Found peer $peerInfo"))
@@ -202,7 +199,6 @@ object Main extends IOApp {
 
   def getTorrentAndSave(targetFile: Path, infoHash: InfoHash): IO[Unit] =
     for {
-      logger <- makeLogger
       metadata <- getTorrent(infoHash)
       _ <- IO.delay {
         val bytes = BencodeCodec.instance
@@ -225,9 +221,8 @@ object Main extends IOApp {
     case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
       implicit val usg0: UdpScoketGroup = usg
       implicit val tsg0: TcpSocketGroup = tsg
+      val peers = discoverPeers(infoHash)
       for {
-        logger <- makeLogger
-        peers = discoverPeers(infoHash)
         connections <- ConnectionManager
           .make[IO](peers, Connection.connect(selfId, _, infoHash), 10)
         _ <- connections
@@ -269,7 +264,7 @@ object Main extends IOApp {
       targetDirectory: Path,
       downloading: DownloadTorrent[F],
       metaInfo: TorrentMetadata.Info,
-      logger: Logger[F]
+      logger: LogIO[F]
   ): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
     for {
@@ -281,7 +276,7 @@ object Main extends IOApp {
         .drain
         .onError {
           case e =>
-            logger.error(e)(s"Download failed")
+            logger.error(s"Download failed $e")
         }
       _ <- logger.info(s"Download complete")
     } yield ()

@@ -15,14 +15,13 @@ import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.olegpy.meow.effects._
 import fs2.Stream
 import fs2.concurrent.Queue
-import io.chrisdavenport.log4cats.Logger
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import monocle.function.At.at
 import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
 import scala.concurrent.duration._
 import scala.util.chaining._
+import logstage.LogIO
 
 case class DownloadTorrent[F[_]](
     send: DownloadTorrent.Command[F] => F[Unit],
@@ -86,10 +85,10 @@ object DownloadTorrent {
 
   def start[F[_]](
       metaInfo: TorrentMetadata.Info,
-      peers: Stream[F, Connection[F]]
+      peers: Stream[F, Connection[F]],
+      logger: LogIO[F]
   )(implicit F: Concurrent[F], P: Parallel[F], timer: Timer[F]): F[DownloadTorrent[F]] = {
     for {
-      logger <- Slf4jLogger.fromClass(getClass)
       commandQueue <- Queue.unbounded[F, Command[F]]
       incompletePieces = buildQueue(metaInfo)
       requestQueue = incompletePieces.map(_.requests).toList.flatten
@@ -194,7 +193,7 @@ object DownloadTorrent {
       maxInflightChunks: Int,
       maxConnections: Int,
       effects: Effects[F],
-      logger: Logger[F]
+      logger: LogIO[F]
   )(implicit F: MonadError[F, Throwable])
       extends (Command[F] => F[Unit]) {
 
@@ -258,7 +257,7 @@ object DownloadTorrent {
                     state.activeConnections + peerId
               )
           ) *>
-            logger.debug(s"Peer $peerId is now ${if (choked) "inactive" else "active"}") *>
+            logger.debug(s"Peer $peerId is now $choked") *>
             F.whenA(!choked)(tryDownload)
         )
       } yield ()

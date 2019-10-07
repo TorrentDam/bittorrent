@@ -6,18 +6,17 @@ import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.message.Response
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import fs2.Stream
-import io.chrisdavenport.log4cats.Logger
-import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import io.github.timwspence.cats.stm.{STM, TVar}
+import logstage.LogIO
 
 object PeerDiscovery {
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
       implicit F: ConcurrentEffect[F],
-      timer: Timer[F]
+      timer: Timer[F],
+      logger: LogIO[F]
   ): F[Stream[F, PeerInfo]] = {
     for {
-      logger <- Slf4jLogger.fromClass(getClass)
       _ <- logger.info("Start discovery")
       bootstrapNode <- RoutingTableManager.bootstrap(client, logger)
       tvar <- TVar.of(State(bootstrapNode :: Nil)).commit[F]
@@ -66,7 +65,7 @@ object PeerDiscovery {
       updateNodeList: List[NodeInfo] => F[Unit],
       filter: List[PeerInfo] => F[List[PeerInfo]],
       getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
-      logger: Logger[F]
+      logger: LogIO[F]
   )(implicit F: Concurrent[F]): Stream[F, PeerInfo] = {
     Stream
       .repeatEval(nextNode.flatMap {
