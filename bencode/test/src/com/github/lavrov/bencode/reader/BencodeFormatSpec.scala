@@ -1,19 +1,19 @@
 package com.github.lavrov.bencode.format
 
+import verify._
+
 import com.github.lavrov.bencode.Bencode
-import org.scalatest.FlatSpec
-import org.scalatest.MustMatchers._
 
-class BencodeFormatSpec extends FlatSpec {
+object BencodeFormatSpec extends BasicTestSuite {
 
-  it should "decode list" in {
+  test("decode list") {
     val input = Bencode.BList(
       Bencode.BString("a") ::
         Bencode.BString("b") :: Nil
     )
-
     val listStringReader: BencodeFormat[List[String]] = implicitly
-    listStringReader.read(input) mustBe Right(List("a", "b"))
+
+    assert(listStringReader.read(input) == Right(List("a", "b")))
   }
 
 }

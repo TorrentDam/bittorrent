@@ -1,6 +1,7 @@
 package com.github.lavrov.bittorrent.dht
 
-import org.scalatest.FlatSpec
+import verify._
+
 import cats.effect.SyncIO
 import cats.effect.concurrent.Ref
 import com.github.lavrov.bittorrent.PeerInfo
@@ -9,11 +10,10 @@ import scodec.bits.ByteVector
 import com.github.lavrov.bittorrent.dht.message.Response
 import java.net.InetSocketAddress
 
-import org.scalatest.Matchers._
 
-class PeerDiscoverySpec extends FlatSpec {
+class PeerDiscoverySpec extends BasicTestSuite {
 
-  it should "discover new peers" in {
+  test("discover new peers") {
     type F[A] = SyncIO[A]
 
     def nodeId(id: String) = NodeId(ByteVector.encodeUtf8(id).right.get)
@@ -84,5 +84,6 @@ class PeerDiscoverySpec extends FlatSpec {
 //    stream.take(1).compile.toList.unsafeRunSync shouldBe List(
 //      PeerInfo(InetSocketAddress.createUnresolved("2.2.2.2", 3))
 //    )
+    ()
   }
 }

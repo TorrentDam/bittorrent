@@ -15,7 +15,7 @@ object bittorrent extends Module {
     ivy"org.typelevel::cats-effect::2.0.0",
     ivy"org.typelevel::cats-mtl-core:0.7.0",
     ivy"com.olegpy::meow-mtl:0.3.0-M1",
-    ivy"io.github.timwspence::cats-stm:0.5.0-SNAPSHOT", // todo
+    ivy"io.github.timwspence::cats-stm:0.5.0",
     ivy"co.fs2::fs2-io:2.0.0",
     ivy"io.chrisdavenport::log4cats-slf4j:1.0.0",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
@@ -78,9 +78,9 @@ trait Module extends ScalaModule with ScalafmtModule {
   )
   trait TestModule extends Tests {
     def ivyDeps = Agg(
-      ivy"org.scalatest::scalatest:3.1.0-RC2",
+      ivy"com.eed3si9n.verify::verify:0.2.0",
     )
-    def testFrameworks = Seq("org.scalatest.tools.Framework")
+    def testFrameworks = Seq("verify.runner.Framework")
   }
 }
 

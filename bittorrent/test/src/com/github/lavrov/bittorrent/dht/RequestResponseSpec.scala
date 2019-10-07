@@ -1,12 +1,10 @@
 package com.github.lavrov.bittorrent.dht
 
-import org.scalatest.flatspec.AnyFlatSpec
+import verify._
 
-class RequestResponseSpec extends AnyFlatSpec {
+object RequestResponseSpec extends BasicTestSuite {
 
-  behavior of "RequestResponse"
-
-  it should "" in {
-
+  test("test it") {
+    // todo
   }
 }
