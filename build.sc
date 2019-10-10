@@ -47,12 +47,13 @@ object client extends Module with scalajslib.ScalaJSModule {
   def ivyDeps = Agg(
     ivy"me.shadaj::slinky-core::0.6.2",
     ivy"me.shadaj::slinky-web::0.6.2",
-    ivy"me.shadaj::slinky-hot::0.6.2"
+    ivy"me.shadaj::slinky-hot::0.6.2",
+    ivy"co.fs2::fs2-core::2.0.0",
   )
 
- def scalacOptions = super.scalacOptions() ++ List(
-   "-P:scalajs:sjsDefinedByDefault"
- )
+  def scalacOptions = super.scalacOptions() ++ List(
+    "-P:scalajs:sjsDefinedByDefault"
+  )
 
   def webpackBundle: T[os.Path] = T {
     val bundlePath = T.ctx().dest / "bundle.js"
@@ -69,6 +70,13 @@ object client extends Module with scalajslib.ScalaJSModule {
     val desitnation = T.ctx().dest
     distributionFiles.foreach { f => os.copy.into(f, desitnation) }
     PathRef(desitnation)
+  }
+
+  def compileJs: T[PathRef] = T {
+    val fastOptFile = fastOpt()
+    val outputFile = T.ctx.dest
+    os.copy.into(fastOptFile.path, outputFile, replaceExisting = true)
+    PathRef(outputFile)
   }
 }
 

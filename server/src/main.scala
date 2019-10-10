@@ -47,9 +47,7 @@ object Main extends IOApp {
 
   def serve(header: HttpRequestHeader, in: Stream[IO, Byte]) = header.path match {
     case Path.Root | Path.Empty =>
-      Stream.emit(
-        HttpResponse[IO](HttpStatusCode.Ok).withUtf8Body("OK")
-      )
+      Stream.emit(HttpResponse[IO](HttpStatusCode.Ok).withUtf8Body("OK"))
     case _ => websocket.server(serveWs)(header, in)
   }
 

@@ -4,7 +4,8 @@ import org.scalajs.dom
 
 object Main {
 
-  def main(args: Array[String]): Unit = {
+  @scalajs.js.annotation.JSExportTopLevel("main")
+  def main(): Unit = {
     ReactDOM.render(App(), dom.document.getElementById("root"))
   }
 

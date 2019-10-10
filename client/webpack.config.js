@@ -1,30 +1,26 @@
 const webpack = require('webpack');
 
 module.exports = {
-  entry: '../out/client/fastOpt/dest/out.js',
+  entry: ['index.js'],
   module: {
     rules: [
-      { test: /\.css$/, loader: "style-loader!css-loader" }
+      { test: /\.js$/, exclude: /node_modules/, loaders: ['react-hot-loader/webpack'] }
     ]
   },
   resolve: {
     extensions: ['*', '.js'],
-    modules: [ __dirname + '/node_modules', __dirname + '/src']
+    modules: [ __dirname + '/node_modules', __dirname + '/src', __dirname + '/../out/client/compileJs/dest'],
+    alias: {
+      'react-dom': '@hot-loader/react-dom',
+    }
   },
   output: {
     path: __dirname + '/../out/client/webpack/dest',
     publicPath: '/',
     filename: 'bundle.js'
   },
-  plugins: [
-    new webpack.HotModuleReplacementPlugin()
-  ],
   devServer: {
     contentBase: './resources',
-    hot: true,
-    watchOptions: {
-      aggregateTimeout: 300,
-      poll: 1000
-    }
+    hot: true
   }
 };
