@@ -1,8 +1,7 @@
-import ReactHotLoader from 'react-hot-loader'
-import ReactDOM from 'react-dom'
+import { main } from 'out'
 
-import App from 'out'
+main()
 
-App.main()
-
-module.hot.accept();
+if (module.hot) {
+  module.hot.accept();
+}

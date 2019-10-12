@@ -55,23 +55,24 @@ object client extends Module with scalajslib.ScalaJSModule {
     "-P:scalajs:sjsDefinedByDefault"
   )
 
-  def webpackBundle: T[os.Path] = T {
-    val bundlePath = T.ctx().dest / "bundle.js"
+  def `package`: T[PathRef] = T {
+    val bundleFile = T.ctx().dest / "bundle.js"
     fullOpt()
     os
-      .proc("npm", "run", "buildProd")
+      .proc("npm", "run", "package", "--", s"--output=$bundleFile")
       .call(millSourcePath)
-    bundlePath
+    PathRef(bundleFile)
   }
 
-  def distribution: T[PathRef] = T {
+  def dist: T[PathRef] = T {
     val resourceFiles = resources().flatMap(pathRef => os.list(pathRef.path))
-    val distributionFiles = resourceFiles ++ List(webpackBundle())
+    val distributionFiles = `package`().path +: resourceFiles
     val desitnation = T.ctx().dest
     distributionFiles.foreach { f => os.copy.into(f, desitnation) }
     PathRef(desitnation)
   }
 
+  /** fastOpt deletes whole dest directory which breaks webpack hot reload */
   def compileJs: T[PathRef] = T {
     val fastOptFile = fastOpt()
     val outputFile = T.ctx.dest

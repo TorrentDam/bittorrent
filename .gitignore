@@ -5,3 +5,4 @@ logs
 .metals
 .bloop
 node_modules
+package-lock.json
