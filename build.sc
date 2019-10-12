@@ -45,9 +45,7 @@ object client extends Module with scalajslib.ScalaJSModule {
   def scalaJSVersion = "0.6.28"
   def moduleKind = ModuleKind.CommonJSModule
   def ivyDeps = Agg(
-    ivy"me.shadaj::slinky-core::0.6.2",
     ivy"me.shadaj::slinky-web::0.6.2",
-    ivy"me.shadaj::slinky-hot::0.6.2",
     ivy"co.fs2::fs2-core::2.0.0",
   )
 

@@ -16,7 +16,7 @@ $ ./mill _.test
 
 Client requires [npm](https://www.npmjs.com/)
 ```sh
-$ ./mill -w client.fastOpt
+$ ./mill -w client.compileJs
 ```
 Run in another terminal
 ```sh
