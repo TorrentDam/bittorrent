@@ -33,12 +33,12 @@ object cli extends Module with ReleaseModule {
   )
 }
 
-object server extends Module {
-  def moduleDeps = List(bittorrent)
-  def ivyDeps = Agg(
-    ivy"com.spinoco::fs2-http:0.4.2-SNAPSHOT", // todo
-  )
-}
+// object server extends Module {
+//   def moduleDeps = List(bittorrent)
+//   def ivyDeps = Agg(
+//     ivy"com.spinoco::fs2-http:0.4.2-SNAPSHOT", // todo
+//   )
+// }
 
 object client extends Module with scalajslib.ScalaJSModule {
   import mill.scalajslib.api.ModuleKind

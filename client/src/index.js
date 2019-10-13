@@ -1,6 +1,6 @@
 import { main } from 'out'
 
-main()
+main();
 
 if (module.hot) {
   module.hot.accept();
