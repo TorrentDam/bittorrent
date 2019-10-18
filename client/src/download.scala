@@ -1,4 +1,5 @@
 import slinky.core.annotations.react
+import slinky.core.facade.Hooks
 import slinky.core.FunctionalComponent
 import slinky.web.html._
 
@@ -6,10 +7,14 @@ import material_ui.core._
 import material_ui.styles.makeStyles
 
 import scala.scalajs.js.Dynamic
+import diode.FastEq
+import slinky.core.facade.ReactElement
+import diode.Dispatcher
+import slinky.core.KeyAddingStage
 
 @react
 object DownloadPanel {
-  case class Props()
+  case class Props(model: DownloadPanelModel, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>
@@ -31,14 +36,18 @@ object DownloadPanel {
       )
   )
 
-  val component = FunctionalComponent[Unit] { _ =>
+  val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
+    def handleClick() = props.dispatcher(Action.DownloadTorrentFile("download"))
     main(
       Container(maxWidth = "md", className = classes.container.toString)(
         Paper(className = classes.root.toString)(
-          InputBase(placeholder = "Info hash", className = classes.input.toString),
-          Button(variant = "contained")("Download")
-        )
+          InputBase(placeholder = "Info hash", disabled = props.model.downloading, className = classes.input.toString),
+          Button(variant = "contained")(onClick := handleClick _)(
+            if (props.model.downloading) "Cancel" else "Download"
+          )
+        ),
+        LinearProgress()(hidden := !props.model.downloading)
       )
     )
   }

@@ -3,9 +3,11 @@ import org.scalajs.dom.raw.WebSocket
 import cats.effect.{IO, ContextShift}
 import cats.syntax.all._
 import fs2.concurrent.Topic
+import fs2.Pipe
 import cats.effect.Timer
 
 import scala.concurrent.duration._
+import fs2.concurrent.Queue
 
 case class ReconnectingWebsocket(
   status: Topic[IO, Boolean]
@@ -13,13 +15,24 @@ case class ReconnectingWebsocket(
 
 object ReconnectingWebsocket {
 
-    def create(url: String)(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingWebsocket] =
+    def create(url: String, service: Pipe[IO, String, String])(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingWebsocket] =
       for {
         statusTopic <- Topic[IO, Boolean](false)
+        incoming <- Queue.unbounded[IO, String]
         continuallyConnect = connectWithRetries(url)
           .flatMap { socket =>
             for {
               _ <- statusTopic.publish1(true)
+              _ <- IO {
+                socket.onmessage = { msg =>
+                  incoming.enqueue1(msg.data.toString()).unsafeRunSync()
+                }
+              }
+              _ <- service(incoming.dequeue)
+                .evalTap { out =>
+                  IO { socket.send(out) }
+                }
+                .compile.drain
               _ <- IO.async[Unit] { cont =>
                 socket.onerror = { _ =>
                   cont(().asRight)

@@ -22,6 +22,7 @@ package core {
     val TextField: js.Object = js.native
     val Paper: js.Object = js.native
     val InputBase: js.Object = js.native
+    val LinearProgress: js.Object = js.native
     val CssBaseline: js.Object = js.native
   }
 
@@ -92,9 +93,20 @@ package core {
   object InputBase extends ExternalComponent {
     case class Props(
         placeholder: String,
-        className: UndefOr[String] = js.undefined
+        className: UndefOr[String] = js.undefined,
+        disabled: UndefOr[Boolean] = js.undefined,
     )
     val component = imports.InputBase
+  }
+
+  @react
+  object LinearProgress extends ExternalComponent {
+    case class Props(
+        color: String = "primary",
+        value: UndefOr[Int] = js.undefined,
+        variant: String = "indeterminate",
+    )
+    val component = imports.LinearProgress
   }
 
   object CssBaseline extends ExternalComponentNoProps {

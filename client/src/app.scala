@@ -7,10 +7,11 @@ import material_ui.icons.{Menu => MenuIcon}
 import material_ui.styles.makeStyles
 
 import scala.scalajs.js.Dynamic
+import slinky.web.svg.circle
 
 @react
 object App {
-  case class Props()
+  case class Props(circuit: AppCircuit)
 
   private val useStyles = makeStyles(
     theme =>
@@ -19,7 +20,7 @@ object App {
       )
   )
 
-  val component = FunctionalComponent[Unit] { _ =>
+  val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
     div(
       AppBar(position = "absolute")(
@@ -29,7 +30,7 @@ object App {
         )
       ),
       div(className := classes.appBarSpacer.toString),
-      DownloadPanel()
+      Connect(props.circuit, _.downloadPanelModel)(DownloadPanel.apply)
     )
   }
 }

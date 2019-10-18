@@ -47,6 +47,7 @@ object client extends Module with scalajslib.ScalaJSModule {
   def ivyDeps = Agg(
     ivy"me.shadaj::slinky-web::0.6.2",
     ivy"co.fs2::fs2-core::2.0.0",
+    ivy"io.suzaku::diode::1.1.6",
   )
 
   def scalacOptions = super.scalacOptions() ++ List(
