@@ -2,14 +2,14 @@ package com.github.lavrov.bittorrent
 
 import cats.syntax.all._
 import cats.instances.list._
-import cats.effect.Effect
+import cats.effect.Async
 import fs2.Stream
 import java.nio.channels.AsynchronousChannelGroup
 
 import io.github.timwspence.cats.stm.TVar
 import io.github.timwspence.cats.stm.STM
 import cats.effect.Resource
-import cats.effect.ConcurrentEffect
+import cats.effect.Concurrent
 import cats.effect.Timer
 
 import scala.concurrent.duration._
@@ -28,7 +28,7 @@ object ConnectionManager {
     connectToPeer: PeerInfo => Resource[F, Connection[F]],
     maxConnections: Int = 50
   )(
-    implicit F: ConcurrentEffect[F],
+    implicit F: Concurrent[F],
     timer: Timer[F],
     socketGroup: SocketGroup,
     logger: LogIO[F]
@@ -113,7 +113,7 @@ object ConnectionManager {
     def dequeue: F[PeerInfo]
   }
 
-  def makePriorityQueue[F[_]: Effect] =
+  def makePriorityQueue[F[_]: Async] =
     for {
       q <- TVar.of(List.empty[(PeerInfo, Int)]).commit[F]
     } yield new PriorityQueue[F] {
