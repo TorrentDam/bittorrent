@@ -7,8 +7,8 @@ import com.github.lavrov.bencode.BencodeCodec
 import scodec.Err
 
 case class ExtensionHandshake(
-    extensions: Map[String, Long],
-    metadataSize: Option[Long]
+  extensions: Map[String, Long],
+  metadataSize: Option[Long]
 )
 
 object ExtensionHandshake {

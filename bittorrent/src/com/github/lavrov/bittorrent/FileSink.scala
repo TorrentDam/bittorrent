@@ -16,7 +16,7 @@ object FileSink {
   case class Piece(begin: Long, bytes: ByteVector)
 
   def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(
-      implicit F: Sync[F]
+    implicit F: Sync[F]
   ): Sink[F, Piece] = {
     def openChannel(filePath: Path) =
       Stream.bracket(
@@ -65,7 +65,7 @@ object FileSink {
         source =>
           channels.map(Chain.one).reduceSemigroup.flatMap { channels =>
             def writeToChannel(fileChannel: OpenChannel, position: Long, bytes: ByteVector)
-                : F[Unit] = Sync[F].delay {
+              : F[Unit] = Sync[F].delay {
               import fileChannel.channel
               channel.position(position)
               channel.write(bytes.toByteBuffer)

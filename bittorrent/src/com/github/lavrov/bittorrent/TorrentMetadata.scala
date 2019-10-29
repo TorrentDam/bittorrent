@@ -10,8 +10,8 @@ import com.github.lavrov.bittorrent.TorrentMetadata.Info
 import scodec.bits.ByteVector
 
 case class TorrentMetadata(
-    info: Info,
-    creationDate: Option[Instant]
+  info: Info,
+  creationDate: Option[Instant]
 )
 
 object TorrentMetadata {
@@ -19,22 +19,22 @@ object TorrentMetadata {
   sealed trait Info
   object Info {
     case class SingleFile(
-        name: String,
-        pieceLength: Long,
-        pieces: ByteVector,
-        length: Long,
-        md5sum: Option[ByteVector]
+      name: String,
+      pieceLength: Long,
+      pieces: ByteVector,
+      length: Long,
+      md5sum: Option[ByteVector]
     ) extends Info
 
     case class MultipleFiles(
-        pieceLength: Long,
-        pieces: ByteVector,
-        files: List[File]
+      pieceLength: Long,
+      pieces: ByteVector,
+      files: List[File]
     ) extends Info
 
     case class File(
-        length: Long,
-        path: List[String]
+      length: Long,
+      path: List[String]
     )
   }
 

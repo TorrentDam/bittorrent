@@ -24,14 +24,14 @@ import logstage.LogIO
 object ConnectionManager {
 
   def make[F[_]](
-      dhtPeers: Stream[F, PeerInfo],
-      connectToPeer: PeerInfo => Resource[F, Connection[F]],
-      maxConnections: Int = 50
+    dhtPeers: Stream[F, PeerInfo],
+    connectToPeer: PeerInfo => Resource[F, Connection[F]],
+    maxConnections: Int = 50
   )(
-      implicit F: ConcurrentEffect[F],
-      timer: Timer[F],
-      socketGroup: SocketGroup,
-      logger: LogIO[F]
+    implicit F: ConcurrentEffect[F],
+    timer: Timer[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): F[Stream[F, Connection[F]]] = {
     for {
       connectionCloseActions <- Ref.of(Map.empty[ju.UUID, F[Unit]])

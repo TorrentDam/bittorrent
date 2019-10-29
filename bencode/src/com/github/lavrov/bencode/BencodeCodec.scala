@@ -105,7 +105,7 @@ object BencodeCodec {
   }
 
   private def decodeCollectSuccessful[F[_], A](dec: Decoder[A], limit: Option[Int])(
-      buffer: BitVector
+    buffer: BitVector
   )(implicit factory: collection.Factory[A, F[A]]): Attempt[DecodeResult[F[A]]] = {
     val builder = factory.newBuilder
     var remaining = buffer

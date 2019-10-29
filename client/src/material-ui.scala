@@ -45,9 +45,9 @@ package core {
   @react
   object IconButton extends ExternalComponent {
     case class Props(
-        edge: String,
-        color: String = "inherit",
-        `aria-label`: String = "open drawer"
+      edge: String,
+      color: String = "inherit",
+      `aria-label`: String = "open drawer"
     )
     val component = imports.IconButton
   }
@@ -55,9 +55,9 @@ package core {
   @react
   object Typography extends ExternalComponent {
     case class Props(
-        component: String,
-        variant: String = "h6",
-        color: String = "inherit"
+      component: String,
+      variant: String = "h6",
+      color: String = "inherit"
     )
     val component = imports.Typography
   }
@@ -65,8 +65,8 @@ package core {
   @react
   object Container extends ExternalComponent {
     case class Props(
-        maxWidth: String,
-        className: UndefOr[String] = js.undefined
+      maxWidth: String,
+      className: UndefOr[String] = js.undefined
     )
     val component = imports.Container
   }
@@ -74,9 +74,9 @@ package core {
   @react
   object TextField extends ExternalComponent {
     case class Props(
-        id: String,
-        name: String,
-        label: String
+      id: String,
+      name: String,
+      label: String
     )
     val component = imports.TextField
   }
@@ -84,7 +84,7 @@ package core {
   @react
   object Paper extends ExternalComponent {
     case class Props(
-        className: UndefOr[String] = js.undefined
+      className: UndefOr[String] = js.undefined
     )
     val component = imports.Paper
   }
@@ -92,9 +92,9 @@ package core {
   @react
   object InputBase extends ExternalComponent {
     case class Props(
-        placeholder: String,
-        className: UndefOr[String] = js.undefined,
-        disabled: UndefOr[Boolean] = js.undefined,
+      placeholder: String,
+      className: UndefOr[String] = js.undefined,
+      disabled: UndefOr[Boolean] = js.undefined
     )
     val component = imports.InputBase
   }
@@ -102,9 +102,9 @@ package core {
   @react
   object LinearProgress extends ExternalComponent {
     case class Props(
-        color: String = "primary",
-        value: UndefOr[Int] = js.undefined,
-        variant: String = "indeterminate",
+      color: String = "primary",
+      value: UndefOr[Int] = js.undefined,
+      variant: String = "indeterminate"
     )
     val component = imports.LinearProgress
   }

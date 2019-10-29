@@ -27,14 +27,14 @@ object Client {
   }
 
   def start[F[_]](
-      selfId: NodeId,
-      port: Int
+    selfId: NodeId,
+    port: Int
   )(
-      implicit F: Concurrent[F],
-      timer: Timer[F],
-      cs: ContextShift[F],
-      socketGroup: SocketGroup,
-      logger: LogIO[F]
+    implicit F: Concurrent[F],
+    timer: Timer[F],
+    cs: ContextShift[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): Resource[F, Client[F]] = {
     for {
       messageSocket <- MessageSocket(port)
@@ -63,8 +63,8 @@ object Client {
       import requestResponse.sendQuery
 
       def getPeers(
-          nodeInfo: NodeInfo,
-          infoHash: InfoHash
+        nodeInfo: NodeInfo,
+        infoHash: InfoHash
       ): F[Either[Response.Nodes, Response.Peers]] =
         sendQuery(nodeInfo.address, Query.GetPeers(selfId, infoHash)).flatMap {
           case nodes: Response.Nodes => nodes.asLeft.pure

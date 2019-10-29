@@ -14,7 +14,7 @@ import scodec.bits.BitVector
 import logstage.LogIO
 
 class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(
-    implicit F: MonadError[F, Throwable]
+  implicit F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
 
@@ -44,12 +44,12 @@ class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(
 
 object MessageSocket {
   def apply[F[_]](
-      port: Int
+    port: Int
   )(
-      implicit F: Concurrent[F],
-      cs: ContextShift[F],
-      socketGroup: SocketGroup,
-      logger: LogIO[F]
+    implicit F: Concurrent[F],
+    cs: ContextShift[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): Resource[F, MessageSocket[F]] =
     socketGroup
       .open[F](address = new InetSocketAddress(port))

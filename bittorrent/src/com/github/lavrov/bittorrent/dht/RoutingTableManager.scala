@@ -18,7 +18,7 @@ import logstage.LogIO
 object RoutingTableManager {
 
   case class State(
-      table: List[NodeInfo] = List.empty
+    table: List[NodeInfo] = List.empty
   )
 
   object State {
@@ -26,10 +26,10 @@ object RoutingTableManager {
   }
 
   def make[F[_]: Concurrent](
-      selfId: NodeId,
-      bootstrapNodeInfo: NodeInfo,
-      receive: F[(InetSocketAddress, Message.QueryMessage)],
-      sendOut: (InetSocketAddress, Message) => F[Unit]
+    selfId: NodeId,
+    bootstrapNodeInfo: NodeInfo,
+    receive: F[(InetSocketAddress, Message.QueryMessage)],
+    sendOut: (InetSocketAddress, Message) => F[Unit]
   ): Resource[F, Ref[F, State]] = Resource {
     for {
       ref <- Ref.of(State(table = List(bootstrapNodeInfo)))
@@ -43,11 +43,11 @@ object RoutingTableManager {
   }
 
   private class Behaviour[F[_]](
-      selfId: NodeId,
-      sendOut: (InetSocketAddress, Message) => F[Unit]
+    selfId: NodeId,
+    sendOut: (InetSocketAddress, Message) => F[Unit]
   )(
-      implicit F: Monad[F],
-      S: MonadState[F, State]
+    implicit F: Monad[F],
+    S: MonadState[F, State]
   ) {
 
     def onQuery(address: InetSocketAddress, message: Message.QueryMessage): F[Unit] = {
@@ -77,11 +77,11 @@ object RoutingTableManager {
   val BootstrapNodeAddress = new InetSocketAddress("router.bittorrent.com", 6881)
 
   def bootstrap[F[_]](
-      client: Client[F],
-      logger: LogIO[F]
+    client: Client[F],
+    logger: LogIO[F]
   )(
-      implicit F: MonadError[F, Throwable],
-      timer: Timer[F]
+    implicit F: MonadError[F, Throwable],
+    timer: Timer[F]
   ): F[NodeInfo] = {
     def loop: F[NodeInfo] =
       client

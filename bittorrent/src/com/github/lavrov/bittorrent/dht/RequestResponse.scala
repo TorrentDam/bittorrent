@@ -21,15 +21,15 @@ trait RequestResponse[F[_]] {
 object RequestResponse {
 
   def make[F[_]](
-      generateTransactionId: F[ByteVector],
-      sendMessage: (InetSocketAddress, Message) => F[Unit],
-      receiveMessage: F[
-        (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
-      ]
+    generateTransactionId: F[ByteVector],
+    sendMessage: (InetSocketAddress, Message) => F[Unit],
+    receiveMessage: F[
+      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+    ]
   )(
-      implicit
-      F: Concurrent[F],
-      timer: Timer[F]
+    implicit
+    F: Concurrent[F],
+    timer: Timer[F]
   ): Resource[F, RequestResponse[F]] = Resource {
     for {
       callbackRegistry <- CallbackRegistry.make[F]
@@ -40,9 +40,9 @@ object RequestResponse {
   }
 
   private class Impl[F[_]](
-      generateTransactionId: F[ByteVector],
-      sendMessage: (InetSocketAddress, Message) => F[Unit],
-      receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
+    generateTransactionId: F[ByteVector],
+    sendMessage: (InetSocketAddress, Message) => F[Unit],
+    receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
   )(implicit F: MonadError[F, Throwable])
       extends RequestResponse[F] {
     def sendQuery(address: InetSocketAddress, query: Query): F[Response] = {
@@ -55,13 +55,13 @@ object RequestResponse {
   }
 
   private def receiveLoop[F[_]](
-      receive: F[
-        (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
-      ],
-      continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
+    receive: F[
+      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+    ],
+    continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
   )(
-      implicit
-      F: Monad[F]
+    implicit
+    F: Monad[F]
   ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
       case Right(Message.ResponseMessage(transactionId, response)) =>
@@ -96,7 +96,7 @@ object CallbackRegistry {
   }
 
   private class Impl[F[_]: Concurrent: Timer](
-      ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
+    ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
   ) extends CallbackRegistry[F] {
     def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] =
       Deferred.uncancelable[F, Either[Throwable, Response]].flatMap { deferred =>

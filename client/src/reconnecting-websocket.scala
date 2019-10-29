@@ -1,6 +1,6 @@
 import org.scalajs.dom.raw.WebSocket
 
-import cats.effect.{IO, ContextShift}
+import cats.effect.{ContextShift, IO}
 import cats.syntax.all._
 import fs2.concurrent.Topic
 import fs2.Pipe
@@ -15,55 +15,55 @@ case class ReconnectingWebsocket(
 
 object ReconnectingWebsocket {
 
-    def create(url: String, service: Pipe[IO, String, String])(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingWebsocket] =
-      for {
-        statusTopic <- Topic[IO, Boolean](false)
-        incoming <- Queue.unbounded[IO, String]
-        continuallyConnect = connectWithRetries(url)
-          .flatMap { socket =>
-            for {
-              _ <- statusTopic.publish1(true)
-              _ <- IO {
-                socket.onmessage = { msg =>
-                  incoming.enqueue1(msg.data.toString()).unsafeRunSync()
-                }
-              }
-              _ <- service(incoming.dequeue)
-                .evalTap { out =>
-                  IO { socket.send(out) }
-                }
-                .compile.drain
-              _ <- IO.async[Unit] { cont =>
-                socket.onerror = { _ =>
-                  cont(().asRight)
-                }
-              }
-              _ <- statusTopic.publish1(false)
+  def create(
+    url: String,
+    service: Pipe[IO, String, String]
+  )(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingWebsocket] =
+    for {
+      statusTopic <- Topic[IO, Boolean](false)
+      incoming <- Queue.unbounded[IO, String]
+      continuallyConnect = connectWithRetries(url).flatMap { socket =>
+        for {
+          _ <- statusTopic.publish1(true)
+          _ <- IO {
+            socket.onmessage = { msg =>
+              incoming.enqueue1(msg.data.toString()).unsafeRunSync()
             }
-            yield ()
           }
-          .foreverM
-        _ <- continuallyConnect.start
-      }
-      yield ReconnectingWebsocket(statusTopic)
+          _ <- service(incoming.dequeue)
+            .evalTap { out =>
+              IO { socket.send(out) }
+            }
+            .compile
+            .drain
+          _ <- IO.async[Unit] { cont =>
+            socket.onerror = { _ =>
+              cont(().asRight)
+            }
+          }
+          _ <- statusTopic.publish1(false)
+        } yield ()
+      }.foreverM
+      _ <- continuallyConnect.start
+    } yield ReconnectingWebsocket(statusTopic)
 
-    private def connectWithRetries(url: String)(implicit timer: Timer[IO]): IO[WebSocket] = {
-      connect(url).handleErrorWith {
-        case ConnectionError() =>
-          timer.sleep(10.seconds) >> connectWithRetries(url)
-      }
+  private def connectWithRetries(url: String)(implicit timer: Timer[IO]): IO[WebSocket] = {
+    connect(url).handleErrorWith {
+      case ConnectionError() =>
+        timer.sleep(10.seconds) >> connectWithRetries(url)
     }
+  }
 
-    private def connect(url: String): IO[WebSocket] = IO.async { cont =>
-      println(s"Connecting to $url")
-      val websocket = new WebSocket(url)
-      websocket.onopen = { _ =>
-        cont(websocket.asRight)
-      }
-      websocket.onerror = { _ =>
-        cont(ConnectionError().asLeft)
-      }
+  private def connect(url: String): IO[WebSocket] = IO.async { cont =>
+    println(s"Connecting to $url")
+    val websocket = new WebSocket(url)
+    websocket.onopen = { _ =>
+      cont(websocket.asRight)
     }
+    websocket.onerror = { _ =>
+      cont(ConnectionError().asLeft)
+    }
+  }
 
-    case class ConnectionError() extends Throwable
+  case class ConnectionError() extends Throwable
 }

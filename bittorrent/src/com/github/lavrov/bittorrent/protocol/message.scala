@@ -8,9 +8,9 @@ import scodec.bits.ByteVector
 import scala.util.chaining._
 
 final case class Handshake(
-    extensionProtocol: Boolean,
-    infoHash: InfoHash,
-    peerId: PeerId
+  extensionProtocol: Boolean,
+  infoHash: InfoHash,
+  peerId: PeerId
 )
 
 object Handshake {

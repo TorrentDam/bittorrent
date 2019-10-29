@@ -41,14 +41,14 @@ trait Connection[F[_]] {
 object Connection {
 
   case class State(
-      lastMessageAt: Long = 0,
-      choking: Boolean = true,
-      interested: Boolean = false,
-      peerChoking: Boolean = true,
-      peerInterested: Boolean = false,
-      bitfield: Option[BitVector] = None,
-      pending: ListSet[Message.Request] = ListSet.empty,
-      lastPieceAt: Option[Long] = None
+    lastMessageAt: Long = 0,
+    choking: Boolean = true,
+    interested: Boolean = false,
+    peerChoking: Boolean = true,
+    peerInterested: Boolean = false,
+    bitfield: Option[BitVector] = None,
+    pending: ListSet[Message.Request] = ListSet.empty,
+    lastPieceAt: Option[Long] = None
   )
 
   trait Effects[F[_]] {
@@ -78,10 +78,10 @@ object Connection {
   }
 
   class Behaviour[F[_]](
-      handshake: Handshake,
-      keepAliveInterval: FiniteDuration,
-      effects: Effects[F],
-      logger: LogIO[F]
+    handshake: Handshake,
+    keepAliveInterval: FiniteDuration,
+    effects: Effects[F],
+    logger: LogIO[F]
   )(implicit F: MonadError[F, Throwable]) {
 
     def receive[A](command: Command[A]): F[A] = command match {
@@ -200,15 +200,15 @@ object Connection {
   }
 
   def connect[F[_]](
-      selfId: PeerId,
-      peerInfo: PeerInfo,
-      infoHash: InfoHash
+    selfId: PeerId,
+    peerInfo: PeerInfo,
+    infoHash: InfoHash
   )(
-      implicit F: Concurrent[F],
-      cs: ContextShift[F],
-      timer: Timer[F],
-      socketGroup: SocketGroup,
-      logger: LogIO[F]
+    implicit F: Concurrent[F],
+    cs: ContextShift[F],
+    timer: Timer[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): Resource[F, Connection[F]] = {
     type PendingCommand[A] = (Command[A], A => F[Unit])
     val Noop = (_: Unit) => F.unit
@@ -272,12 +272,12 @@ object Connection {
 }
 
 class Connection0[F[_]](
-    val handshake: Handshake,
-    val peerInfo: PeerInfo,
-    socket: Socket[F],
-    logger: LogIO[F]
+  val handshake: Handshake,
+  val peerInfo: PeerInfo,
+  socket: Socket[F],
+  logger: LogIO[F]
 )(
-    implicit F: MonadError[F, Throwable]
+  implicit F: MonadError[F, Throwable]
 ) {
 
   def send(message: Message): F[Unit] =
@@ -314,15 +314,15 @@ object Connection0 {
   import fs2.io.tcp.SocketGroup
 
   def connect[F[_]](
-      selfId: PeerId,
-      peerInfo: PeerInfo,
-      infoHash: InfoHash
+    selfId: PeerId,
+    peerInfo: PeerInfo,
+    infoHash: InfoHash
   )(
-      implicit
-      F: Concurrent[F],
-      cs: ContextShift[F],
-      socketGroup: SocketGroup,
-      logger: LogIO[F]
+    implicit
+    F: Concurrent[F],
+    cs: ContextShift[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): Resource[F, Connection0[F]] = {
     for {
       socket <- socketGroup.client(to = peerInfo.address)
@@ -333,7 +333,7 @@ object Connection0 {
   }
 
   def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: LogIO[F])(
-      implicit F: Concurrent[F]
+    implicit F: Concurrent[F]
   ): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
     for {

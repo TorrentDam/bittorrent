@@ -42,7 +42,11 @@ object DownloadPanel {
     main(
       Container(maxWidth = "md", className = classes.container.toString)(
         Paper(className = classes.root.toString)(
-          InputBase(placeholder = "Info hash", disabled = props.model.downloading, className = classes.input.toString),
+          InputBase(
+            placeholder = "Info hash",
+            disabled = props.model.downloading,
+            className = classes.input.toString
+          ),
           Button(variant = "contained")(onClick := handleClick _)(
             if (props.model.downloading) "Cancel" else "Download"
           )

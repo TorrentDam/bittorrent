@@ -24,20 +24,20 @@ import scala.util.chaining._
 import logstage.LogIO
 
 case class DownloadTorrent[F[_]](
-    send: DownloadTorrent.Command[F] => F[Unit],
-    completePieces: Stream[F, DownloadTorrent.CompletePiece],
-    fiber: Fiber[F, Unit]
+  send: DownloadTorrent.Command[F] => F[Unit],
+  completePieces: Stream[F, DownloadTorrent.CompletePiece],
+  fiber: Fiber[F, Unit]
 )
 
 object DownloadTorrent {
 
   case class State[F[_]](
-      incompletePieces: Map[Long, IncompletePiece],
-      chunkQueue: List[Message.Request] = Nil,
-      connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
-      activeConnections: Set[UUID] = Set.empty,
-      inProgress: Map[Message.Request, Set[UUID]] = Map.empty,
-      inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
+    incompletePieces: Map[Long, IncompletePiece],
+    chunkQueue: List[Message.Request] = Nil,
+    connections: Map[UUID, Connection[F]] = Map.empty[UUID, Connection[F]],
+    activeConnections: Set[UUID] = Set.empty,
+    inProgress: Map[Message.Request, Set[UUID]] = Map.empty,
+    inProgressByPeer: Map[UUID, Set[Message.Request]] = Map.empty
   )
 
   sealed trait Command[F[_]]
@@ -62,13 +62,13 @@ object DownloadTorrent {
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
 
   case class IncompletePiece(
-      index: Long,
-      begin: Long,
-      size: Long,
-      checksum: ByteVector,
-      requests: List[Message.Request],
-      downloadedSize: Long = 0,
-      downloaded: Map[Message.Request, ByteVector] = Map.empty
+    index: Long,
+    begin: Long,
+    size: Long,
+    checksum: ByteVector,
+    requests: List[Message.Request],
+    downloadedSize: Long = 0,
+    downloaded: Map[Message.Request, ByteVector] = Map.empty
   ) {
     def add(request: Request, bytes: ByteVector): IncompletePiece =
       copy(
@@ -84,9 +84,9 @@ object DownloadTorrent {
   }
 
   def start[F[_]](
-      metaInfo: TorrentMetadata.Info,
-      peers: Stream[F, Connection[F]],
-      logger: LogIO[F]
+    metaInfo: TorrentMetadata.Info,
+    peers: Stream[F, Connection[F]],
+    logger: LogIO[F]
   )(implicit F: Concurrent[F], P: Parallel[F], timer: Timer[F]): F[DownloadTorrent[F]] = {
     for {
       commandQueue <- Queue.unbounded[F, Command[F]]
@@ -139,9 +139,9 @@ object DownloadTorrent {
     import TorrentMetadata.Info
 
     def downloadFile(
-        pieceLength: Long,
-        totalLength: Long,
-        pieces: ByteVector
+      pieceLength: Long,
+      totalLength: Long,
+      pieces: ByteVector
     ): Chain[IncompletePiece] = {
       var result = Chain.empty[IncompletePiece]
       def loop(index: Long): Unit = {
@@ -165,8 +165,8 @@ object DownloadTorrent {
     }
 
     def downloadPiece(
-        pieceIndex: Long,
-        length: Long
+      pieceIndex: Long,
+      length: Long
     ): Chain[Message.Request] = {
       val chunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
@@ -190,10 +190,10 @@ object DownloadTorrent {
   }
 
   class Behaviour[F[_]](
-      maxInflightChunks: Int,
-      maxConnections: Int,
-      effects: Effects[F],
-      logger: LogIO[F]
+    maxInflightChunks: Int,
+    maxConnections: Int,
+    effects: Effects[F],
+    logger: LogIO[F]
   )(implicit F: MonadError[F, Throwable])
       extends (Command[F] => F[Unit]) {
 

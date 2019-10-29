@@ -12,9 +12,9 @@ import logstage.LogIO
 object PeerDiscovery {
 
   def start[F[_]](infoHash: InfoHash, client: Client[F])(
-      implicit F: ConcurrentEffect[F],
-      timer: Timer[F],
-      logger: LogIO[F]
+    implicit F: ConcurrentEffect[F],
+    timer: Timer[F],
+    logger: LogIO[F]
   ): F[Stream[F, PeerInfo]] = {
     for {
       _ <- logger.info("Start discovery")
@@ -54,18 +54,18 @@ object PeerDiscovery {
   }
 
   case class State(
-      nodesToTry: List[NodeInfo],
-      seenNodes: Set[NodeInfo] = Set.empty,
-      seenPeers: Set[PeerInfo] = Set.empty
+    nodesToTry: List[NodeInfo],
+    seenNodes: Set[NodeInfo] = Set.empty,
+    seenPeers: Set[PeerInfo] = Set.empty
   )
 
   private[dht] def start[F[_]](
-      infoHash: InfoHash,
-      nextNode: F[Option[NodeInfo]],
-      updateNodeList: List[NodeInfo] => F[Unit],
-      filter: List[PeerInfo] => F[List[PeerInfo]],
-      getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
-      logger: LogIO[F]
+    infoHash: InfoHash,
+    nextNode: F[Option[NodeInfo]],
+    updateNodeList: List[NodeInfo] => F[Unit],
+    filter: List[PeerInfo] => F[List[PeerInfo]],
+    getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
+    logger: LogIO[F]
   )(implicit F: Concurrent[F]): Stream[F, PeerInfo] = {
     Stream
       .repeatEval(nextNode.flatMap {

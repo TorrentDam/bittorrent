@@ -32,7 +32,7 @@ object RootModel {
     val downloadPanelModel = DownloadPanelModel()
     RootModel(
       mainPanel = downloadPanelModel,
-      downloadPanelModel = downloadPanelModel,
+      downloadPanelModel = downloadPanelModel
     )
   }
 }

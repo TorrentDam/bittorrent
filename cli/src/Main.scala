@@ -235,7 +235,7 @@ object Main extends IOApp {
   }
 
   private def discoverPeers(
-      infoHash: InfoHash
+    infoHash: InfoHash
   )(implicit usg: UdpScoketGroup): Stream[IO, PeerInfo] = {
     val selfId = NodeId.generate(rnd)
     for {
@@ -261,10 +261,10 @@ object Main extends IOApp {
   }
 
   private def saveToFile[F[_]: Concurrent](
-      targetDirectory: Path,
-      downloading: DownloadTorrent[F],
-      metaInfo: TorrentMetadata.Info,
-      logger: LogIO[F]
+    targetDirectory: Path,
+    downloading: DownloadTorrent[F],
+    metaInfo: TorrentMetadata.Info,
+    logger: LogIO[F]
   ): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
     for {

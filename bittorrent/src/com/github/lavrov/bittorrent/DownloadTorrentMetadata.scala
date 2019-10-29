@@ -24,12 +24,12 @@ import logstage.LogIO
 object DownloadTorrentMetadata {
 
   def start[F[_]](
-      infoHash: InfoHash,
-      connections: Stream[F, (PeerInfo, Resource[F, Connection0[F]])]
+    infoHash: InfoHash,
+    connections: Stream[F, (PeerInfo, Resource[F, Connection0[F]])]
   )(
-      implicit F: Concurrent[F],
-      timer: Timer[F],
-      logger: LogIO[F]
+    implicit F: Concurrent[F],
+    timer: Timer[F],
+    logger: LogIO[F]
   ): F[ByteVector] =
     for {
       result <- connections
@@ -63,9 +63,9 @@ object DownloadTorrentMetadata {
     } yield result
 
   private def downloadFlow[F[_]](
-      ops: ExtendedProtocolOps[F, Message],
-      infoHash: InfoHash,
-      metadataSize: Long
+    ops: ExtendedProtocolOps[F, Message],
+    infoHash: InfoHash,
+    metadataSize: Long
   )(implicit F: Monad[F]) = {
     Stream
       .range(0, 100)
@@ -88,15 +88,15 @@ object DownloadTorrentMetadata {
   }
 
   class ExtendedProtocolOps[F[_], M](
-      connection: Connection0[F],
-      localProtocolId: Long,
-      peerProtocolId: Long,
-      encode: M => ByteVector,
-      decode: ByteVector => Either[Throwable, M],
-      logger: LogIO[F]
+    connection: Connection0[F],
+    localProtocolId: Long,
+    peerProtocolId: Long,
+    encode: M => ByteVector,
+    decode: ByteVector => Either[Throwable, M],
+    logger: LogIO[F]
   )(
-      implicit F: Concurrent[F],
-      timer: Timer[F]
+    implicit F: Concurrent[F],
+    timer: Timer[F]
   ) {
     def receive[A](timeout: FiniteDuration)(f: PartialFunction[M, F[A]]): F[A] = {
       def recur: F[A] = {
@@ -126,8 +126,8 @@ object DownloadTorrentMetadata {
   }
 
   class ExtendedProtocolHandshakeOps[F[_]: Concurrent: Timer](
-      connection: Connection0[F],
-      logger: LogIO[F]
+    connection: Connection0[F],
+    logger: LogIO[F]
   ) extends ExtendedProtocolOps(
         connection,
         Extensions.MessageId.Handshake,
@@ -138,9 +138,9 @@ object DownloadTorrentMetadata {
       )
 
   class TorrentMetadataExtensionOps[F[_]: Concurrent: Timer](
-      connection: Connection0[F],
-      peerExtensionMessageId: Long,
-      logger: LogIO[F]
+    connection: Connection0[F],
+    peerExtensionMessageId: Long,
+    logger: LogIO[F]
   ) extends ExtendedProtocolOps(
         connection,
         Extensions.MessageId.Metadata,

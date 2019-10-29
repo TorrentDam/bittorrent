@@ -140,7 +140,7 @@ package object format {
   }
 
   def consume[A, B](
-      format: BencodeFormat[A]
+    format: BencodeFormat[A]
   )(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = BencodeFormat(
     ReaderT { bv: Bencode =>
       format.read(bv).flatMap(f(_).read(bv))

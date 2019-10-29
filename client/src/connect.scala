@@ -6,8 +6,11 @@ import slinky.core.facade.Hooks
 import diode.Dispatcher
 
 object Connect {
-  def apply[Model, R](circuit: AppCircuit, zoom: RootModel => Model)(component: (Model, Dispatcher) => R)(
-    implicit feq: FastEq[_ >: Model], toReact: R => ReactElement
+  def apply[Model, R](circuit: AppCircuit, zoom: RootModel => Model)(
+    component: (Model, Dispatcher) => R
+  )(
+    implicit feq: FastEq[_ >: Model],
+    toReact: R => ReactElement
   ): KeyAddingStage = {
     val wrapper = FunctionalComponent[Unit] { _ =>
       val modelR = circuit.zoom(zoom)
