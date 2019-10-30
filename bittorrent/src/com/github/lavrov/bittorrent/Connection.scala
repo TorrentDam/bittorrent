@@ -212,7 +212,7 @@ object Connection {
   ): Resource[F, Connection[F]] = {
     type PendingCommand[A] = (Command[A], A => F[Unit])
     val Noop = (_: Unit) => F.unit
-    Connection0.connect(selfId, peerInfo, infoHash).evalMap { connection =>
+    MessageSocket.connect(selfId, peerInfo, infoHash).evalMap { connection =>
       for {
         queue <- Queue.unbounded[F, Command[_]]
         eventQueue <- Queue.noneTerminated[F, Event]
@@ -271,7 +271,7 @@ object Connection {
   }
 }
 
-class Connection0[F[_]](
+class MessageSocket[F[_]](
   val handshake: Handshake,
   val peerInfo: PeerInfo,
   socket: Socket[F],
@@ -310,7 +310,7 @@ class Connection0[F[_]](
 
 }
 
-object Connection0 {
+object MessageSocket {
   import fs2.io.tcp.SocketGroup
 
   def connect[F[_]](
@@ -323,13 +323,13 @@ object Connection0 {
     cs: ContextShift[F],
     socketGroup: SocketGroup,
     logger: LogIO[F]
-  ): Resource[F, Connection0[F]] = {
+  ): Resource[F, MessageSocket[F]] = {
     for {
       socket <- socketGroup.client(to = peerInfo.address)
       socket <- Resource.make(socket.pure)(_.close *> logger.debug(s"Closed socket $peerInfo"))
       _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
       handshakeResponse <- Resource.liftF(handshake(selfId, infoHash, socket, logger))
-    } yield new Connection0(handshakeResponse, peerInfo, socket, logger)
+    } yield new MessageSocket(handshakeResponse, peerInfo, socket, logger)
   }
 
   def handshake[F[_]](selfId: PeerId, infoHash: InfoHash, socket: Socket[F], logger: LogIO[F])(

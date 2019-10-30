@@ -25,7 +25,7 @@ object DownloadTorrentMetadata {
 
   def start[F[_]](
     infoHash: InfoHash,
-    connections: Stream[F, (PeerInfo, Resource[F, Connection0[F]])]
+    connections: Stream[F, (PeerInfo, Resource[F, MessageSocket[F]])]
   )(
     implicit F: Concurrent[F],
     timer: Timer[F],
@@ -88,7 +88,7 @@ object DownloadTorrentMetadata {
   }
 
   class ExtendedProtocolOps[F[_], M](
-    connection: Connection0[F],
+    connection: MessageSocket[F],
     localProtocolId: Long,
     peerProtocolId: Long,
     encode: M => ByteVector,
@@ -126,7 +126,7 @@ object DownloadTorrentMetadata {
   }
 
   class ExtendedProtocolHandshakeOps[F[_]: Concurrent: Timer](
-    connection: Connection0[F],
+    connection: MessageSocket[F],
     logger: LogIO[F]
   ) extends ExtendedProtocolOps(
         connection,
@@ -138,7 +138,7 @@ object DownloadTorrentMetadata {
       )
 
   class TorrentMetadataExtensionOps[F[_]: Concurrent: Timer](
-    connection: Connection0[F],
+    connection: MessageSocket[F],
     peerExtensionMessageId: Long,
     logger: LogIO[F]
   ) extends ExtendedProtocolOps(
