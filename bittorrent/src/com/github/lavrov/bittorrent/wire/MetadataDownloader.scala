@@ -1,27 +1,20 @@
-package com.github.lavrov.bittorrent
+package com.github.lavrov.bittorrent.wire
 
-import java.nio.channels.AsynchronousChannelGroup
-import scodec.bits.ByteVector
-import cats.syntax.all._
-import cats.effect.Resource
-import cats.effect.Concurrent
-
-import fs2.Stream
-import com.github.lavrov.bittorrent.protocol.extensions.metadata.Message
-import scala.concurrent.duration.FiniteDuration
 import cats.Monad
+import cats.effect.{Concurrent, Resource, Timer}
+import cats.syntax.all._
+import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
+import com.github.lavrov.bittorrent.protocol.extensions.metadata.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Extended
-import cats.effect.Timer
-import scala.io.Codec
-import com.github.lavrov.bittorrent.protocol.extensions.ExtensionHandshake
-import com.github.lavrov.bittorrent.protocol.extensions.Extensions
-
-import scala.concurrent.duration._
-import com.github.lavrov.bencode.BencodeCodec
-import scodec.Err
+import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
+import fs2.Stream
 import logstage.LogIO
+import scodec.Err
+import scodec.bits.ByteVector
 
-object DownloadTorrentMetadata {
+import scala.concurrent.duration.{FiniteDuration, _}
+
+object MetadataDownloader {
 
   def start[F[_]](
     infoHash: InfoHash,

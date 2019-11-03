@@ -5,8 +5,10 @@ import java.nio.file.{Files, Path, Paths}
 import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
+import com.github.lavrov.bittorrent.wire._
 import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
+import com.github.lavrov.bittorrent.wire.{Downloader, MetadataDownloader}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
@@ -145,15 +147,14 @@ object Main extends IOApp {
                 }
             )
             (infoHash, metaInfo) = result
-            connections <- ConnectionManager.make(
+            connectionManager = ConnectionManager[IO](
               discoverPeers(infoHash),
               peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
               50
             )
             _ <- logger.info(s"Start downloading")
-            downloading <- DownloadTorrent.start[IO](metaInfo, connections, logger)
+            downloading <- Downloader.start[IO](metaInfo, connectionManager, logger)
             _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
-            _ <- downloading.fiber.cancel
           } yield ()
       }
     } yield ()
@@ -222,12 +223,12 @@ object Main extends IOApp {
       implicit val usg0: UdpScoketGroup = usg
       implicit val tsg0: TcpSocketGroup = tsg
       val peers = discoverPeers(infoHash)
+      val connectionManager =
+        ConnectionManager[IO](peers, Connection.connect(selfId, _, infoHash), 10)
       for {
-        connections <- ConnectionManager
-          .make[IO](peers, Connection.connect(selfId, _, infoHash), 10)
-        _ <- connections
+        _ <- connectionManager.connections
           .evalTap { connection =>
-            logger.info(s"Received connection ${connection.info}")
+            logger.info(s"Connected ${connection.info}")
           }
           .compile
           .drain
@@ -253,16 +254,16 @@ object Main extends IOApp {
           implicit val tsg0: TcpSocketGroup = tsg
           val connections =
             discoverPeers(infoHash).map(
-              peer => (peer, Connection0.connect[IO](selfId, peer, infoHash))
+              peer => (peer, MessageSocket.connect[IO](selfId, peer, infoHash))
             )
-          DownloadTorrentMetadata.start[IO](infoHash, connections)
+          MetadataDownloader.start[IO](infoHash, connections)
       }
     } yield metadata
   }
 
   private def saveToFile[F[_]: Concurrent](
     targetDirectory: Path,
-    downloading: DownloadTorrent[F],
+    downloading: Downloader[F],
     metaInfo: TorrentMetadata.Info,
     logger: LogIO[F]
   ): F[Unit] = {
