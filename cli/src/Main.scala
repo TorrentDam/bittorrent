@@ -6,7 +6,7 @@ import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.wire._
-import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
+import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode, encode}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
 import com.github.lavrov.bittorrent.wire.{Downloader, MetadataDownloader}
 import com.monovore.decline.{Command, Opts}
@@ -16,14 +16,15 @@ import fs2.io.udp.{SocketGroup => UdpScoketGroup}
 import scodec.bits.{Bases, BitVector, ByteVector}
 
 import scala.util.Random
+import scala.concurrent.duration._
 import logstage.LogIO
-import izumi.logstage.api.IzLogger
+import izumi.logstage.api.{IzLogger, Log}
 
 object Main extends IOApp {
 
   val rnd = new Random
   val selfId = PeerId.generate(rnd)
-  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger())
+  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger(threshold = IzLogger.Level.Info))
 
   def run(args: List[String]): IO[ExitCode] = {
     topLevelCommand.parse(args) match {
@@ -147,14 +148,15 @@ object Main extends IOApp {
                 }
             )
             (infoHash, metaInfo) = result
-            connectionManager = ConnectionManager[IO](
-              discoverPeers(infoHash),
-              peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
-              50
-            )
-            _ <- logger.info(s"Start downloading")
-            downloading <- Downloader.start[IO](metaInfo, connectionManager, logger)
-            _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
+            connect = (p: PeerInfo) => Connection.connect[IO](selfId, p, infoHash)
+            _ <- ConnectionManager[IO](discoverPeers(infoHash), connect, 50).use {
+              connectionManager =>
+                for {
+                  _ <- logger.info(s"Start downloading")
+                  downloading <- Downloader.start[IO](metaInfo, connectionManager, logger)
+                  _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
+                } yield ()
+            }
           } yield ()
       }
     } yield ()
@@ -223,15 +225,15 @@ object Main extends IOApp {
       implicit val usg0: UdpScoketGroup = usg
       implicit val tsg0: TcpSocketGroup = tsg
       val peers = discoverPeers(infoHash)
-      val connectionManager =
+      val connectionManagerR =
         ConnectionManager[IO](peers, Connection.connect(selfId, _, infoHash), 10)
       for {
-        _ <- connectionManager.connections
-          .evalTap { connection =>
-            logger.info(s"Connected ${connection.info}")
-          }
-          .compile
-          .drain
+        _ <- connectionManagerR.use { connectionManager =>
+          connectionManager.connected
+            .flatMap { n => logger.info(s"Open $n") }
+            .flatMap { _ => timer.sleep(5.seconds) }
+            .foreverM
+        }
       } yield ()
   }
 

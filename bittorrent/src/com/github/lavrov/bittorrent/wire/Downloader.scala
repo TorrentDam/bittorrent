@@ -83,9 +83,7 @@ object Downloader {
           case _ => s -> none
         }
       }
-    def releasePiece(incompletePiece: IncompletePiece): F[Unit] =
-      stateRef.update(State.incompletePieces.modify(incompletePiece.reset :: _))
-    def downloadPiece(
+    def download(
       connection: Connection[F],
       i: IncompletePiece,
       requests: List[Message.Request]
@@ -93,7 +91,7 @@ object Downloader {
       requests match {
         case x :: xs =>
           connection.request(x).flatMap { bytes =>
-            downloadPiece(connection, i.add(x, bytes), xs)
+            download(connection, i.add(x, bytes), xs)
           }
         case _ =>
           F.fromOption(i.verified, new Exception("Checksum validation failed")).map {
@@ -101,25 +99,15 @@ object Downloader {
           }
       }
     }
-    def download(connection: Connection[F]): Stream[F, CompletePiece] =
-      Stream.eval(acquirePiece).flatMap {
-        case Some(p) =>
-          Stream.eval(downloadPiece(connection, p, p.requests).attempt).flatMap {
-            case Right(cp) => Stream.emit(cp) ++ download(connection)
-            case Left(e) => Stream.eval(releasePiece(p)) >> Stream.raiseError(e)
-          }
-        case _ => Stream.empty
-      }
+    def downloadPiece(p: IncompletePiece): F[CompletePiece] = ???
 
-    def pull(connections: Stream[F, Connection[F]]): Pull[F, CompletePiece, Unit] =
-      connections.pull.uncons1.flatMap {
-        case Some((connection, tail)) =>
-          download(connection).pull.echo.handleErrorWith { _ =>
-            pull(tail)
-          }
-        case _ => Pull.done
+    Stream
+      .repeatEval(acquirePiece)
+      .takeWhile(_.isDefined)
+      .collect { case Some(p) => p }
+      .evalMap { p =>
+        downloadPiece(p)
       }
-    pull(connectionManager.connections).stream
   }
 
   def buildQueue(metaInfo: TorrentMetadata.Info): Chain[IncompletePiece] = {
