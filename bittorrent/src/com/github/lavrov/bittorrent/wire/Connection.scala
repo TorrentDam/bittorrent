@@ -7,9 +7,9 @@ import cats.effect.{Concurrent, ContextShift, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
-import fs2.Stream
-import fs2.concurrent.Topic
+import fs2.concurrent.{Signal, SignallingRef}
 import fs2.io.tcp.SocketGroup
+import fs2.Stream
 import logstage.LogIO
 import monocle.Lens
 import monocle.macros.GenLens
@@ -23,6 +23,7 @@ trait Connection[F[_]] {
   def interested: F[Unit]
   def request(request: Message.Request): F[ByteVector]
   def chokedStatus: Stream[F, Boolean]
+  def availability: Stream[F, BitVector]
   def disconnected: F[Either[Throwable, Unit]]
 }
 
@@ -31,14 +32,10 @@ object Connection {
   case class State(
     lastMessageAt: Long = 0,
     interested: Boolean = false,
-    peerChoking: Boolean = true,
-    bitfield: Option[BitVector] = None
   )
   object State {
     val lastMessageAt: Lens[State, Long] = GenLens[State](_.lastMessageAt)
     val interested: Lens[State, Boolean] = GenLens[State](_.interested)
-    val peerChoking: Lens[State, Boolean] = GenLens[State](_.peerChoking)
-    val bitfield: Lens[State, Option[BitVector]] = GenLens[State](_.bitfield)
   }
 
   trait RequestRegistry[F[_]] {
@@ -92,19 +89,21 @@ object Connection {
   ): F[Connection[F]] = {
     for {
       stateRef <- Ref.of[F, State](State())
-      chokedStatusTopic <- Topic(true)
+      chokedStatusRef <- SignallingRef(true)
+      bitfieldRef <- SignallingRef(BitVector.empty)
       requestRegistry <- RequestRegistry[F]
       result <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
       (connection, releaseConnection) = result
       _ <- logger.info(s"Connected ${peerInfo.address}")
       cleanUp = requestRegistry.failAll(ConnectionClosed()) >> releaseConnection >> logger.info(s"Disconnected ${peerInfo.address}")
+      updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
       fiber <- Concurrent[F]
         .race[Nothing, Nothing](
-          receiveLoop(stateRef, requestRegistry, chokedStatusTopic.publish1, connection, timer),
+          receiveLoop(requestRegistry, bitfieldRef.set, chokedStatusRef.set, updateLastMessageTime, connection),
           backgroundLoop(stateRef, timer, connection)
         )
         .attempt
-        .flatTap(r => logger.info(s"Before cleanUp $r"))
+        .flatTap(r => logger.info(s"CleanUp $r"))
         .flatTap(_ => cleanUp)
         .void
         .start
@@ -124,7 +123,11 @@ object Connection {
         def request(request: Message.Request): F[ByteVector] =
           connection.send(request) >> requestRegistry.register(request).timeout(10.seconds)
 
-        def chokedStatus: Stream[F, Boolean] = chokedStatusTopic.subscribe(1)
+        def chokedStatus: Stream[F, Boolean] =
+          Stream.eval(chokedStatusRef.get) ++ chokedStatusRef.discrete.interruptWhen(disconnected)
+
+        def availability: Stream[F, BitVector] =
+          Stream.eval(bitfieldRef.get) ++ bitfieldRef.discrete.interruptWhen(disconnected)
 
         def disconnected: F[Either[Throwable, Unit]] = fiber.join.attempt
       }
@@ -134,29 +137,31 @@ object Connection {
   case class ConnectionClosed() extends Throwable
 
   private def receiveLoop[F[_]: Monad](
-    stateRef: Ref[F, State],
     requestRegistry: RequestRegistry[F],
+    updateBitfield: BitVector => F[Unit],
     updateChokeStatus: Boolean => F[Unit],
+    updateLastMessageAt: Long => F[Unit],
     socket: MessageSocket[F],
-    timer: Timer[F]
+  )(
+    implicit timer: Timer[F]
   ): F[Nothing] =
     socket.receive
       .flatMap {
         case Message.Unchoke =>
-          stateRef.update(State.peerChoking.set(false)) >> updateChokeStatus(false)
+          updateChokeStatus(false)
         case Message.Choke =>
-          stateRef.update(State.peerChoking.set(true)) >> updateChokeStatus(true)
+          updateChokeStatus(true)
         case Message.Piece(index: Long, begin: Long, bytes: ByteVector) =>
           val request = Message.Request(index, begin, bytes.length)
           requestRegistry.complete(request, bytes)
         case Message.Bitfield(bytes) =>
-          stateRef.update(State.bitfield.set(bytes.toBitVector.some))
+          updateBitfield(bytes.toBitVector)
         case _ =>
           Monad[F].unit
       }
       .flatTap { _ =>
         timer.clock.monotonic(MILLISECONDS).flatMap { currentTime =>
-          stateRef.update(State.lastMessageAt.set(currentTime))
+          updateLastMessageAt(currentTime)
         }
       }
       .foreverM
