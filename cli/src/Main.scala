@@ -5,26 +5,26 @@ import java.nio.file.{Files, Path, Paths}
 import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.wire._
-import com.github.lavrov.bencode.{Bencode, BencodeCodec, decode, encode}
+import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
-import com.github.lavrov.bittorrent.wire.{Downloader, MetadataDownloader}
+import com.github.lavrov.bittorrent.wire.{MetadataDownloader, TorrentControl, _}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
 import fs2.io.udp.{SocketGroup => UdpScoketGroup}
+import izumi.logstage.api.IzLogger
+import logstage.LogIO
 import scodec.bits.{Bases, BitVector, ByteVector}
 
-import scala.util.Random
 import scala.concurrent.duration._
-import logstage.LogIO
-import izumi.logstage.api.{IzLogger, Log}
+import scala.util.Random
 
 object Main extends IOApp {
 
   val rnd = new Random
   val selfId = PeerId.generate(rnd)
-  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger(threshold = IzLogger.Level.Info))
+  implicit val logger: LogIO[IO] =
+    LogIO.fromLogger(IzLogger(threshold = IzLogger.Level.Info))
 
   def run(args: List[String]): IO[ExitCode] = {
     topLevelCommand.parse(args) match {
@@ -149,14 +149,19 @@ object Main extends IOApp {
             )
             (infoHash, metaInfo) = result
             connect = (p: PeerInfo) => Connection.connect[IO](selfId, p, infoHash)
-            _ <- ConnectionManager[IO](discoverPeers(infoHash), connect, 50).use {
-              connectionManager =>
+            _ <- ConnectionManager[IO](discoverPeers(infoHash), connect, 50)
+              .use { connectionManager =>
                 for {
                   _ <- logger.info(s"Start downloading")
-                  downloading <- Downloader.start[IO](metaInfo, connectionManager, logger)
-                  _ <- saveToFile(targetDirectory, downloading, metaInfo, logger)
+                  control <- TorrentControl[IO](metaInfo, connectionManager)
+                  _ <- saveToFile(
+                    targetDirectory,
+                    control.download,
+                    metaInfo,
+                    logger
+                  )
                 } yield ()
-            }
+              }
           } yield ()
       }
     } yield ()
@@ -226,12 +231,20 @@ object Main extends IOApp {
       implicit val tsg0: TcpSocketGroup = tsg
       val peers = discoverPeers(infoHash)
       val connectionManagerR =
-        ConnectionManager[IO](peers, Connection.connect(selfId, _, infoHash), 10)
+        ConnectionManager[IO](
+          peers,
+          Connection.connect(selfId, _, infoHash),
+          10
+        )
       for {
         _ <- connectionManagerR.use { connectionManager =>
-          connectionManager.connected
-            .flatMap { n => logger.info(s"Open $n") }
-            .flatMap { _ => timer.sleep(5.seconds) }
+          connectionManager.connected.count
+            .flatMap { n =>
+              logger.info(s"$n open connections")
+            }
+            .flatMap { _ =>
+              timer.sleep(5.seconds)
+            }
             .foreverM
         }
       } yield ()
@@ -265,13 +278,13 @@ object Main extends IOApp {
 
   private def saveToFile[F[_]: Concurrent](
     targetDirectory: Path,
-    downloading: Downloader[F],
+    completePieces: Stream[F, TorrentControl.CompletePiece],
     metaInfo: TorrentMetadata.Info,
     logger: LogIO[F]
   ): F[Unit] = {
     val sink = FileSink(metaInfo, targetDirectory)
     for {
-      _ <- downloading.completePieces
+      _ <- completePieces
         .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
         .map(p => FileSink.Piece(p.begin, p.bytes))
         .through(sink)

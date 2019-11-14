@@ -3,18 +3,19 @@ package com.github.lavrov.bittorrent.wire
 import cats._
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Resource, Timer}
+import cats.effect.{Concurrent, Fiber, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
+import com.github.lavrov.bittorrent.wire.ConnectionManager.Connected
 import fs2.Stream
-import fs2.concurrent.Queue
+import fs2.concurrent.{Queue, SignallingRef}
 import fs2.io.tcp.SocketGroup
 import logstage.LogIO
 
 import scala.concurrent.duration._
 
 trait ConnectionManager[F[_]] {
-  def connected: F[Int]
+  def connected: Connected[F]
 }
 
 object ConnectionManager {
@@ -32,20 +33,23 @@ object ConnectionManager {
     for {
       semaphore <- Semaphore(maxConnections)
       stateRef <- Ref.of(Map.empty[PeerInfo, Connection[F]])
+      lastConnected <- SignallingRef[F, Connection[F]](null)
       peerBuffer <- Queue.bounded[F, PeerInfo](10)
       fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
       fiber2 <- {
-        def spawn(peerInfo: PeerInfo) = connectRoutine(peerInfo) {
-          semaphore.withPermit {
-            for {
-              _ <- logger.info(s"Connecting to ${peerInfo.address}")
-              connection <- connect(peerInfo)
-              _ <- stateRef.update(_.updated(peerInfo, connection))
-              _ <- connection.disconnected
-              _ <- stateRef.update(_ - peerInfo)
-            } yield ()
-          }
-        }.start
+        def spawn(peerInfo: PeerInfo): F[Fiber[F, Unit]] =
+          connectRoutine(peerInfo) {
+            semaphore.withPermit {
+              for {
+                _ <- logger.info(s"Connecting to ${peerInfo.address}")
+                connection <- connect(peerInfo)
+                _ <- stateRef.update(_.updated(peerInfo, connection))
+                _ <- lastConnected.set(connection)
+                _ <- connection.disconnected
+                _ <- stateRef.update(_ - peerInfo)
+              } yield ()
+            }
+          }.start
         semaphore.available
           .flatMap {
             case 0L => F.unit
@@ -53,19 +57,25 @@ object ConnectionManager {
               val spawnOne = peerBuffer.dequeue1 >>= spawn
               F.replicateA(n.toInt, spawnOne).void
           }
-          .flatMap { _ => timer.sleep(1.second) }
+          .flatMap { _ =>
+            timer.sleep(1.second)
+          }
           .foreverM[Unit]
           .start
       }
-    } yield (new Impl(stateRef), fiber1.cancel >> fiber2.cancel)
+    } yield (new Impl(stateRef, lastConnected), fiber1.cancel >> fiber2.cancel)
   }
 
   private class Impl[F[_]](
-    stateRef: Ref[F, Map[PeerInfo, Connection[F]]]
+    stateRef: Ref[F, Map[PeerInfo, Connection[F]]],
+    lastConnected: SignallingRef[F, Connection[F]]
   )(implicit F: Monad[F])
-    extends ConnectionManager[F] {
-
-    def connected: F[Int] = stateRef.get.map(_.size)
+      extends ConnectionManager[F] {
+    val connected: Connected[F] = new Connected[F] {
+      def count: F[Int] = stateRef.get.map(_.size)
+      def stream: Stream[F, Connection[F]] =
+        Stream.evalSeq(stateRef.get.map(_.values.toList)) ++ lastConnected.discrete.tail
+    }
   }
 
   private def connectRoutine[F[_]](peerInfo: PeerInfo)(connect: F[Unit])(
@@ -76,14 +86,19 @@ object ConnectionManager {
     val reconnect = logger.info(s"Reconnecting to ${peerInfo.address}") >> connect
     val gaveUp = logger.info(s"Gave up on ${peerInfo.address}")
     for {
-      _ <- connect.handleErrorWith {
-        _ => reconnect.handleErrorWith {
-          e => gaveUp >> F.raiseError(e)
+      _ <- connect.handleErrorWith { _ =>
+        reconnect.handleErrorWith { e =>
+          gaveUp >> F.raiseError(e)
         }
       }
       _ <- logger.info(s"Disconnected from ${peerInfo.address}. Reconnect in 10 seconds")
       _ <- timer.sleep(10.seconds)
       _ <- connectRoutine(peerInfo)(connect)
     } yield ()
+  }
+
+  trait Connected[F[_]] {
+    def count: F[Int]
+    def stream: Stream[F, Connection[F]]
   }
 }
