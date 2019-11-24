@@ -16,36 +16,35 @@ import scala.concurrent.duration.{FiniteDuration, _}
 
 object MetadataDownloader {
 
-  def start[F[_]](
-    infoHash: InfoHash,
-    connections: Stream[F, (PeerInfo, Resource[F, MessageSocket[F]])]
-  )(
+  def start[F[_]](infoHash: InfoHash, connections: Stream[F, MessageSocket[F]])(
     implicit F: Concurrent[F],
     timer: Timer[F],
     logger: LogIO[F]
   ): F[ByteVector] =
     for {
       result <- connections
-        .parEvalMapUnordered(10) {
-          case (peer, connectionResource) =>
-            logger.debug(s"Connecting to $peer") *>
-              connectionResource.use { connection =>
-                val ops = new ExtendedProtocolHandshakeOps(connection, logger)
-                for {
-                  _ <- ops.request(Extensions.handshakePayload)
-                  metadataExtensionInfo <- ops.receive(10.seconds) {
-                    case ExtensionHandshake(extensions, metadataSize) =>
-                      (extensions.get("ut_metadata"), metadataSize).pure
-                  }
-                  metadataBytes <- metadataExtensionInfo match {
-                    case (Some(messageId), Some(metadataSize)) =>
-                      val ops = new TorrentMetadataExtensionOps(connection, messageId, logger)
-                      downloadFlow(ops, infoHash, metadataSize).compile.last
-                    case _ =>
-                      none[ByteVector].pure
-                  }
-                } yield metadataBytes
-              }.attempt
+        .parEvalMapUnordered(10) { connection =>
+          {
+            val ops = new ExtendedProtocolHandshakeOps(connection, logger)
+            for {
+              _ <- ops.request(Extensions.handshakePayload)
+              metadataExtensionInfo <- ops.receive(10.seconds) {
+                case ExtensionHandshake(extensions, metadataSize) =>
+                  (extensions.get("ut_metadata"), metadataSize).pure
+              }
+              metadataBytes <- metadataExtensionInfo match {
+                case (Some(messageId), Some(metadataSize)) =>
+                  val ops = new TorrentMetadataExtensionOps(
+                    connection,
+                    messageId,
+                    logger
+                  )
+                  downloadFlow(ops, infoHash, metadataSize).compile.last
+                case _ =>
+                  none[ByteVector].pure
+              }
+            } yield metadataBytes
+          }.attempt
         }
         .collect {
           case Right(Some(metadata)) => metadata
@@ -87,11 +86,10 @@ object MetadataDownloader {
     encode: M => ByteVector,
     decode: ByteVector => Either[Throwable, M],
     logger: LogIO[F]
-  )(
-    implicit F: Concurrent[F],
-    timer: Timer[F]
-  ) {
-    def receive[A](timeout: FiniteDuration)(f: PartialFunction[M, F[A]]): F[A] = {
+  )(implicit F: Concurrent[F], timer: Timer[F]) {
+    def receive[A](
+      timeout: FiniteDuration
+    )(f: PartialFunction[M, F[A]]): F[A] = {
       def recur: F[A] = {
         connection.receive
           .flatMap {

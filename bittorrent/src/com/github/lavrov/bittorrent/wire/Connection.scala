@@ -26,6 +26,7 @@ trait Connection[F[_]] {
   def chokedStatus: Signal[F, Boolean]
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
+  def messageSocket: MessageSocket[F]
 }
 
 object Connection {
@@ -89,7 +90,7 @@ object Connection {
       bitfieldRef <- SignallingRef(BitSet.empty)
       requestRegistry <- RequestRegistry[F]
       result <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
-      (connection, releaseConnection) = result
+      (socket, releaseConnection) = result
       _ <- logger.info(s"Connected ${peerInfo.address}")
       cleanUp = requestRegistry.failAll(ConnectionClosed()) >> releaseConnection >> logger
         .info(s"Disconnected ${peerInfo.address}")
@@ -101,9 +102,9 @@ object Connection {
             bitfieldRef.set,
             chokedStatusRef.set,
             updateLastMessageTime,
-            connection
+            socket
           ),
-          backgroundLoop(stateRef, timer, connection)
+          backgroundLoop(stateRef, timer, socket)
         )
         .attempt
         .flatTap(_ => cleanUp)
@@ -112,18 +113,18 @@ object Connection {
     } yield {
       new Connection[F] {
         def info: PeerInfo = peerInfo
-        def extensionProtocol: Boolean = connection.handshake.extensionProtocol
+        def extensionProtocol: Boolean = socket.handshake.extensionProtocol
 
         def interested: F[Unit] =
           for {
             interested <- stateRef.modify(
               s => (State.interested.set(true)(s), s.interested)
             )
-            _ <- F.whenA(!interested)(connection.send(Message.Interested))
+            _ <- F.whenA(!interested)(socket.send(Message.Interested))
           } yield ()
 
         def request(request: Message.Request): F[ByteVector] =
-          connection.send(request) >> requestRegistry
+          socket.send(request) >> requestRegistry
             .register(request)
             .timeout(10.seconds)
 
@@ -132,6 +133,8 @@ object Connection {
         def availability: Signal[F, BitSet] = bitfieldRef
 
         def disconnected: F[Either[Throwable, Unit]] = fiber.join.attempt
+
+        def messageSocket: MessageSocket[F] = socket
       }
     }
   }
