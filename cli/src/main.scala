@@ -4,6 +4,7 @@ import java.nio.file.{Files, Path, Paths}
 
 import cats.data.Validated
 import cats.effect._
+import cats.effect.implicits._
 import cats.syntax.all._
 import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
@@ -149,19 +150,20 @@ object Main extends IOApp {
             )
             (infoHash, metaInfo) = result
             connect = (p: PeerInfo) => Connection.connect[IO](selfId, p, infoHash)
-            _ <- ConnectionManager[IO](discoverPeers(infoHash), connect, 50)
-              .use { connectionManager =>
+            cm = ConnectionManager[IO](discoverPeers(infoHash), connect, 50)
+            fs = FileStorage[IO](metaInfo, targetDirectory)
+            _ <- (cm, fs).tupled.use {
+              case (connectionManager, fileStorage) =>
                 for {
                   _ <- logger.info(s"Start downloading")
-                  control <- TorrentControl[IO](metaInfo, connectionManager)
-                  _ <- saveToFile(
-                    targetDirectory,
-                    control.download,
+                  control <- TorrentControl[IO](
                     metaInfo,
-                    logger
+                    connectionManager,
+                    fileStorage
                   )
+                  _ <- control.download
                 } yield ()
-              }
+            }
           } yield ()
       }
     } yield ()
@@ -274,31 +276,6 @@ object Main extends IOApp {
           MetadataDownloader.start[IO](infoHash, connections)
       }
     } yield metadata
-  }
-
-  private def saveToFile[F[_]: Concurrent](
-    targetDirectory: Path,
-    completePieces: Stream[F, TorrentControl.CompletePiece],
-    metaInfo: TorrentMetadata.Info,
-    logger: LogIO[F]
-  ): F[Unit] = {
-    FileStorage(metaInfo, targetDirectory).use { sink =>
-      for {
-        _ <- completePieces
-          .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
-          .evalTap { p =>
-            val piece = FileStorage.Piece(p.begin, p.bytes)
-            sink.save(piece)
-          }
-          .compile
-          .drain
-          .onError {
-            case e =>
-              logger.error(s"Download failed $e")
-          }
-        _ <- logger.info(s"Download complete")
-      } yield ()
-    }
   }
 
 }

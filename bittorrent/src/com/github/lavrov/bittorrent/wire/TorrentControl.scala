@@ -4,28 +4,37 @@ import cats.Parallel
 import cats.data.Chain
 import cats.effect.{Concurrent, Timer}
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.TorrentMetadata
+import com.github.lavrov.bittorrent.{FileStorage, TorrentMetadata}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import fs2.Stream
 import logstage.LogIO
 import scodec.bits.ByteVector
 
-case class TorrentControl[F[_]](
-  download: Stream[F, TorrentControl.CompletePiece]
-)
+trait TorrentControl[F[_]] {
+  def download: F[Unit]
+}
 
 object TorrentControl {
 
   def apply[F[_]](
     metaInfo: TorrentMetadata.Info,
-    connectionManager: ConnectionManager[F]
+    connectionManager: ConnectionManager[F],
+    fileStorage: FileStorage[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = {
     for {
       incompletePieces <- F.delay { buildQueue(metaInfo) }
-    } yield TorrentControl(
-      Dispatcher.start(incompletePieces.toList, connectionManager)
-    )
+    } yield new TorrentControl[F] {
+      def download: F[Unit] =
+        Dispatcher
+          .start(incompletePieces.toList, connectionManager)
+          .evalTap { p =>
+            val piece = FileStorage.Piece(p.begin, p.bytes)
+            fileStorage.save(piece)
+          }
+          .compile
+          .drain
+    }
   }
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
