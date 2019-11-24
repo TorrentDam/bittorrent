@@ -282,20 +282,23 @@ object Main extends IOApp {
     metaInfo: TorrentMetadata.Info,
     logger: LogIO[F]
   ): F[Unit] = {
-    val sink = FileSink(metaInfo, targetDirectory)
-    for {
-      _ <- completePieces
-        .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
-        .map(p => FileSink.Piece(p.begin, p.bytes))
-        .through(sink)
-        .compile
-        .drain
-        .onError {
-          case e =>
-            logger.error(s"Download failed $e")
-        }
-      _ <- logger.info(s"Download complete")
-    } yield ()
+    FileStorage(metaInfo, targetDirectory).use { sink =>
+      for {
+        _ <- completePieces
+          .evalTap(p => logger.info(s"Complete piece: ${p.index}"))
+          .evalTap { p =>
+            val piece = FileStorage.Piece(p.begin, p.bytes)
+            sink.save(piece)
+          }
+          .compile
+          .drain
+          .onError {
+            case e =>
+              logger.error(s"Download failed $e")
+          }
+        _ <- logger.info(s"Download complete")
+      } yield ()
+    }
   }
 
 }
