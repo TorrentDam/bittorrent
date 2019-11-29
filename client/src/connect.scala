@@ -15,9 +15,10 @@ object Connect {
     val wrapper = FunctionalComponent[Unit] { _ =>
       val modelR = circuit.zoom(zoom)
       val (state, setState) = Hooks.useState(modelR.value)
-      def subscribe() = circuit.subscribe(modelR)(m => setState(m.value))
+      type Unsubscribe = () => Unit
+      def subscribe(): Unsubscribe = circuit.subscribe(modelR)(m => setState(m.value))
       Hooks.useEffect(subscribe)
-      component(modelR.value, circuit)
+      component(state, circuit)
     }
     wrapper()
   }

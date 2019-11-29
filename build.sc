@@ -33,12 +33,15 @@ object cli extends Module with ReleaseModule {
   )
 }
 
-// object server extends Module {
-//   def moduleDeps = List(bittorrent)
-//   def ivyDeps = Agg(
-//     ivy"com.spinoco::fs2-http:0.4.2-SNAPSHOT", // todo
-//   )
-// }
+ object server extends Module {
+   def moduleDeps = List(bittorrent)
+   private val http4sVersion = "0.21.0-M6"
+   def ivyDeps = Agg(
+     ivy"org.http4s::http4s-core:$http4sVersion",
+     ivy"org.http4s::http4s-dsl:$http4sVersion",
+     ivy"org.http4s::http4s-blaze-server:$http4sVersion",
+   )
+ }
 
 object client extends Module with scalajslib.ScalaJSModule {
   import mill.scalajslib.api.ModuleKind
