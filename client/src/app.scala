@@ -30,7 +30,10 @@ object App {
         )
       ),
       div(className := classes.appBarSpacer.toString),
-      Connect(props.circuit, _.downloadPanelModel)(DownloadPanel.apply)
+      main(
+        Connect(props.circuit, _.torrentList)(DownloadPanel.apply),
+        Connect(props.circuit, _.torrentList)(TorrentList.apply)
+      )
     )
   }
 }

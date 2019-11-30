@@ -1,3 +1,4 @@
+import Action.ServerEvent
 import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
@@ -16,7 +17,10 @@ class Main extends IOApp {
         "ws://localhost:9999/ws",
         in =>
           in.evalTap { msg =>
-              IO { org.scalajs.dom.console.info(s"WS << $msg") }
+              for {
+                _ <- IO { org.scalajs.dom.console.info(s"WS << $msg") }
+                _ <- IO { circuit.dispatch(ServerEvent(msg)) }
+              } yield ()
             }
             .drain
             .merge(out.dequeue)

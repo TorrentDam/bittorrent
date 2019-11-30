@@ -1,16 +1,22 @@
 import diode.Circuit
-import com.github.lavrov.bittorrent.app.protocol.Command
+import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import diode.ActionHandler
 import diode.UseValueEq
 
 class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
-  def initialModel = RootModel.initial
+  def initialModel: RootModel = RootModel.initial
   def actionHandler: HandlerFunction = composeHandlers(
-    new ActionHandler(zoomTo(_.downloadPanelModel)) {
+    new ActionHandler(zoomTo(_.torrentList)) {
       def handle = {
         case Action.DownloadTorrentFile(text) =>
           send(Command.AddTorrent(text))
-          updated(value.copy(downloading = true))
+          noChange
+        case Action.ServerEvent(payload) =>
+          val event = upickle.default.read[Event](payload)
+          event match {
+            case Event.NewTorrent(infoHash) =>
+              updated(value.copy(torrents = infoHash :: value.torrents))
+          }
       }
     }
   )
@@ -24,21 +30,21 @@ object AppCircuit {
 
 case class RootModel(
   mainPanel: MainPanel,
-  downloadPanelModel: DownloadPanelModel
+  torrentList: TorrentListModel
 )
 
 object RootModel {
-  def initial = {
-    val downloadPanelModel = DownloadPanelModel()
+  def initial: RootModel = {
+    val torrentList = TorrentListModel()
     RootModel(
-      mainPanel = downloadPanelModel,
-      downloadPanelModel = downloadPanelModel
+      mainPanel = torrentList,
+      torrentList = torrentList
     )
   }
 }
 
 sealed trait MainPanel extends UseValueEq
 
-case class DownloadPanelModel(
-  downloading: Boolean = false
+case class TorrentListModel(
+  torrents: List[String] = Nil
 ) extends MainPanel

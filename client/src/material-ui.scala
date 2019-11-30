@@ -9,6 +9,8 @@ import scala.scalajs.js.annotation.{JSExportTopLevel, JSImport}
 import scala.scalajs.js.UndefOr
 
 package core {
+  import org.scalajs.dom.Event
+
   import scala.scalajs.js.|
   @js.native
   @JSImport("@material-ui/core", JSImport.Default)
@@ -23,6 +25,10 @@ package core {
     val Paper: js.Object = js.native
     val InputBase: js.Object = js.native
     val LinearProgress: js.Object = js.native
+    val List: js.Object = js.native
+    val ListItem: js.Object = js.native
+    val ListItemText: js.Object = js.native
+    val Divider: js.Object = js.native
     val CssBaseline: js.Object = js.native
   }
 
@@ -34,7 +40,11 @@ package core {
 
   @react
   object Button extends ExternalComponent {
-    case class Props(variant: String, color: String = "primary")
+    case class Props(
+      variant: String,
+      color: String = "primary",
+      disabled: UndefOr[Boolean] = js.undefined
+    )
     val component = imports.Button
   }
 
@@ -93,6 +103,8 @@ package core {
   object InputBase extends ExternalComponent {
     case class Props(
       placeholder: String,
+      value: String,
+      onChange: js.Dynamic => Unit,
       className: UndefOr[String] = js.undefined,
       disabled: UndefOr[Boolean] = js.undefined
     )
@@ -107,6 +119,30 @@ package core {
       variant: String = "indeterminate"
     )
     val component = imports.LinearProgress
+  }
+
+  @react
+  object List extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined
+    )
+    val component = imports.List
+  }
+
+  @react
+  object ListItem extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined
+    )
+    val component = imports.ListItem
+  }
+
+  @react
+  object Divider extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined
+    )
+    val component = imports.Divider
   }
 
   object CssBaseline extends ExternalComponentNoProps {
