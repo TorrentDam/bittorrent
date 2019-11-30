@@ -16,12 +16,12 @@ class Main extends IOApp {
         "ws://localhost:9999/ws",
         in =>
           in.evalTap { msg =>
-              IO { org.scalajs.dom.console.info(s"WS received: $msg") }
+              IO { org.scalajs.dom.console.info(s"WS << $msg") }
             }
             .drain
             .merge(out.dequeue)
             .evalTap { msg =>
-              IO { org.scalajs.dom.console.info(s"WS sent: $msg") }
+              IO { org.scalajs.dom.console.info(s"WS >> $msg") }
             }
       )
       _ <- IO { ReactDOM.render(App(circuit), dom.document.getElementById("root")) }
