@@ -33,20 +33,30 @@ object cli extends Module with ReleaseModule {
   )
 }
 
- object server extends Module {
-   def moduleDeps = List(bittorrent)
-   private val http4sVersion = "0.21.0-M6"
-   def ivyDeps = Agg(
-     ivy"org.http4s::http4s-core:$http4sVersion",
-     ivy"org.http4s::http4s-dsl:$http4sVersion",
-     ivy"org.http4s::http4s-blaze-server:$http4sVersion",
-   )
- }
+object shared extends Module {
+  def ivyDeps = Agg(
+    ivy"com.lihaoyi::upickle:0.8.0"
+  )
+  object js extends JsModule {
+    def sources = shared.sources
+    def ivyDeps = Agg(
+      ivy"com.lihaoyi::upickle::0.8.0"
+    )
+  }
+}
 
-object client extends Module with scalajslib.ScalaJSModule {
-  import mill.scalajslib.api.ModuleKind
-  def scalaJSVersion = "0.6.28"
-  def moduleKind = ModuleKind.CommonJSModule
+object server extends Module {
+  def moduleDeps = List(bittorrent, shared)
+  private val http4sVersion = "0.21.0-M6"
+  def ivyDeps = Agg(
+    ivy"org.http4s::http4s-core:$http4sVersion",
+    ivy"org.http4s::http4s-dsl:$http4sVersion",
+    ivy"org.http4s::http4s-blaze-server:$http4sVersion",
+  )
+}
+
+object client extends JsModule {
+  def moduleDeps = List(shared.js)
   def ivyDeps = Agg(
     ivy"me.shadaj::slinky-web::0.6.2",
     ivy"co.fs2::fs2-core::2.0.0",
@@ -100,6 +110,12 @@ trait Module extends ScalaModule with ScalafmtModule {
     )
     def testFrameworks = Seq("verify.runner.Framework")
   }
+}
+
+trait JsModule extends Module with scalajslib.ScalaJSModule {
+  def scalaJSVersion = "0.6.28"
+  import mill.scalajslib.api.ModuleKind
+  def moduleKind = ModuleKind.CommonJSModule
 }
 
 

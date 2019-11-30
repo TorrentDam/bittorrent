@@ -1,24 +1,24 @@
 import diode.Circuit
-import diode.ActionResult
-import diode.ActionResult.ModelUpdate
-import cats.syntax.all._
-import diode.ActionType
+import com.github.lavrov.bittorrent.app.protocol.Command
 import diode.ActionHandler
-import slinky.web.html.download
 import diode.UseValueEq
-import diode.Effect
-import scala.concurrent.ExecutionContext
 
-class AppCircuit(send: String => Unit) extends Circuit[RootModel] {
+class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
   def initialModel = RootModel.initial
   def actionHandler: HandlerFunction = composeHandlers(
     new ActionHandler(zoomTo(_.downloadPanelModel)) {
       def handle = {
         case Action.DownloadTorrentFile(text) =>
-          send(text)
+          send(Command.AddTorrent(text))
           updated(value.copy(downloading = true))
       }
     }
+  )
+}
+
+object AppCircuit {
+  def apply(send: String => Unit) = new AppCircuit(
+    command => send(upickle.default.write(command))
   )
 }
 

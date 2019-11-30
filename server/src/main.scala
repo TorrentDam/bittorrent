@@ -29,25 +29,8 @@ object Main extends IOApp {
     HttpRoutes
       .of[IO] {
         case GET -> Root => Ok("Success")
-        case GET -> Root / "ws" =>
-          for {
-            input <- Queue.unbounded[IO, WebSocketFrame]
-            output <- Queue.unbounded[IO, WebSocketFrame]
-            fiber <- processor(input, output).compile.drain.start
-            response <- WebSocketBuilder[IO].build(
-              output.dequeue,
-              input.enqueue,
-              onClose = fiber.cancel
-            )
-          } yield response
+        case GET -> Root / "ws" => SocketSession()
       }
       .mapF(_.getOrElseF(NotFound()))
   }
-
-  def processor(
-    input: Queue[IO, WebSocketFrame],
-    output: Queue[IO, WebSocketFrame]
-  ): Stream[IO, Unit] =
-    input.dequeue.evalMap(frame => logger.info(s"Received $frame"))
-
 }
