@@ -7,15 +7,25 @@ import cats.implicits._
 import cats.effect.{Resource, Sync}
 import scodec.bits.ByteVector
 import TorrentMetadata.Info
+import cats.Applicative
+import cats.effect.concurrent.Ref
 import com.github.lavrov.bittorrent.FileStorage.Piece
+import monocle.Lens
+import monocle.macros.GenLens
 
 trait FileStorage[F[_]] {
   def save(piece: Piece): F[Unit]
+  def stats: F[FileStorage.Stats]
 }
 
 object FileStorage {
 
   case class Piece(begin: Long, bytes: ByteVector)
+
+  case class Stats(downloaded: Int)
+  object Stats {
+    val downloaded: Lens[Stats, Int] = GenLens[Stats](_.downloaded)
+  }
 
   def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(
     implicit F: Sync[F]
@@ -65,6 +75,7 @@ object FileStorage {
 
     for {
       channels <- openChannels
+      statsRef <- Resource.liftF { Ref of Stats(0) }
     } yield new FileStorage[F] {
       def save(piece: Piece): F[Unit] = {
         def writeToChannel(
@@ -88,8 +99,9 @@ object FileStorage {
               write(fileChannel.until, leftoverBytes)
             }
         }
-        write(piece.begin, piece.bytes)
+        write(piece.begin, piece.bytes) >> statsRef.update(Stats.downloaded.modify(_ + 1))
       }
+      def stats: F[Stats] = statsRef.get
     }
   }
 
@@ -99,4 +111,9 @@ object FileStorage {
     channel: SeekableByteChannel,
     close: F[Unit]
   )
+
+  def noop[F[_]](implicit F: Applicative[F]): FileStorage[F] = new FileStorage[F] {
+    def save(piece: Piece): F[Unit] = F.unit
+    def stats: F[Stats] = F.pure(Stats(0))
+  }
 }

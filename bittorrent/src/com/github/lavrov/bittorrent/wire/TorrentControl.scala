@@ -1,41 +1,56 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.Parallel
 import cats.data.Chain
+import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, Timer}
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.{FileStorage, TorrentMetadata}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-import fs2.Stream
+import com.github.lavrov.bittorrent.{FileStorage, TorrentMetadata}
 import logstage.LogIO
 import scodec.bits.ByteVector
 
 trait TorrentControl[F[_]] {
+  def setMetaInfo(value: TorrentMetadata.Info): F[Unit]
+  def stats: F[TorrentControl.Stats]
   def download: F[Unit]
 }
 
 object TorrentControl {
 
   def apply[F[_]](
-    metaInfo: TorrentMetadata.Info,
     connectionManager: ConnectionManager[F],
     fileStorage: FileStorage[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = {
     for {
-      incompletePieces <- F.delay { buildQueue(metaInfo) }
+      metaInfoRef <- Ref.of(none[TorrentMetadata.Info])
     } yield new TorrentControl[F] {
+      def setMetaInfo(value: TorrentMetadata.Info): F[Unit] =
+        metaInfoRef.set(value.some)
+      def stats: F[Stats] =
+        connectionManager.connected.count.map(Stats)
       def download: F[Unit] =
-        Dispatcher
-          .start(incompletePieces.toList, connectionManager)
-          .evalTap { p =>
-            val piece = FileStorage.Piece(p.begin, p.bytes)
-            fileStorage.save(piece)
-          }
-          .compile
-          .drain
+        metaInfoRef.get.flatMap {
+          case None => F.raiseError[Unit](Error.EmptyMetadata())
+          case Some(metaInfo) =>
+            for {
+              incompletePieces <- F.delay { buildQueue(metaInfo) }
+              _ <- Dispatcher
+                .start(incompletePieces.toList, connectionManager)
+                .evalTap { p =>
+                  val piece = FileStorage.Piece(p.begin, p.bytes)
+                  fileStorage.save(piece)
+                }
+                .compile
+                .drain
+            } yield ()
+        }
     }
   }
+
+  case class Stats(
+    connected: Int
+  )
 
   case class CompletePiece(index: Long, begin: Long, bytes: ByteVector)
 
@@ -121,5 +136,10 @@ object TorrentControl {
           info.pieces
         )
     }
+  }
+
+  sealed trait Error extends Exception
+  object Error {
+    case class EmptyMetadata() extends Error
   }
 }

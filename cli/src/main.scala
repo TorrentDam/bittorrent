@@ -159,10 +159,10 @@ object Main extends IOApp {
                     for {
                       _ <- logger.info(s"Start downloading")
                       control <- TorrentControl[IO](
-                        metaInfo,
                         connectionManager,
                         fileStorage
                       )
+                      _ <- control.setMetaInfo(metaInfo)
                       _ <- control.download
                     } yield ()
                   }

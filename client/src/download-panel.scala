@@ -10,7 +10,7 @@ import slinky.core.facade.Hooks
 
 @react
 object DownloadPanel {
-  case class Props(model: TorrentListModel, dispatcher: Dispatcher)
+  case class Props(model: TorrentPanelModel, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>

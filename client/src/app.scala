@@ -31,8 +31,13 @@ object App {
       ),
       div(className := classes.appBarSpacer.toString),
       main(
-        Connect(props.circuit, _.torrentList)(DownloadPanel.apply),
-        Connect(props.circuit, _.torrentList)(TorrentList.apply)
+        Connect(props.circuit, _.torrentPanel)(
+          (model, dispatcher) =>
+            model.torrent match {
+              case Some(torrent) => TorrentPanel(torrent, dispatcher)
+              case _ => DownloadPanel(model, dispatcher)
+            }
+        )
       )
     )
   }

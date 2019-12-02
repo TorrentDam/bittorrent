@@ -26,6 +26,7 @@ trait Connection[F[_]] {
   def chokedStatus: Signal[F, Boolean]
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
+  def close: F[Unit]
   def messageSocket: MessageSocket[F]
 }
 
@@ -92,8 +93,6 @@ object Connection {
       result <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
       (socket, releaseConnection) = result
       _ <- logger.info(s"Connected ${peerInfo.address}")
-      cleanUp = requestRegistry.failAll(ConnectionClosed()) >> releaseConnection >> logger
-        .info(s"Disconnected ${peerInfo.address}")
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
       fiber <- Concurrent[F]
         .race[Nothing, Nothing](
@@ -106,10 +105,17 @@ object Connection {
           ),
           backgroundLoop(stateRef, timer, socket)
         )
-        .attempt
-        .flatTap(_ => cleanUp)
         .void
+        .attempt
         .start
+      closed <- Deferred[F, Either[Throwable, Unit]]
+      doClose = (reason: Either[Throwable, Unit]) =>
+        fiber.cancel >>
+          requestRegistry.failAll(ConnectionClosed()) >>
+          releaseConnection >>
+          logger.info(s"Disconnected ${peerInfo.address}") >>
+          closed.complete(reason)
+      _ <- fiber.join.flatMap(doClose).start
     } yield {
       new Connection[F] {
         def info: PeerInfo = peerInfo
@@ -132,7 +138,9 @@ object Connection {
 
         def availability: Signal[F, BitSet] = bitfieldRef
 
-        def disconnected: F[Either[Throwable, Unit]] = fiber.join.attempt
+        def disconnected: F[Either[Throwable, Unit]] = closed.get
+
+        def close: F[Unit] = doClose(().asRight)
 
         def messageSocket: MessageSocket[F] = socket
       }

@@ -6,7 +6,7 @@ import diode.UseValueEq
 class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
   def initialModel: RootModel = RootModel.initial
   def actionHandler: HandlerFunction = composeHandlers(
-    new ActionHandler(zoomTo(_.torrentList)) {
+    new ActionHandler(zoomTo(_.torrentPanel)) {
       def handle = {
         case Action.DownloadTorrentFile(text) =>
           send(Command.AddTorrent(text))
@@ -15,7 +15,17 @@ class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
           val event = upickle.default.read[Event](payload)
           event match {
             case Event.NewTorrent(infoHash) =>
-              updated(value.copy(torrents = infoHash :: value.torrents))
+              updated(
+                value.copy(torrent = Some(TorrentModel(infoHash, 0)))
+              )
+            case Event.TorrentStats(_, connected) =>
+              updated(
+                value.copy(
+                  torrent = value.torrent.map(_.copy(connected = connected))
+                )
+              )
+            case _ =>
+              noChange
           }
       }
     }
@@ -30,21 +40,26 @@ object AppCircuit {
 
 case class RootModel(
   mainPanel: MainPanel,
-  torrentList: TorrentListModel
+  torrentPanel: TorrentPanelModel
 )
 
 object RootModel {
   def initial: RootModel = {
-    val torrentList = TorrentListModel()
+    val torrentPanel = TorrentPanelModel()
     RootModel(
-      mainPanel = torrentList,
-      torrentList = torrentList
+      mainPanel = torrentPanel,
+      torrentPanel = torrentPanel
     )
   }
 }
 
 sealed trait MainPanel extends UseValueEq
 
-case class TorrentListModel(
-  torrents: List[String] = Nil
+case class TorrentPanelModel(
+  torrent: Option[TorrentModel] = Option.empty
+) extends MainPanel
+
+case class TorrentModel(
+  infoHash: String,
+  connected: Int
 ) extends MainPanel

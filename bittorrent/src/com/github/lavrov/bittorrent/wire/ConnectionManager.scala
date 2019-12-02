@@ -36,6 +36,7 @@ object ConnectionManager {
       lastConnected <- SignallingRef[F, Connection[F]](null)
       peerBuffer <- Queue.bounded[F, PeerInfo](10)
       fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
+      connectionFibers <- Ref.of[F, List[Fiber[F, Unit]]](List.empty)
       fiber2 <- {
         def spawn(peerInfo: PeerInfo): F[Fiber[F, Unit]] =
           connectRoutine(peerInfo) {
@@ -55,7 +56,9 @@ object ConnectionManager {
             case 0L => F.unit
             case n =>
               val spawnOne = peerBuffer.dequeue1 >>= spawn
-              F.replicateA(n.toInt, spawnOne).void
+              F.replicateA(n.toInt, spawnOne)
+                .flatMap(fibers => connectionFibers.update(fibers ++ _))
+                .void
           }
           .flatMap { _ =>
             timer.sleep(1.second)
@@ -63,7 +66,14 @@ object ConnectionManager {
           .foreverM[Unit]
           .start
       }
-    } yield (new Impl(stateRef, lastConnected), fiber1.cancel >> fiber2.cancel)
+      cancelConnectionFibers = connectionFibers.get.flatMap(_.traverse_(_.cancel))
+      closeConnections = stateRef.get.flatMap(_.values.toList.traverse_(_.close))
+    } yield {
+      val impl = new Impl(stateRef, lastConnected)
+      val close = fiber1.cancel >> fiber2.cancel >> cancelConnectionFibers >> closeConnections >> logger
+        .info("Closed CM")
+      (impl, close)
+    }
   }
 
   private class Impl[F[_]](
