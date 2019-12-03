@@ -89,6 +89,8 @@ object SocketSession {
             .drain
             .start
           _ <- send(Event.NewTorrent(infoHashString))
+          metadata <- control.instance.downloadTorrentMetadata
+          _ <- send(Event.TorrentMetadata())
         } yield ()
     }
   }

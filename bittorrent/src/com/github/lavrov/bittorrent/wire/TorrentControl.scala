@@ -13,6 +13,7 @@ import scodec.bits.ByteVector
 trait TorrentControl[F[_]] {
   def setMetaInfo(value: TorrentMetadata.Info): F[Unit]
   def stats: F[TorrentControl.Stats]
+  def downloadTorrentMetadata: F[TorrentMetadata.Info]
   def download: F[Unit]
 }
 
@@ -29,6 +30,26 @@ object TorrentControl {
         metaInfoRef.set(value.some)
       def stats: F[Stats] =
         connectionManager.connected.count.map(Stats)
+      def downloadTorrentMetadata: F[TorrentMetadata.Info] =
+        connectionManager.connected.stream
+          .evalMap(_.downloadTorrentFile.attempt)
+          .collectFirst {
+            case Right(Some(metadata)) => metadata
+          }
+          .evalMap { bytes =>
+            F.fromOption(
+              for {
+                bc <- com.github.lavrov.bencode.decode(bytes.bits).toOption
+                metadata <- TorrentMetadata.InfoFormat.read.run(bc).toOption
+              } yield metadata,
+              new Exception("Unable to read metadata")
+            )
+          }
+          .evalTap { metadata =>
+            setMetaInfo(metadata)
+          }
+          .compile
+          .lastOrError
       def download: F[Unit] =
         metaInfoRef.get.flatMap {
           case None => F.raiseError[Unit](Error.EmptyMetadata())

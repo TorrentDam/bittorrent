@@ -37,7 +37,8 @@ object App {
               case Some(torrent) => TorrentPanel(torrent, dispatcher)
               case _ => DownloadPanel(model, dispatcher)
             }
-        )
+        ),
+        Connect(props.circuit, _.logs)(LogPanel.apply)
       )
     )
   }

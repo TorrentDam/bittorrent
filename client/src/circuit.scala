@@ -1,34 +1,39 @@
 import diode.Circuit
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import diode.ActionHandler
+import diode.ActionResult.{ModelUpdate, NoChange}
 import diode.UseValueEq
 
 class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
   def initialModel: RootModel = RootModel.initial
   def actionHandler: HandlerFunction = composeHandlers(
-    new ActionHandler(zoomTo(_.torrentPanel)) {
-      def handle = {
+    (value, action) =>
+      action match {
         case Action.DownloadTorrentFile(text) =>
           send(Command.AddTorrent(text))
-          noChange
+          Some(NoChange)
         case Action.ServerEvent(payload) =>
           val event = upickle.default.read[Event](payload)
-          event match {
+          val panel = value.torrentPanel
+          val updatedPanel = event match {
             case Event.NewTorrent(infoHash) =>
-              updated(
-                value.copy(torrent = Some(TorrentModel(infoHash, 0)))
-              )
+              panel.copy(torrent = Some(TorrentModel(infoHash, 0)))
             case Event.TorrentStats(_, connected) =>
-              updated(
-                value.copy(
-                  torrent = value.torrent.map(_.copy(connected = connected))
-                )
+              panel.copy(
+                torrent = panel.torrent.map(_.copy(connected = connected))
               )
             case _ =>
-              noChange
+              panel
           }
+          Some(
+            ModelUpdate(
+              value.copy(
+                torrentPanel = updatedPanel,
+                logs = payload :: value.logs
+              )
+            )
+          )
       }
-    }
   )
 }
 
@@ -40,7 +45,8 @@ object AppCircuit {
 
 case class RootModel(
   mainPanel: MainPanel,
-  torrentPanel: TorrentPanelModel
+  torrentPanel: TorrentPanelModel,
+  logs: List[String]
 )
 
 object RootModel {
@@ -48,7 +54,8 @@ object RootModel {
     val torrentPanel = TorrentPanelModel()
     RootModel(
       mainPanel = torrentPanel,
-      torrentPanel = torrentPanel
+      torrentPanel = torrentPanel,
+      logs = List.empty
     )
   }
 }

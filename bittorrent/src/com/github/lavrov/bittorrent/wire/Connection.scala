@@ -7,8 +7,7 @@ import cats.effect.{Concurrent, ContextShift, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
-import fs2.Stream
-import fs2.concurrent.{Signal, SignallingRef}
+import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.io.tcp.SocketGroup
 import logstage.LogIO
 import monocle.Lens
@@ -27,7 +26,7 @@ trait Connection[F[_]] {
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
   def close: F[Unit]
-  def messageSocket: MessageSocket[F]
+  def downloadTorrentFile: F[Option[ByteVector]]
 }
 
 object Connection {
@@ -90,8 +89,13 @@ object Connection {
       chokedStatusRef <- SignallingRef(true)
       bitfieldRef <- SignallingRef(BitSet.empty)
       requestRegistry <- RequestRegistry[F]
+      extendedMessageQueue <- Queue.unbounded[F, Message.Extended]
       result <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
       (socket, releaseConnection) = result
+      extendedMessageSocket = new ExtendedMessageSocket[F] {
+        def send(message: Message.Extended): F[Unit] = socket.send(message)
+        def receive: F[Message.Extended] = extendedMessageQueue.dequeue1
+      }
       _ <- logger.info(s"Connected ${peerInfo.address}")
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
       fiber <- Concurrent[F]
@@ -101,7 +105,8 @@ object Connection {
             bitfieldRef.set,
             chokedStatusRef.set,
             updateLastMessageTime,
-            socket
+            socket,
+            extendedMessageQueue.enqueue1
           ),
           backgroundLoop(stateRef, timer, socket)
         )
@@ -142,19 +147,32 @@ object Connection {
 
         def close: F[Unit] = doClose(().asRight)
 
-        def messageSocket: MessageSocket[F] = socket
+        def downloadTorrentFile: F[Option[ByteVector]] =
+          for {
+            handshake <- ExtensionHandshaker(extendedMessageSocket)
+            metadata <- (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled
+              .traverse {
+                case (messageId, size) =>
+                  MetadataDownloader(messageId, size, extendedMessageSocket)
+                    .ensure(InvalidMetadata()) { metadata =>
+                      metadata.digest("SHA-1") == infoHash.bytes
+                    }
+              }
+          } yield metadata
       }
     }
   }
 
   case class ConnectionClosed() extends Throwable
+  case class InvalidMetadata() extends Throwable
 
   private def receiveLoop[F[_]: Monad](
     requestRegistry: RequestRegistry[F],
     updateBitfield: BitSet => F[Unit],
     updateChokeStatus: Boolean => F[Unit],
     updateLastMessageAt: Long => F[Unit],
-    socket: MessageSocket[F]
+    socket: MessageSocket[F],
+    extensionHandler: Message.Extended => F[Unit]
   )(implicit timer: Timer[F]): F[Nothing] =
     socket.receive
       .flatMap {
@@ -170,6 +188,8 @@ object Connection {
             case (true, i) => i
           }
           updateBitfield(BitSet(indices: _*))
+        case m: Message.Extended =>
+          extensionHandler(m)
         case _ =>
           Monad[F].unit
       }
