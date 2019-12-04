@@ -1,7 +1,16 @@
+import java.util.UUID
+
+import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, ConnectionManager, TorrentControl}
-import com.github.lavrov.bittorrent.{FileStorage, InfoHash, PeerId}
+import com.github.lavrov.bittorrent.{
+  FileStorage,
+  InfoHash,
+  InfoHashFromString,
+  PeerId,
+  TorrentMetadata
+}
 import fs2.Stream
 import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
@@ -36,6 +45,7 @@ object Main extends IOApp {
         implicit val ev0 = udpSocketGroup
         Client.start[IO](selfNodeId, 9596)
       }
+      torrentRegistry <- Resource.liftF { Ref.of[IO, Map[InfoHash, TorrentControl[IO]]](Map.empty) }
       makeTorrentControl = { (infoHash: InfoHash) =>
         implicit val ev0 = socketGroup
         for {
@@ -43,11 +53,38 @@ object Main extends IOApp {
             Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
             peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash)
           )
-          result <- Resource.liftF { TorrentControl[IO](connectionManager, FileStorage.noop) }
+          metaInfo <- Resource.liftF { TorrentControl.downloadTorrentMetadata(connectionManager) }
+          result <- Resource.liftF {
+            TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
+          }
+          _ <- {
+            val add = torrentRegistry.update { map =>
+              map.updated(infoHash, result)
+            }
+            val remove = torrentRegistry.update { map =>
+              map.removed(infoHash)
+            }
+            Resource.make(add)(_ => remove)
+          }
         } yield result
       }
       handleSocket = SocketSession(makeTorrentControl)
-    } yield httpApp(handleSocket)
+      handleGetTorrent = (infoHash: InfoHash) =>
+        torrentRegistry.get.flatMap { map =>
+          import org.http4s.dsl.io._
+          map.get(infoHash).map(_.metadata) match {
+            case Some(metadata) =>
+              val torrentFile = TorrentMetadata(
+                metadata,
+                None
+              )
+              val bcode = TorrentMetadata.TorrentMetadataFormat.write(torrentFile).toOption.get
+              val bytes = com.github.lavrov.bencode.encode(bcode)
+              Ok(bytes.toByteArray)
+            case None => NotFound("Torrent not found")
+          }
+        }
+    } yield httpApp(handleSocket, handleGetTorrent)
 
   def serve(app: HttpApp[IO]): IO[ExitCode] =
     BlazeServerBuilder[IO]
@@ -58,12 +95,17 @@ object Main extends IOApp {
       .compile
       .lastOrError
 
-  def httpApp(handleSocket: IO[Response[IO]]): HttpApp[IO] = {
+  def httpApp(
+    handleSocket: IO[Response[IO]],
+    handleGetTorrent: InfoHash => IO[Response[IO]]
+  ): HttpApp[IO] = {
     import org.http4s.dsl.io._
     HttpRoutes
       .of[IO] {
         case GET -> Root => Ok("Success")
         case GET -> Root / "ws" => handleSocket
+        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
+          handleGetTorrent(infoHash)
       }
       .mapF(_.getOrElseF(NotFound()))
   }

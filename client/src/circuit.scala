@@ -17,7 +17,9 @@ class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
           val panel = value.torrentPanel
           val updatedPanel = event match {
             case Event.NewTorrent(infoHash) =>
-              panel.copy(torrent = Some(TorrentModel(infoHash, 0)))
+              panel.copy(torrent = Some(TorrentModel(infoHash, 0, false)))
+            case Event.TorrentMetadata() =>
+              panel.copy(torrent = panel.torrent.map(_.withMetadata))
             case Event.TorrentStats(_, connected) =>
               panel.copy(
                 torrent = panel.torrent.map(_.copy(connected = connected))
@@ -68,5 +70,8 @@ case class TorrentPanelModel(
 
 case class TorrentModel(
   infoHash: String,
-  connected: Int
-) extends MainPanel
+  connected: Int,
+  metadata: Boolean
+) extends MainPanel {
+  def withMetadata: TorrentModel = copy(metadata = true)
+}

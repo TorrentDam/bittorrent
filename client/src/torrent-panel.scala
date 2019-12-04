@@ -9,7 +9,17 @@ object TorrentPanel {
 
   val component = FunctionalComponent[Props] { props =>
     div(
-      s"Connected: ${props.model.connected}"
+      p(s"Connected: ${props.model.connected}"),
+      if (props.model.metadata)
+        Some(
+          p(
+            a(
+              href := s"http://localhost:9999/torrent/${props.model.infoHash}/metadata",
+              target := "_blank"
+            )("Metadata")
+          )
+        )
+      else None
     )
 
   }

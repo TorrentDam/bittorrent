@@ -11,63 +11,56 @@ import logstage.LogIO
 import scodec.bits.ByteVector
 
 trait TorrentControl[F[_]] {
-  def setMetaInfo(value: TorrentMetadata.Info): F[Unit]
+  def metadata: TorrentMetadata.Info
   def stats: F[TorrentControl.Stats]
-  def downloadTorrentMetadata: F[TorrentMetadata.Info]
   def download: F[Unit]
 }
 
 object TorrentControl {
 
   def apply[F[_]](
+    metaInfo: TorrentMetadata.Info,
     connectionManager: ConnectionManager[F],
     fileStorage: FileStorage[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = {
-    for {
-      metaInfoRef <- Ref.of(none[TorrentMetadata.Info])
-    } yield new TorrentControl[F] {
-      def setMetaInfo(value: TorrentMetadata.Info): F[Unit] =
-        metaInfoRef.set(value.some)
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = F.pure {
+    new TorrentControl[F] {
+      def metadata: TorrentMetadata.Info = metaInfo
       def stats: F[Stats] =
         connectionManager.connected.count.map(Stats)
-      def downloadTorrentMetadata: F[TorrentMetadata.Info] =
-        connectionManager.connected.stream
-          .evalMap(_.downloadTorrentFile.attempt)
-          .collectFirst {
-            case Right(Some(metadata)) => metadata
-          }
-          .evalMap { bytes =>
-            F.fromOption(
-              for {
-                bc <- com.github.lavrov.bencode.decode(bytes.bits).toOption
-                metadata <- TorrentMetadata.InfoFormat.read.run(bc).toOption
-              } yield metadata,
-              new Exception("Unable to read metadata")
-            )
-          }
-          .evalTap { metadata =>
-            setMetaInfo(metadata)
-          }
-          .compile
-          .lastOrError
       def download: F[Unit] =
-        metaInfoRef.get.flatMap {
-          case None => F.raiseError[Unit](Error.EmptyMetadata())
-          case Some(metaInfo) =>
-            for {
-              incompletePieces <- F.delay { buildQueue(metaInfo) }
-              _ <- Dispatcher
-                .start(incompletePieces.toList, connectionManager)
-                .evalTap { p =>
-                  val piece = FileStorage.Piece(p.begin, p.bytes)
-                  fileStorage.save(piece)
-                }
-                .compile
-                .drain
-            } yield ()
-        }
+        for {
+          incompletePieces <- F.delay { buildQueue(metaInfo) }
+          _ <- Dispatcher
+            .start(incompletePieces.toList, connectionManager)
+            .evalTap { p =>
+              val piece = FileStorage.Piece(p.begin, p.bytes)
+              fileStorage.save(piece)
+            }
+            .compile
+            .drain
+        } yield ()
     }
   }
+
+  def downloadTorrentMetadata[F[_]](
+    connectionManager: ConnectionManager[F]
+  )(implicit F: Concurrent[F]): F[TorrentMetadata.Info] =
+    connectionManager.connected.stream
+      .evalMap(_.downloadTorrentFile.attempt)
+      .collectFirst {
+        case Right(Some(metadata)) => metadata
+      }
+      .evalMap { bytes =>
+        F.fromOption(
+          for {
+            bc <- com.github.lavrov.bencode.decode(bytes.bits).toOption
+            metadata <- TorrentMetadata.InfoFormat.read.run(bc).toOption
+          } yield metadata,
+          new Exception("Unable to read metadata")
+        )
+      }
+      .compile
+      .lastOrError
 
   case class Stats(
     connected: Int

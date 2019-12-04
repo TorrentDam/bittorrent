@@ -135,32 +135,22 @@ object Main extends IOApp {
             )
             (infoHash, metaInfoOpt) = result
             _ <- makeConnectionManager(infoHash).use { connectionManager =>
-              val getMetaInfo = metaInfoOpt.map(IO.pure).getOrElse {
-                for {
-                  _ <- logger.info("Downloading torrent file using info-hash")
-                  _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
-                  i <- getTorrent(infoHash, connectionManager).map { bytes =>
-                    val bc = com.github.lavrov.bencode
-                      .decode(bytes.bits)
-                      .getOrElse(
-                        sys.error("Failed to read metadata") // todo
-                      )
-                    TorrentMetadata.InfoFormat.read
-                      .run(bc)
-                      .getOrElse(sys.error("Filed to read Info"))
-                  }
-                } yield i
-              }
               for {
-                metaInfo <- getMetaInfo
+                metaInfo <- metaInfoOpt.map(IO.pure).getOrElse {
+                  for {
+                    _ <- logger.info("Downloading torrent file using info-hash")
+                    _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
+                    i <- TorrentControl.downloadTorrentMetadata(connectionManager)
+                  } yield i
+                }
                 _ <- FileStorage[IO](metaInfo, targetDirectory).use { fileStorage =>
                   for {
                     _ <- logger.info(s"Start downloading")
                     control <- TorrentControl[IO](
+                      metaInfo,
                       connectionManager,
                       fileStorage
                     )
-                    _ <- control.setMetaInfo(metaInfo)
                     _ <- control.download
                   } yield ()
                 }

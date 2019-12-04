@@ -2,8 +2,8 @@ import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
-import com.github.lavrov.bittorrent.wire.TorrentControl
-import com.github.lavrov.bittorrent.{InfoHash, InfoHashFromString}
+import com.github.lavrov.bittorrent.wire.{ConnectionManager, TorrentControl}
+import com.github.lavrov.bittorrent.{FileStorage, InfoHash, InfoHashFromString, TorrentMetadata}
 import fs2.Stream
 import fs2.concurrent.Queue
 import logstage.LogIO
@@ -61,9 +61,9 @@ object SocketSession {
     ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
 
   class CommandHandler(
-    controlRef: Ref[IO, Option[CommandHandler.AllocatedControl]],
+    controlRef: Ref[IO, Option[TorrentControl[IO]]],
     send: Event => IO[Unit],
-    makeTorrentControl: InfoHash => Resource[IO, TorrentControl[IO]]
+    makeTorrentControl: InfoHash => IO[TorrentControl[IO]]
   )(
     implicit
     F: Concurrent[IO],
@@ -74,29 +74,24 @@ object SocketSession {
     def handle(command: Command): IO[Unit] = command match {
       case Command.AddTorrent(infoHashString @ InfoHashFromString(infoHash)) =>
         for {
-          currentControl <- controlRef.get
-          _ <- currentControl.traverse(_.close)
-          control <- makeTorrentControl(infoHash).allocated
-            .map(CommandHandler.AllocatedControl.tupled)
+          _ <- send(Event.NewTorrent(infoHashString))
+          control <- makeTorrentControl(infoHash)
+          _ <- send(Event.TorrentMetadata())
           _ <- controlRef.set(control.some)
           _ <- Stream
             .repeatEval(
-              (timer.sleep(10.seconds) >> control.instance.stats).flatMap { stats =>
+              (timer.sleep(10.seconds) >> control.stats).flatMap { stats =>
                 send(Event.TorrentStats(infoHashString, stats.connected))
               }
             )
             .compile
             .drain
             .start
-          _ <- send(Event.NewTorrent(infoHashString))
-          metadata <- control.instance.downloadTorrentMetadata
-          _ <- send(Event.TorrentMetadata())
         } yield ()
     }
   }
 
   object CommandHandler {
-    case class AllocatedControl(instance: TorrentControl[IO], close: IO[Unit])
     def apply(
       send: Event => IO[Unit],
       makeTorrentControl: InfoHash => Resource[IO, TorrentControl[IO]]
@@ -108,13 +103,18 @@ object SocketSession {
       logger: LogIO[IO]
     ): Resource[IO, CommandHandler] = Resource {
       for {
-        controlRef <- Ref.of(Option.empty[AllocatedControl])
+        finalizer <- Ref.of(IO.unit)
+        controlRef <- Ref.of(Option.empty[TorrentControl[IO]])
       } yield {
-        val impl = new CommandHandler(controlRef, send, makeTorrentControl)
-        val close: IO[Unit] = controlRef.get.flatMap {
-          case Some(allocatedControl) => allocatedControl.close
-          case _ => IO.unit
-        }
+        val impl = new CommandHandler(
+          controlRef,
+          send,
+          makeTorrentControl(_).allocated.flatMap {
+            case (instance, close) =>
+              finalizer.get.flatten >> finalizer.set(close).as(instance)
+          }
+        )
+        val close: IO[Unit] = finalizer.get.flatten
         (impl, close)
       }
     }
