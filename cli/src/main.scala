@@ -130,7 +130,7 @@ object Main extends IOApp {
               infoHash => IO.pure((infoHash, none)),
               torrentPath =>
                 readTorrentFile(torrentPath).map {
-                  case (infoHash, metadata) => (infoHash, metadata.info.some)
+                  case (infoHash, metadata) => (infoHash, metadata.some)
                 }
             )
             (infoHash, metaInfoOpt) = result
@@ -140,10 +140,10 @@ object Main extends IOApp {
                   for {
                     _ <- logger.info("Downloading torrent file using info-hash")
                     _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
-                    i <- TorrentControl.downloadTorrentMetadata(connectionManager)
+                    i <- TorrentControl.downloadMetaInfo(connectionManager)
                   } yield i
                 }
-                _ <- FileStorage[IO](metaInfo, targetDirectory).use { fileStorage =>
+                _ <- FileStorage[IO](metaInfo.parsed, targetDirectory).use { fileStorage =>
                   for {
                     _ <- logger.info(s"Start downloading")
                     control <- TorrentControl[IO](
@@ -170,7 +170,7 @@ object Main extends IOApp {
     )
   }
 
-  def readTorrentFile(torrentPath: Path): IO[(InfoHash, TorrentMetadata)] = {
+  def readTorrentFile(torrentPath: Path): IO[(InfoHash, MetaInfo)] = {
     for {
       bytes <- IO(BitVector(Files.readAllBytes(torrentPath)))
       bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
@@ -178,12 +178,13 @@ object Main extends IOApp {
         TorrentMetadata.RawInfoFormat.read(bc).left.map(new Exception(_))
       )
       torrentMetadata <- IO.fromEither(
-        TorrentMetadata.TorrentMetadataFormat
+        TorrentMetadata.TorrentMetadataFormatLossless
           .read(bc)
           .left
           .map(new Exception(_))
       )
-    } yield (InfoHash(encode(infoDict).digest("SHA-1").bytes), torrentMetadata)
+      metaInfo <- IO.fromEither(MetaInfo.fromBencode(torrentMetadata._1).toRight(new Exception("")))
+    } yield (InfoHash(encode(infoDict).digest("SHA-1").bytes), metaInfo)
   }
 
   def readTorrent(torrentPath: Path): IO[Unit] = {
@@ -220,18 +221,14 @@ object Main extends IOApp {
       .use { connectionManager =>
         for {
           metadata <- getTorrent(infoHash, connectionManager)
+          metaInfo <- IO.fromEither(
+            MetaInfo.fromBytes(metadata).toRight(new Exception("Invalid metainfo"))
+          )
+          bcode <- IO.fromEither(
+            TorrentMetadata.TorrentMetadataFormatLossless.write((metaInfo.raw, None))
+          )
+          bytes <- IO.pure(encode(bcode))
           _ <- IO.delay {
-            val bytes = BencodeCodec.instance
-              .encode(
-                Bencode.BDictionary(
-                  (
-                    "info",
-                    BencodeCodec.instance.decodeValue(metadata.toBitVector).require
-                  ),
-                  ("creationDate", Bencode.BInteger(System.currentTimeMillis))
-                )
-              )
-              .require
             Files.write(targetFile, bytes.toByteArray)
           }
           _ <- logger.info("Successfully downloaded torrent file")

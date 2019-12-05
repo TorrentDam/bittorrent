@@ -107,7 +107,7 @@ object TorrentMetadataSpec extends BasicTestSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(result) = decode(source)
-    val decodeResult = TorrentMetadata.TorrentMetadataFormat.read(result)
+    val decodeResult = TorrentMetadata.TorrentMetadataFormatLossless.read(result)
     assert(decodeResult.isRight)
   }
 

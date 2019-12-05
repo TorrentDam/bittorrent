@@ -6,7 +6,7 @@ import cats.effect.syntax.all._
 import cats.effect.{Concurrent, ContextShift, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
-import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
+import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
 import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.io.tcp.SocketGroup
 import logstage.LogIO

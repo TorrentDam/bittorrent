@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent
 
 import java.time.Instant
 
+import com.github.lavrov.bencode
 import com.github.lavrov.bencode.Bencode
 import com.github.lavrov.bencode.format._
 import cats.syntax.invariant._
@@ -66,11 +67,26 @@ object TorrentMetadata {
   implicit val InfoFormat: BencodeFormat[Info] =
     SingleFileFormat.upcast[Info] or MultipleFileFormat.upcast
 
-  implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] =
+  implicit val TorrentMetadataFormatLossless: BencodeFormat[(Bencode, Option[Instant])] =
     (
-      field[Info]("info"),
+      field[Bencode]("info"),
       fieldOptional[Instant]("creationDate")
-    ).imapN(TorrentMetadata.apply)(v => (v.info, v.creationDate))
+    ).tupled
 
   val RawInfoFormat: BencodeFormat[Bencode] = field[Bencode]("info")
+}
+
+case class MetaInfo private (
+  parsed: TorrentMetadata.Info,
+  raw: Bencode
+)
+
+object MetaInfo {
+  def fromBytes(bytes: ByteVector): Option[MetaInfo] =
+    bencode.decode(bytes.bits).toOption.flatMap(fromBencode)
+
+  def fromBencode(bcode: Bencode): Option[MetaInfo] =
+    TorrentMetadata.InfoFormat.read(bcode).toOption.map { info =>
+      MetaInfo(info, bcode)
+    }
 }

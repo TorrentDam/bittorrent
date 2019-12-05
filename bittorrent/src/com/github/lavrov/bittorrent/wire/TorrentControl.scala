@@ -1,17 +1,16 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.data.Chain
-import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, Timer}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-import com.github.lavrov.bittorrent.{FileStorage, TorrentMetadata}
+import com.github.lavrov.bittorrent.{FileStorage, MetaInfo, TorrentMetadata}
 import logstage.LogIO
 import scodec.bits.ByteVector
 
 trait TorrentControl[F[_]] {
-  def metadata: TorrentMetadata.Info
+  def getMetaInfo: MetaInfo
   def stats: F[TorrentControl.Stats]
   def download: F[Unit]
 }
@@ -19,17 +18,17 @@ trait TorrentControl[F[_]] {
 object TorrentControl {
 
   def apply[F[_]](
-    metaInfo: TorrentMetadata.Info,
+    metaInfo: MetaInfo,
     connectionManager: ConnectionManager[F],
     fileStorage: FileStorage[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = F.pure {
     new TorrentControl[F] {
-      def metadata: TorrentMetadata.Info = metaInfo
+      def getMetaInfo = metaInfo
       def stats: F[Stats] =
         connectionManager.connected.count.map(Stats)
       def download: F[Unit] =
         for {
-          incompletePieces <- F.delay { buildQueue(metaInfo) }
+          incompletePieces <- F.delay { buildQueue(metaInfo.parsed) }
           _ <- Dispatcher
             .start(incompletePieces.toList, connectionManager)
             .evalTap { p =>
@@ -42,9 +41,14 @@ object TorrentControl {
     }
   }
 
-  def downloadTorrentMetadata[F[_]](
+  case class Metadata(
+    parsed: TorrentMetadata.Info,
+    raw: ByteVector
+  )
+
+  def downloadMetaInfo[F[_]](
     connectionManager: ConnectionManager[F]
-  )(implicit F: Concurrent[F]): F[TorrentMetadata.Info] =
+  )(implicit F: Concurrent[F]): F[MetaInfo] =
     connectionManager.connected.stream
       .evalMap(_.downloadTorrentFile.attempt)
       .collectFirst {
@@ -52,10 +56,7 @@ object TorrentControl {
       }
       .evalMap { bytes =>
         F.fromOption(
-          for {
-            bc <- com.github.lavrov.bencode.decode(bytes.bits).toOption
-            metadata <- TorrentMetadata.InfoFormat.read.run(bc).toOption
-          } yield metadata,
+          MetaInfo.fromBytes(bytes),
           new Exception("Unable to read metadata")
         )
       }

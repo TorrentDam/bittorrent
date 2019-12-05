@@ -1,5 +1,3 @@
-import java.util.UUID
-
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
@@ -53,7 +51,7 @@ object Main extends IOApp {
             Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
             peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash)
           )
-          metaInfo <- Resource.liftF { TorrentControl.downloadTorrentMetadata(connectionManager) }
+          metaInfo <- Resource.liftF { TorrentControl.downloadMetaInfo(connectionManager) }
           result <- Resource.liftF {
             TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
           }
@@ -72,13 +70,14 @@ object Main extends IOApp {
       handleGetTorrent = (infoHash: InfoHash) =>
         torrentRegistry.get.flatMap { map =>
           import org.http4s.dsl.io._
-          map.get(infoHash).map(_.metadata) match {
+          map.get(infoHash).map(_.getMetaInfo.raw) match {
             case Some(metadata) =>
-              val torrentFile = TorrentMetadata(
-                metadata,
-                None
-              )
-              val bcode = TorrentMetadata.TorrentMetadataFormat.write(torrentFile).toOption.get
+              val torrentFileData = (metadata, None)
+              val bcode =
+                TorrentMetadata.TorrentMetadataFormatLossless
+                  .write(torrentFileData)
+                  .toOption
+                  .get
               val bytes = com.github.lavrov.bencode.encode(bcode)
               Ok(bytes.toByteArray)
             case None => NotFound("Torrent not found")
