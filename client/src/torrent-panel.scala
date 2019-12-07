@@ -11,15 +11,24 @@ object TorrentPanel {
     div(
       p(s"Connected: ${props.model.connected}"),
       if (props.model.metadata)
-        Some(
+        List(
           p(
+            key := "torrent-metadata",
             a(
               href := s"http://localhost:9999/torrent/${props.model.infoHash}/metadata",
               target := "_blank"
             )("Metadata")
+          ),
+          p(
+            key := "torrent-video-player",
+            video(
+              width := "400",
+              controls := true,
+              source(src := "https://www.w3schools.com/html/mov_bbb.mp4")
+            )
           )
         )
-      else None
+      else Nil
     )
 
   }
