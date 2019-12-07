@@ -116,10 +116,10 @@ object Connection {
       closed <- Deferred[F, Either[Throwable, Unit]]
       doClose = (reason: Either[Throwable, Unit]) =>
         fiber.cancel >>
-          requestRegistry.failAll(ConnectionClosed()) >>
-          releaseConnection >>
-          logger.info(s"Disconnected ${peerInfo.address}") >>
-          closed.complete(reason)
+        requestRegistry.failAll(ConnectionClosed()) >>
+        releaseConnection >>
+        logger.info(s"Disconnected ${peerInfo.address}") >>
+        closed.complete(reason)
       _ <- fiber.join.flatMap(doClose).start
     } yield {
       new Connection[F] {
@@ -135,7 +135,8 @@ object Connection {
           } yield ()
 
         def request(request: Message.Request): F[ByteVector] =
-          socket.send(request) >> requestRegistry
+          socket.send(request) >>
+          requestRegistry
             .register(request)
             .timeout(10.seconds)
 

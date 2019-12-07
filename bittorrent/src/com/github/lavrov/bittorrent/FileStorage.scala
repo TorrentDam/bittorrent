@@ -95,9 +95,9 @@ object FileStorage {
           val (thisFileBytes, leftoverBytes) =
             bytes.splitAt(numBytesTillFileEnd)
           writeToChannel(fileChannel, position, thisFileBytes) *>
-            F.whenA(leftoverBytes.nonEmpty) {
-              write(fileChannel.until, leftoverBytes)
-            }
+          F.whenA(leftoverBytes.nonEmpty) {
+            write(fileChannel.until, leftoverBytes)
+          }
         }
         write(piece.begin, piece.bytes) >> statsRef.update(Stats.downloaded.modify(_ + 1))
       }
