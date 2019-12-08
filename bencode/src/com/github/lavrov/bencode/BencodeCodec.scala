@@ -6,7 +6,7 @@ import scodec.codecs._
 
 object BencodeCodec {
 
-  val instance: Codec[Bencode] = {
+  private[bencode] val instance: Codec[Bencode] = {
 
     // reference to `instance` to use it recursively in its definition
     val valueCodec = lazily(instance)

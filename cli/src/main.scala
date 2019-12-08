@@ -103,7 +103,7 @@ object Main extends IOApp {
 
     Command(name = "bittorrent", header = "Bittorrent client")(
       downloadCommand <+> getTorrentCommand
-        <+> findPeersCommand <+> readTorrentCommand <+> connectCommand
+      <+> findPeersCommand <+> readTorrentCommand <+> connectCommand
     )
   }
 
@@ -173,18 +173,11 @@ object Main extends IOApp {
   def readTorrentFile(torrentPath: Path): IO[(InfoHash, MetaInfo)] = {
     for {
       bytes <- IO(BitVector(Files.readAllBytes(torrentPath)))
-      bc <- IO.fromEither(decode(bytes).left.map(e => new Exception(e.message)))
-      infoDict <- IO.fromEither(
-        TorrentMetadata.RawInfoFormat.read(bc).left.map(new Exception(_))
+      bc <- IO.fromEither(decode(bytes))
+      torrentFile <- IO.fromEither(
+        TorrentFile.TorrentFileFormat.read(bc)
       )
-      torrentMetadata <- IO.fromEither(
-        TorrentMetadata.TorrentMetadataFormatLossless
-          .read(bc)
-          .left
-          .map(new Exception(_))
-      )
-      metaInfo <- IO.fromEither(MetaInfo.fromBencode(torrentMetadata._1).toRight(new Exception("")))
-    } yield (InfoHash(encode(infoDict).digest("SHA-1").bytes), metaInfo)
+    } yield (InfoHash(encode(torrentFile.info.raw).digest("SHA-1").bytes), torrentFile.info)
   }
 
   def readTorrent(torrentPath: Path): IO[Unit] = {
@@ -222,10 +215,11 @@ object Main extends IOApp {
         for {
           metadata <- getTorrent(infoHash, connectionManager)
           metaInfo <- IO.fromEither(
-            MetaInfo.fromBytes(metadata).toRight(new Exception("Invalid metainfo"))
+            MetaInfo.fromBytes(metadata)
           )
+          torrentFile = TorrentFile(metaInfo, None)
           bcode <- IO.fromEither(
-            TorrentMetadata.TorrentMetadataFormatLossless.write((metaInfo.raw, None))
+            TorrentFile.TorrentFileFormat.write(torrentFile)
           )
           bytes <- IO.pure(encode(bcode))
           _ <- IO.delay {

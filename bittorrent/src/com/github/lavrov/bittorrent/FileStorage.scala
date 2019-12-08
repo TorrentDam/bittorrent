@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import cats.implicits._
 import cats.effect.{Resource, Sync}
 import scodec.bits.ByteVector
-import TorrentMetadata.Info
+import TorrentMetadata.File
 import cats.Applicative
 import cats.effect.concurrent.Ref
 import com.github.lavrov.bittorrent.FileStorage.Piece
@@ -27,14 +27,9 @@ object FileStorage {
     val downloaded: Lens[Stats, Int] = GenLens[Stats](_.downloaded)
   }
 
-  def apply[F[_]](metaInfo: TorrentMetadata.Info, targetDirectory: Path)(
+  def apply[F[_]](metadata: TorrentMetadata, targetDirectory: Path)(
     implicit F: Sync[F]
   ): Resource[F, FileStorage[F]] = {
-    val files = metaInfo match {
-      case Info.SingleFile(name, _, _, length, _) =>
-        Info.File(length, name :: Nil) :: Nil
-      case Info.MultipleFiles(_, _, files) => files
-    }
     def openChannel(filePath: Path): Resource[F, SeekableByteChannel] = {
       def acquire = Sync[F].delay {
         val fullFilePath = targetDirectory.resolve(filePath)
@@ -51,7 +46,7 @@ object FileStorage {
     }
     def openChannels: Resource[F, List[OpenChannel[F]]] = {
       def acquire = {
-        def recur(b0: Long = 0L, list: List[Info.File]): F[List[OpenChannel[F]]] = list match {
+        def recur(b0: Long = 0L, list: List[File]): F[List[OpenChannel[F]]] = list match {
           case f :: tail =>
             val begin = b0
             val until = begin + f.length
@@ -67,7 +62,7 @@ object FileStorage {
           case Nil =>
             F.pure(Nil)
         }
-        recur(0L, files)
+        recur(0L, metadata.files)
       }
       def release(channels: List[OpenChannel[F]]) = channels.traverse_(_.close)
       Resource.make(acquire)(release)

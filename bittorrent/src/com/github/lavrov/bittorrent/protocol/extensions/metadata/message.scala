@@ -2,7 +2,8 @@ package com.github.lavrov.bittorrent.protocol.extensions.metadata
 
 import scodec.bits.ByteVector
 import cats.syntax.all._
-import com.github.lavrov.bencode.{BencodeCodec, BencodeFormatException}
+import com.github.lavrov.bencode
+import com.github.lavrov.bencode.BencodeFormatException
 import com.github.lavrov.bencode.format._
 
 sealed trait Message
@@ -25,23 +26,22 @@ object Message {
         case Data(piece, bytes) => (MessageFormat.write((1, piece)).right.get, bytes.some)
         case Reject(piece) => (MessageFormat.write((2, piece)).right.get, none)
       }
-    BencodeCodec.instance.encode(bc).require.toByteVector ++ extraBytes.getOrElse(ByteVector.empty)
+    bencode.encode(bc).toByteVector ++ extraBytes.getOrElse(ByteVector.empty)
   }
 
-  def decode(bytes: ByteVector): Either[BencodeFormatException, Message] = {
-    BencodeCodec.instance
-      .decode(bytes.toBitVector)
-      .toEither
-      .leftMap(_ => BencodeFormatException("Failed to decode bencode"))
-      .flatMap { result =>
-        MessageFormat.read(result.value).map {
-          case (msgType, piece) =>
-            msgType match {
-              case 0 => Request(piece)
-              case 1 => Data(piece, result.remainder.toByteVector)
-              case 2 => Reject(piece)
-            }
-        }
+  def decode(bytes: ByteVector): Either[Throwable, Message] = {
+    bencode
+      .decodeHead(bytes.toBitVector)
+      .flatMap {
+        case (remainder, result) =>
+          MessageFormat.read(result).map {
+            case (msgType, piece) =>
+              msgType match {
+                case 0 => Request(piece)
+                case 1 => Data(piece, remainder.toByteVector)
+                case 2 => Reject(piece)
+              }
+          }
       }
   }
 }

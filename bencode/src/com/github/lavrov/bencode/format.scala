@@ -11,7 +11,9 @@ package object format {
 
   type Result[A] = Either[BencodeFormatException, A]
   type BencodeReader[A] = ReaderT[Result, Bencode, A]
+  def BencodeReader[A](f: Bencode => Result[A]): BencodeReader[A] = ReaderT(f)
   type BencodeWriter[A] = ReaderT[Result, A, Bencode]
+  def BencodeWriter[A](f: A => Result[Bencode]): BencodeWriter[A] = ReaderT(f)
   type BencodeDictionaryWriter[A] = ReaderT[Result, A, Bencode.BDictionary]
   case class BencodeFormat[A](read: BencodeReader[A], write: BencodeWriter[A])
 

@@ -58,7 +58,7 @@ object MessageSocket {
       )
 
   object Error {
-    case class BecodeSerialization(err: Err) extends Throwable(err.messageWithContext)
+    case class BecodeSerialization(cause: Throwable) extends Throwable(cause)
     case class MessageFormat(message: String, cause: Throwable) extends Throwable(message, cause)
   }
 }

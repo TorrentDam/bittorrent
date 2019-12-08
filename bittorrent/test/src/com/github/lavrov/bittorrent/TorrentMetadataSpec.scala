@@ -3,14 +3,13 @@ package com.github.lavrov.bittorrent
 import verify._
 
 import com.github.lavrov.bencode._
-import com.github.lavrov.bittorrent.TorrentMetadata.Info, Info.{File, MultipleFiles, SingleFile}
 import scodec.bits.{Bases, BitVector, ByteVector}
 import TestUtils.InputStreamExtensions
 
 object TorrentMetadataSpec extends BasicTestSuite {
 
   test("encode file class") {
-    val result = TorrentMetadata.FileFormat.write(Info.File(77, "abc" :: Nil))
+    val result = TorrentMetadata.FileFormat.write(TorrentMetadata.File(77, "abc" :: Nil))
     val expectation = Right(
       Bencode.BDictionary(
         Map(
@@ -27,8 +26,9 @@ object TorrentMetadataSpec extends BasicTestSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(bc) = decode(source)
-    val decodedResult = TorrentMetadata.RawInfoFormat.read(bc)
+    val decodedResult = TorrentFile.TorrentFileFormat.read(bc)
     val result = decodedResult
+      .map(_.info.raw)
       .map(encode(_).digest("SHA-1"))
       .map(_.toHex(Bases.Alphabets.HexUppercase))
     val expectation = Right("8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609")
@@ -46,8 +46,8 @@ object TorrentMetadataSpec extends BasicTestSuite {
     )
 
     assert(
-      TorrentMetadata.InfoFormat.read(input) == Right(
-        SingleFile("file_name", 10, ByteVector.empty, 10, None)
+      TorrentMetadata.TorrentMetadataFormat.read(input) == Right(
+        TorrentMetadata(10, ByteVector.empty, List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
 
@@ -67,8 +67,8 @@ object TorrentMetadataSpec extends BasicTestSuite {
     )
 
     assert(
-      TorrentMetadata.InfoFormat.read(input1) == Right(
-        MultipleFiles(10, ByteVector.empty, File(10, "/root" :: Nil) :: Nil)
+      TorrentMetadata.TorrentMetadataFormat.read(input1) == Right(
+        TorrentMetadata(10, ByteVector.empty, TorrentMetadata.File(10, "/root" :: Nil) :: Nil)
       )
     )
   }
@@ -85,7 +85,7 @@ object TorrentMetadataSpec extends BasicTestSuite {
 
     assert(
       TorrentMetadata.SingleFileFormat.read(input) == Right(
-        SingleFile("file_name", 10, ByteVector(10), 10, None)
+        TorrentMetadata(10, ByteVector(10), List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
   }
@@ -107,7 +107,7 @@ object TorrentMetadataSpec extends BasicTestSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(result) = decode(source)
-    val decodeResult = TorrentMetadata.TorrentMetadataFormatLossless.read(result)
+    val decodeResult = TorrentFile.TorrentFileFormat.read(result)
     assert(decodeResult.isRight)
   }
 

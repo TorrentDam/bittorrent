@@ -3,7 +3,6 @@ package com.github.lavrov.bittorrent
 import verify._
 import com.github.lavrov.bencode
 import com.github.lavrov.bittorrent.TestUtils._
-import com.github.lavrov.bittorrent.TorrentMetadata.Info
 import com.github.lavrov.bittorrent.wire.TorrentControl
 
 object DownloadTorrentSpec extends BasicTestSuite {
@@ -13,13 +12,12 @@ object DownloadTorrentSpec extends BasicTestSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(result) = bencode.decode(source)
-    val (metaInfoRaw, _) = TorrentMetadata.TorrentMetadataFormatLossless.read(result).toOption.get
-    val metaInfo = MetaInfo.fromBencode(metaInfoRaw).map(_.parsed)
+    val torrentFile = TorrentFile.TorrentFileFormat.read(result).toOption.get
     assert(
-      PartialFunction.cond(metaInfo) {
-        case Some(f: Info.SingleFile) =>
-          val fileSize = f.length
-          val queue = TorrentControl.buildQueue(f)
+      PartialFunction.cond(torrentFile.info) {
+        case MetaInfo(metadata @ TorrentMetadata(_, _, List(file)), _) =>
+          val fileSize = file.length
+          val queue = TorrentControl.buildQueue(metadata)
           assert(queue.map(_.size).toList.sum == fileSize)
           assert(queue.toList.flatMap(_.requests).map(_.length).sum == fileSize)
           true

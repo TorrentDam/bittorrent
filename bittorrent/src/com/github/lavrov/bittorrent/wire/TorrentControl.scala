@@ -41,11 +41,6 @@ object TorrentControl {
     }
   }
 
-  case class Metadata(
-    parsed: TorrentMetadata.Info,
-    raw: ByteVector
-  )
-
   def downloadMetaInfo[F[_]](
     connectionManager: ConnectionManager[F]
   )(implicit F: Concurrent[F]): F[MetaInfo] =
@@ -55,10 +50,7 @@ object TorrentControl {
         case Right(Some(metadata)) => metadata
       }
       .evalMap { bytes =>
-        F.fromOption(
-          MetaInfo.fromBytes(bytes),
-          new Exception("Unable to read metadata")
-        )
+        F.fromEither(MetaInfo.fromBytes(bytes))
       }
       .compile
       .lastOrError
@@ -93,8 +85,7 @@ object TorrentControl {
       copy(downloadedSize = 0, downloaded = Map.empty)
   }
 
-  def buildQueue(metaInfo: TorrentMetadata.Info): Chain[IncompletePiece] = {
-    import TorrentMetadata.Info
+  def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {
 
     def downloadFile(
       pieceLength: Long,
@@ -109,12 +100,12 @@ object TorrentControl {
           val list =
             downloadPiece(index, thisPieceLength)
           result = result append IncompletePiece(
-            index,
-            index * pieceLength,
-            thisPieceLength,
-            pieces.drop(index * 20).take(20),
-            list.toList
-          )
+              index,
+              index * pieceLength,
+              thisPieceLength,
+              pieces.drop(index * 20).take(20),
+              list.toList
+            )
           loop(index + 1)
         }
       }
@@ -130,10 +121,10 @@ object TorrentControl {
         if (thisChunkSize > 0) {
           val begin = index * chunkSize
           result = result append Message.Request(
-            pieceIndex,
-            begin,
-            thisChunkSize
-          )
+              pieceIndex,
+              begin,
+              thisChunkSize
+            )
           loop(index + 1)
         }
       }
@@ -141,16 +132,7 @@ object TorrentControl {
       result
     }
 
-    metaInfo match {
-      case info: Info.SingleFile =>
-        downloadFile(info.pieceLength, info.length, info.pieces)
-      case info: Info.MultipleFiles =>
-        downloadFile(
-          info.pieceLength,
-          info.files.map(_.length).sum,
-          info.pieces
-        )
-    }
+    downloadFile(metadata.pieceLength, metadata.files.map(_.length).sum, metadata.pieces)
   }
 
   sealed trait Error extends Exception
