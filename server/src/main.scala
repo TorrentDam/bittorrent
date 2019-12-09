@@ -7,6 +7,7 @@ import com.github.lavrov.bittorrent.{
   InfoHash,
   InfoHashFromString,
   PeerId,
+  TorrentFile,
   TorrentMetadata
 }
 import fs2.Stream
@@ -14,8 +15,9 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
+import org.http4s.headers.`Content-Type`
 import org.http4s.server.blaze.BlazeServerBuilder
-import org.http4s.{HttpApp, HttpRoutes, Response}
+import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
 
 import scala.util.Random
@@ -70,12 +72,12 @@ object Main extends IOApp {
       handleGetTorrent = (infoHash: InfoHash) =>
         torrentRegistry.get.flatMap { map =>
           import org.http4s.dsl.io._
-          map.get(infoHash).map(_.getMetaInfo.raw) match {
+          map.get(infoHash).map(_.getMetaInfo) match {
             case Some(metadata) =>
-              val torrentFileData = (metadata, None)
+              val torrentFile = TorrentFile(metadata, None)
               val bcode =
-                TorrentMetadata.TorrentMetadataFormatLossless
-                  .write(torrentFileData)
+                TorrentFile.TorrentFileFormat
+                  .write(torrentFile)
                   .toOption
                   .get
               val bytes = com.github.lavrov.bencode.encode(bcode)
@@ -83,7 +85,18 @@ object Main extends IOApp {
             case None => NotFound("Torrent not found")
           }
         }
-    } yield httpApp(handleSocket, handleGetTorrent)
+      handleGetData = (infoHash: InfoHash) =>
+        torrentRegistry.get.flatMap { map =>
+          import org.http4s.dsl.io._
+          map.get(infoHash) match {
+            case Some(control) =>
+              val dataStream = control.downloadAllSequentially.map(p => p.bytes.toArray)
+              Ok(dataStream, `Content-Type`(MediaType.video.`x-matroska`))
+            case None => NotFound("Torrent not found")
+          }
+        }
+
+    } yield httpApp(handleSocket, handleGetTorrent, handleGetData)
 
   def serve(app: HttpApp[IO]): IO[ExitCode] =
     BlazeServerBuilder[IO]
@@ -96,7 +109,8 @@ object Main extends IOApp {
 
   def httpApp(
     handleSocket: IO[Response[IO]],
-    handleGetTorrent: InfoHash => IO[Response[IO]]
+    handleGetTorrent: InfoHash => IO[Response[IO]],
+    handleGetData: InfoHash => IO[Response[IO]]
   ): HttpApp[IO] = {
     import org.http4s.dsl.io._
     HttpRoutes
@@ -105,6 +119,8 @@ object Main extends IOApp {
         case GET -> Root / "ws" => handleSocket
         case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
           handleGetTorrent(infoHash)
+        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" =>
+          handleGetData(infoHash)
       }
       .mapF(_.getOrElseF(NotFound()))
   }

@@ -12,23 +12,44 @@ import logstage.LogIO
 import scala.collection.BitSet
 import scala.concurrent.duration._
 
+trait Dispatcher[F[_]] {
+  def dispatch(pieces: Stream[F, IncompletePiece]): Stream[F, CompletePiece]
+}
+
 object Dispatcher {
 
   def start[F[_]](
-    pieces: List[IncompletePiece],
     connectionManager: ConnectionManager[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Stream[F, CompletePiece] =
-    Stream.eval {
-      for {
-        completePieces <- Queue.unbounded[F, CompletePiece]
-        pieces <- Pieces(pieces, completePieces.enqueue1)
-        _ <- connectionManager.connected.stream
-          .evalTap(c => c.interested >> downloadLoop(c, pieces).start)
-          .compile
-          .drain
-          .start
-      } yield completePieces.dequeue
-    }.flatten
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Dispatcher[F]] =
+    F.pure {
+      new Dispatcher[F] {
+        def dispatch(pieces: Stream[F, IncompletePiece]): Stream[F, CompletePiece] = {
+          for {
+            completePieces <- Stream.eval { Queue.unbounded[F, CompletePiece] }
+            ps <- Stream.eval { Pieces(completePieces.enqueue1) }
+            _ <- connectionManager.connected.stream
+              .evalTap(c => c.interested >> downloadLoop(c, ps).start)
+              .spawn
+            _ <- pieces.chunks
+              .evalTap(chunk => ps.add(chunk.toList))
+              .spawn
+            completePiece <- completePieces.dequeue
+          } yield completePiece
+        }
+      }
+    }
+//  : Stream[F, CompletePiece] =
+//    Stream.eval {
+//      for {
+//        completePieces <- Queue.unbounded[F, CompletePiece]
+//        pieces <- Pieces(pieces, completePieces.enqueue1)
+//        _ <- connectionManager.connected.stream
+//          .evalTap(c => c.interested >> downloadLoop(c, pieces).start)
+//          .compile
+//          .drain
+//          .start
+//      } yield completePieces.dequeue
+//    }.flatten
 
   private def download[F[_]](
     connection: Connection[F],
@@ -89,6 +110,7 @@ object Dispatcher {
   }
 
   trait Pieces[F[_]] {
+    def add(pieces: List[IncompletePiece]): F[Unit]
     def pick(availability: BitSet): F[Option[IncompletePiece]]
     def unpick(index: Int): F[Unit]
     def complete(completePiece: CompletePiece): F[Unit]
@@ -96,13 +118,10 @@ object Dispatcher {
   }
   object Pieces {
     def apply[F[_]](
-      incomplete: List[IncompletePiece],
       completeSink: CompletePiece => F[Unit]
     )(implicit F: Concurrent[F]): F[Pieces[F]] =
       for {
-        stateRef <- SignallingRef(
-          State(incomplete.view.map(p => (p.index.toInt, p)).toMap)
-        )
+        stateRef <- SignallingRef(State(Map.empty))
         pickMutex <- Semaphore(1)
       } yield new PiecesImpl(stateRef, pickMutex, completeSink)
 
@@ -117,6 +136,13 @@ object Dispatcher {
       completeSink: CompletePiece => F[Unit]
     )(implicit F: Concurrent[F])
         extends Pieces[F] {
+
+      def add(pieces: List[IncompletePiece]): F[Unit] =
+        stateRef.update { state =>
+          state.copy(
+            incomplete = state.incomplete ++ pieces.view.map(p => (p.index.toInt, p))
+          )
+        }
 
       def pick(availability: BitSet): F[Option[IncompletePiece]] =
         mutex.withPermit {

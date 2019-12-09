@@ -151,7 +151,12 @@ object Main extends IOApp {
                       connectionManager,
                       fileStorage
                     )
-                    _ <- control.download
+                    _ <- control.downloadAll
+                      .evalTap { piece =>
+                        fileStorage.save(FileStorage.Piece(piece.begin, piece.bytes))
+                      }
+                      .compile
+                      .drain
                   } yield ()
                 }
               } yield ()

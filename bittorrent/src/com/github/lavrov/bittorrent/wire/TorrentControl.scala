@@ -1,6 +1,7 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.data.Chain
+import cats.effect.concurrent.Semaphore
 import cats.effect.{Concurrent, Timer}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.message.Message
@@ -8,11 +9,14 @@ import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.github.lavrov.bittorrent.{FileStorage, MetaInfo, TorrentMetadata}
 import logstage.LogIO
 import scodec.bits.ByteVector
+import fs2.Stream
 
 trait TorrentControl[F[_]] {
   def getMetaInfo: MetaInfo
   def stats: F[TorrentControl.Stats]
-  def download: F[Unit]
+  def download(pieces: Stream[F, Int]): Stream[F, TorrentControl.CompletePiece]
+  def downloadAll: Stream[F, TorrentControl.CompletePiece]
+  def downloadAllSequentially: Stream[F, TorrentControl.CompletePiece]
 }
 
 object TorrentControl {
@@ -21,25 +25,32 @@ object TorrentControl {
     metaInfo: MetaInfo,
     connectionManager: ConnectionManager[F],
     fileStorage: FileStorage[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] = F.pure {
-    new TorrentControl[F] {
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] =
+    for {
+      dispatcher <- Dispatcher.start(connectionManager)
+      incompletePieces <- F.delay { buildQueue(metaInfo.parsed).toList }
+      pieceMap <- F.pure { incompletePieces.view.map(p => (p.index.toInt, p)).toMap }
+    } yield new TorrentControl[F] {
       def getMetaInfo = metaInfo
       def stats: F[Stats] =
         connectionManager.connected.count.map(Stats)
-      def download: F[Unit] =
+      def download(pieces: Stream[F, Int]): Stream[F, CompletePiece] =
+        dispatcher
+          .dispatch(pieces.map(pieceMap))
+      def downloadAll: Stream[F, CompletePiece] =
+        dispatcher
+          .dispatch(Stream.emits(incompletePieces))
+      def downloadAllSequentially: Stream[F, CompletePiece] =
         for {
-          incompletePieces <- F.delay { buildQueue(metaInfo.parsed) }
-          _ <- Dispatcher
-            .start(incompletePieces.toList, connectionManager)
-            .evalTap { p =>
-              val piece = FileStorage.Piece(p.begin, p.bytes)
-              fileStorage.save(piece)
-            }
-            .compile
-            .drain
-        } yield ()
+          mutex <- Stream.eval { Semaphore(1) }
+          p <- Stream
+            .emits(incompletePieces)
+            .unchunk
+            .evalTap(_ => mutex.acquire)
+            .through(dispatcher.dispatch)
+            .evalTap(_ => mutex.release)
+        } yield p
     }
-  }
 
   def downloadMetaInfo[F[_]](
     connectionManager: ConnectionManager[F]

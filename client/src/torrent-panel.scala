@@ -20,11 +20,21 @@ object TorrentPanel {
             )("Metadata")
           ),
           p(
+            key := "torrent-data",
+            a(
+              href := s"http://localhost:9999/torrent/${props.model.infoHash}/data",
+              target := "_blank"
+            )("Download")
+          ),
+          p(
             key := "torrent-video-player",
             video(
               width := "400",
               controls := true,
-              source(src := "https://www.w3schools.com/html/mov_bbb.mp4")
+              source(
+                src := s"http://localhost:9999/torrent/${props.model.infoHash}/data",
+                `type` := "video/mp4"
+              )
             )
           )
         )
