@@ -1,15 +1,9 @@
+import cats.syntax.all._
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, ConnectionManager, TorrentControl}
-import com.github.lavrov.bittorrent.{
-  FileStorage,
-  InfoHash,
-  InfoHashFromString,
-  PeerId,
-  TorrentFile,
-  TorrentMetadata
-}
+import com.github.lavrov.bittorrent.{FileStorage, InfoHash, InfoHashFromString, PeerId, TorrentFile}
 import fs2.Stream
 import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
@@ -32,7 +26,8 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] = {
     makeApp.use { it =>
-      serve(it)
+      val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
+      serve(bindPort, it) <* logger.info(s"Started http server at 0.0.0.0:$bindPort")
     }
   }
 
@@ -98,11 +93,11 @@ object Main extends IOApp {
 
     } yield httpApp(handleSocket, handleGetTorrent, handleGetData)
 
-  def serve(app: HttpApp[IO]): IO[ExitCode] =
+  def serve(bindPort: Int, app: HttpApp[IO]): IO[ExitCode] =
     BlazeServerBuilder[IO]
       .withHttpApp(app)
       .withWebSockets(true)
-      .bindHttp(9999, "0.0.0.0")
+      .bindHttp(bindPort, "0.0.0.0")
       .serve
       .compile
       .lastOrError
