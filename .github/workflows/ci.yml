@@ -14,3 +14,11 @@ jobs:
 
     - name: Build fat jar
       run: ./mill server.assembly
+
+    - name: login
+      uses: actions/heroku@master
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      with:
+        args: deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar
+
