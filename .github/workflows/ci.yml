@@ -1,0 +1,16 @@
+name: CI
+
+on: [push]
+
+jobs:
+
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: olafurpg/setup-scala@v5
+      with:
+        java-version: graalvm@
+
+    - name: Build fat jar
+      run: ./mill server.assembly
