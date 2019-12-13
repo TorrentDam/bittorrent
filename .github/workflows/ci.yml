@@ -15,10 +15,17 @@ jobs:
     - name: Build fat jar
       run: ./mill server.assembly
 
+    - name: Install java plugin
+      uses: actions/heroku@master
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      with:
+        args: plugins:install java
+
     - name: Deploy
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
-        args: "plugins:install java && deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar"
+        args: deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar
 
