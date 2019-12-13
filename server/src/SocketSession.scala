@@ -31,10 +31,11 @@ object SocketSession {
       handlerAndClose <- CommandHandler(send, makeTorrentControl).allocated
       (handler, closeHandler) = handlerAndClose
       fiber <- processor(input, send, handler).compile.drain.start
+      pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
       response <- WebSocketBuilder[IO].build(
         output.dequeue,
         input.enqueue,
-        onClose = fiber.cancel >> closeHandler >> logger.info("Session closed")
+        onClose = fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed")
       )
     } yield response
 
