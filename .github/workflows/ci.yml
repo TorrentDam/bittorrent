@@ -20,5 +20,5 @@ jobs:
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
-        args: deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar
+        args: "plugins:install java && deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar"
 
