@@ -7,14 +7,16 @@ import cats.effect.IO
 import cats.effect.ExitCode
 import fs2.concurrent.Queue
 
+import Environment.backendAddress
+
 class Main extends IOApp {
 
-  def run(args: List[String]): IO[ExitCode] =
+  def run(args: List[String]): IO[ExitCode] = {
     for {
       out <- Queue.unbounded[IO, String]
       circuit <- IO { AppCircuit(out.enqueue1(_).unsafeRunSync()) }
       ws <- ReconnectingWebsocket.create(
-        "ws://localhost:9999/ws",
+        s"wss://$backendAddress/ws",
         in =>
           in.evalTap { msg =>
               for {
@@ -30,6 +32,7 @@ class Main extends IOApp {
       )
       _ <- IO { ReactDOM.render(App(circuit), dom.document.getElementById("root")) }
     } yield ExitCode.Success
+  }
 
 }
 
