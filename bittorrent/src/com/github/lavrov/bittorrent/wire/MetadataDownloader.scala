@@ -52,7 +52,7 @@ object MetadataDownloader {
       }
     def send(message: Message): F[Unit] =
       socket.send(Extended(messageId, Message.encode(message))) <*
-        logger.debug(s"Request $message")
+      logger.debug(s"Request $message")
     Stream
       .range(0, 100)
       .evalMap { index =>

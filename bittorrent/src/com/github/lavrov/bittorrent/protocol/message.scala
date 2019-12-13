@@ -15,9 +15,9 @@ final case class Handshake(
 
 object Handshake {
   val ProtocolStringCodec: Codec[Unit] = uint8.unit(19) ~> fixedSizeBytes(
-    19,
-    utf8.unit("BitTorrent protocol")
-  )
+      19,
+      utf8.unit("BitTorrent protocol")
+    )
   val ReserveCodec: Codec[Boolean] = bits(8 * 8).xmap(
     bv => bv get 43,
     supported =>

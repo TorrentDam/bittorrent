@@ -71,7 +71,7 @@ object ConnectionManager {
     } yield {
       val impl = new Impl(stateRef, lastConnected)
       val close = fiber1.cancel >> fiber2.cancel >> cancelConnectionFibers >> closeConnections >> logger
-        .info("Closed CM")
+          .info("Closed CM")
       (impl, close)
     }
   }
