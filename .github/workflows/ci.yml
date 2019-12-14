@@ -8,24 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: olafurpg/setup-scala@v7
-      with:
-        java-version: graalvm@
 
-    - name: Build fat jar
-      run: ./mill server.assembly
-
-    - name: Install java plugin
+    - name: heroku container login
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
-        args: plugins:install java
+        args: container:login
 
-    - name: Deploy
+    - name: push
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
-        args: deploy:jar --app bittorrent-server out/server/assembly/dest/out.jar
+        args: container:push --app bittorrent-server web
 
+    - name: release
+      uses: actions/heroku@master
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      with:
+        args: container:release --app bittorrent-server web
