@@ -9,6 +9,16 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - uses: olafurpg/setup-scala@v7
+      with:
+        java-version: graalvm@
+
+    - name: Build server
+      run: ./mill server.assembly
+
+    - name: Build client
+      run: ./mill client.dist
+
     - name: heroku container login
       uses: actions/heroku@master
       env:
@@ -16,14 +26,14 @@ jobs:
       with:
         args: container:login
 
-    - name: push
+    - name: push server
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
         args: container:push --app bittorrent-server web
 
-    - name: release
+    - name: release server
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
