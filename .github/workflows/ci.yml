@@ -23,7 +23,7 @@ jobs:
     - name: Build client
       run: ./mill client.dist
 
-    - name: Heroku container login
+    - name: Heroku login
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -37,14 +37,14 @@ jobs:
       with:
         args: container:push --app bittorrent-server web
 
-    - name: Deploy server container
+    - name: Deploy server
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
         args: container:release --app bittorrent-server web
 
-    - name: Deploy
+    - name: Deploy client
       uses: peaceiris/actions-gh-pages@v2
       env:
         ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
