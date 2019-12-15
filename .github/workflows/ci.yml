@@ -16,24 +16,28 @@ jobs:
     - name: Build server
       run: ./mill server.assembly
 
+    - name: Install npm dependencies
+      run: npm install
+      working-directory: ./client
+
     - name: Build client
       run: ./mill client.dist
 
-    - name: heroku container login
+    - name: Heroku container login
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
         args: container:login
 
-    - name: push server
+    - name: Push server image
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       with:
         args: container:push --app bittorrent-server web
 
-    - name: release server
+    - name: Deploy server container
       uses: actions/heroku@master
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
