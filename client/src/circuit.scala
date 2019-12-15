@@ -1,17 +1,12 @@
-import diode.Circuit
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
-import diode.ActionHandler
-import diode.ActionResult.{ModelUpdate, NoChange}
-import diode.UseValueEq
 
-class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
-  def initialModel: RootModel = RootModel.initial
-  def actionHandler: HandlerFunction = composeHandlers(
+class AppCircuit(send: Command => Unit, state: Var[RootModel]) {
+  def actionHandler: (RootModel, Action) => Option[RootModel] =
     (value, action) =>
       action match {
         case Action.DownloadTorrentFile(text) =>
           send(Command.AddTorrent(text))
-          Some(NoChange)
+          None
         case Action.ServerEvent(payload) =>
           val event = upickle.default.read[Event](payload)
           val panel = value.torrentPanel
@@ -28,20 +23,27 @@ class AppCircuit(send: Command => Unit) extends Circuit[RootModel] {
               panel
           }
           Some(
-            ModelUpdate(
-              value.copy(
-                torrentPanel = updatedPanel,
-                logs = payload :: value.logs
-              )
+            value.copy(
+              torrentPanel = updatedPanel,
+              logs = payload :: value.logs
             )
           )
       }
-  )
+
+  val dispatcher: Dispatcher = action => {
+    actionHandler(state.value, action).foreach(state.set)
+  }
+  def observed: Observed[RootModel] = state
+}
+
+trait Dispatcher {
+  def apply(action: Action): Unit
 }
 
 object AppCircuit {
   def apply(send: String => Unit) = new AppCircuit(
-    command => send(upickle.default.write(command))
+    command => send(upickle.default.write(command)),
+    Var(RootModel.initial)
   )
 }
 
@@ -62,7 +64,7 @@ object RootModel {
   }
 }
 
-sealed trait MainPanel extends UseValueEq
+sealed trait MainPanel
 
 case class TorrentPanelModel(
   torrent: Option[TorrentModel] = Option.empty

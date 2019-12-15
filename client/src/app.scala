@@ -31,14 +31,13 @@ object App {
       ),
       div(className := classes.appBarSpacer.toString),
       main(
-        Connect(props.circuit, _.torrentPanel)(
+        Connect(props.circuit.observed.zoomTo(_.torrentPanel), props.circuit.dispatcher)(
           (model, dispatcher) =>
             model.torrent match {
               case Some(torrent) => TorrentPanel(torrent, dispatcher)
               case _ => DownloadPanel(model, dispatcher)
             }
-        ),
-        Connect(props.circuit, _.logs)(LogPanel.apply)
+        )
       )
     )
   }

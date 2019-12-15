@@ -5,7 +5,6 @@ import material_ui.core._
 import material_ui.styles.makeStyles
 
 import scala.scalajs.js.Dynamic
-import diode.Dispatcher
 import slinky.core.facade.Hooks
 
 @react

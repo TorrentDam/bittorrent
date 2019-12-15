@@ -21,7 +21,7 @@ class Main extends IOApp {
           in.evalTap { msg =>
               for {
                 _ <- IO { org.scalajs.dom.console.info(s"WS << $msg") }
-                _ <- IO { circuit.dispatch(ServerEvent(msg)) }
+                _ <- IO { circuit.dispatcher(ServerEvent(msg)) }
               } yield ()
             }
             .drain
