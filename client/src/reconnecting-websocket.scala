@@ -1,4 +1,5 @@
 import org.scalajs.dom.raw.WebSocket
+import org.scalajs.dom.console
 
 import cats.effect.{ContextShift, IO}
 import cats.syntax.all._
@@ -55,12 +56,14 @@ object ReconnectingWebsocket {
   }
 
   private def connect(url: String): IO[WebSocket] = IO.async { cont =>
-    println(s"Connecting to $url")
+    console.info(s"Connecting to $url")
     val websocket = new WebSocket(url)
     websocket.onopen = { _ =>
+      console.info(s"Connected to $url")
       cont(websocket.asRight)
     }
     websocket.onerror = { _ =>
+      console.info(s"Failed to connect to $url")
       cont(ConnectionError().asLeft)
     }
   }
