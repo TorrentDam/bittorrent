@@ -4,7 +4,7 @@ module.exports = {
     __dirname + '/src/index.js'
   ],
   resolve: {
-    extensions: ['*', '.js'],
+    extensions: ['.js'],
     modules: [
       __dirname + '/node_modules',
       __dirname + '/../out/client/fullOpt/dest'
