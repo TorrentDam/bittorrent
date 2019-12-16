@@ -5,9 +5,7 @@ import slinky.core.facade.Hooks
 
 object Connect {
   def apply[Model, R](observed: Observed[Model], dispatcher: Dispatcher)(
-    component: (Model, Dispatcher) => R
-  )(
-    implicit toReact: R => ReactElement
+    component: (Model, Dispatcher) => ReactElement
   ): KeyAddingStage = {
     val wrapper = FunctionalComponent[Unit] { _ =>
       val (state, setState) = Hooks.useState(observed.value)

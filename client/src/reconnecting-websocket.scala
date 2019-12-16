@@ -28,7 +28,7 @@ object ReconnectingWebsocket {
           _ <- statusTopic.publish1(true)
           _ <- service(socket.receive)
             .evalTap { out =>
-              IO { socket.send(out) }
+              socket.send(out)
             }
             .interruptWhen[IO](socket.closed as Right(()))
             .compile

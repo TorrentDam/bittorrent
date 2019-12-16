@@ -14,10 +14,6 @@ object DownloadPanel {
   private val useStyles = makeStyles(
     theme =>
       Dynamic.literal(
-        container = Dynamic.literal(
-          paddingTop = theme.spacing(4),
-          paddingBottom = theme.spacing(4)
-        ),
         root = Dynamic.literal(
           padding = theme.spacing(2),
           display = "flex",
@@ -38,17 +34,15 @@ object DownloadPanel {
       props.dispatcher(Action.DownloadTorrentFile(value))
       setState("")
     }
-    Container(maxWidth = "md", className = classes.container.toString)(
-      Paper(className = classes.root.toString)(
-        InputBase(
-          placeholder = "Info hash",
-          value = value,
-          onChange = event => setState(event.target.value.asInstanceOf[String]),
-          className = classes.input.toString
-        ),
-        Button(variant = "contained", disabled = value.isEmpty)(onClick := handleClick _)(
-          "Download"
-        )
+    Paper(className = classes.root.toString)(
+      InputBase(
+        placeholder = "Info hash",
+        value = value,
+        onChange = event => setState(event.target.value.asInstanceOf[String]),
+        className = classes.input.toString
+      ),
+      Button(variant = "contained", disabled = value.isEmpty)(onClick := handleClick _)(
+        "Download"
       )
     )
   }

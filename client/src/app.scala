@@ -11,12 +11,19 @@ import slinky.web.svg.circle
 
 @react
 object App {
-  case class Props(circuit: AppCircuit)
+  case class Props(model: Observed[RootModel], dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>
       Dynamic.literal(
-        appBarSpacer = theme.mixins.toolbar
+        appBarSpacer = theme.mixins.toolbar,
+        container = Dynamic.literal(
+          paddingTop = theme.spacing(4),
+          paddingBottom = theme.spacing(4)
+        ),
+        centered = Dynamic.literal(
+          textAlign = "center"
+        )
       )
   )
 
@@ -25,12 +32,19 @@ object App {
     div(
       div(className := classes.appBarSpacer.toString),
       main(
-        Connect(props.circuit.observed.zoomTo(_.torrentPanel), props.circuit.dispatcher)(
-          (model, dispatcher) =>
-            model.torrent match {
-              case Some(torrent) => TorrentPanel(torrent, dispatcher)
-              case _ => DownloadPanel(model, dispatcher)
-            }
+        Container(maxWidth = "md", className = classes.container.toString)(
+          Connect(props.model.zoomTo(_.connected), props.dispatcher) {
+            case (true, _) =>
+              Connect(props.model.zoomTo(_.torrentPanel), props.dispatcher)(
+                (model, dispatcher) =>
+                  model.torrent match {
+                    case Some(torrent) => TorrentPanel(torrent, dispatcher)
+                    case _ => DownloadPanel(model, dispatcher)
+                  }
+              )
+            case _ =>
+              p(className := classes.centered.toString)("Connecting...")
+          }
         )
       )
     )

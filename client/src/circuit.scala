@@ -4,6 +4,10 @@ class AppCircuit(send: Command => Unit, state: Var[RootModel]) {
   def actionHandler: (RootModel, Action) => Option[RootModel] =
     (value, action) =>
       action match {
+        case Action.UpdateConnectionStatus(connected) =>
+          Some(
+            value.copy(connected = connected)
+          )
         case Action.DownloadTorrentFile(text) =>
           send(Command.AddTorrent(text))
           None
@@ -48,6 +52,7 @@ object AppCircuit {
 }
 
 case class RootModel(
+  connected: Boolean,
   mainPanel: MainPanel,
   torrentPanel: TorrentPanelModel,
   logs: List[String]
@@ -57,6 +62,7 @@ object RootModel {
   def initial: RootModel = {
     val torrentPanel = TorrentPanelModel()
     RootModel(
+      connected = false,
       mainPanel = torrentPanel,
       torrentPanel = torrentPanel,
       logs = List.empty

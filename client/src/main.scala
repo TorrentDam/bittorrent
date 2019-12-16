@@ -15,7 +15,7 @@ class Main extends IOApp {
     for {
       out <- Queue.unbounded[IO, String]
       circuit <- IO { AppCircuit(out.enqueue1(_).unsafeRunSync()) }
-      ws <- ReconnectingWebsocket.create(
+      socket <- ReconnectingWebsocket.create(
         s"wss://$backendAddress/ws",
         in =>
           in.evalTap { msg =>
@@ -30,7 +30,20 @@ class Main extends IOApp {
               IO { org.scalajs.dom.console.info(s"WS >> $msg") }
             }
       )
-      _ <- IO { ReactDOM.render(App(circuit), dom.document.getElementById("root")) }
+      _ <- socket.status
+        .subscribe(1)
+        .evalTap { connected =>
+          IO { circuit.dispatcher(Action.UpdateConnectionStatus(connected)) }
+        }
+        .compile
+        .drain
+        .start
+      _ <- IO {
+        ReactDOM.render(
+          App(circuit.observed, circuit.dispatcher),
+          dom.document.getElementById("root")
+        )
+      }
     } yield ExitCode.Success
   }
 
