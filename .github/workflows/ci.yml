@@ -7,6 +7,7 @@ jobs:
   dist:
     runs-on: ubuntu-latest
     steps:
+
     - uses: actions/checkout@v1
 
     - uses: olafurpg/setup-scala@v7
@@ -22,27 +23,15 @@ jobs:
 
     - name: Build client
       run: ./mill client.dist
-
-    - name: Heroku login
-      uses: actions/heroku@master
-      env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      with:
-        args: container:login
-
-    - name: Push server image
-      uses: actions/heroku@master
-      env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      with:
-        args: container:push --app bittorrent-server web
-
+      
     - name: Deploy server
-      uses: actions/heroku@master
+      run: |
+        curl https://cli-assets.heroku.com/install.sh | sh
+        heroku container:login
+        heroku container:push --app bittorrent-server web
+        heroku container:release --app bittorrent-server web
       env:
         HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      with:
-        args: container:release --app bittorrent-server web
 
     - name: Deploy client
       uses: peaceiris/actions-gh-pages@v2
