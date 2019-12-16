@@ -23,12 +23,6 @@ object App {
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
     div(
-      AppBar(position = "absolute")(
-        Toolbar(
-          IconButton(edge = "start")(MenuIcon()),
-          Typography(component = "h1")("BitTorrent")
-        )
-      ),
       div(className := classes.appBarSpacer.toString),
       main(
         Connect(props.circuit.observed.zoomTo(_.torrentPanel), props.circuit.dispatcher)(

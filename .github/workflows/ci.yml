@@ -23,7 +23,7 @@ jobs:
 
     - name: Build client
       run: ./mill client.dist
-      
+
     - name: Deploy server
       run: |
         curl https://cli-assets.heroku.com/install.sh | sh
