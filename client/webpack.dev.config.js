@@ -7,7 +7,6 @@ module.exports = {
   ]
   ,
   resolve: {
-    extensions: ['.js'],
     modules: [
       __dirname + '/node_modules',
       __dirname + '/../out/client/compileJs/dest'

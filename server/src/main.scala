@@ -10,6 +10,7 @@ import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
 import org.http4s.headers.`Content-Type`
+import org.http4s.headers.`Content-Disposition`
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -75,8 +76,12 @@ object Main extends IOApp {
                   .write(torrentFile)
                   .toOption
                   .get
+              val filename = metadata.parsed.files match {
+                case file :: Nil if file.path.nonEmpty => file.path.last
+                case _ => infoHash.bytes.toHex
+              }
               val bytes = com.github.lavrov.bencode.encode(bcode)
-              Ok(bytes.toByteArray)
+              Ok(bytes.toByteArray, `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent")))
             case None => NotFound("Torrent not found")
           }
         }
