@@ -7,7 +7,7 @@ import cats.effect.IO
 import cats.effect.ExitCode
 import fs2.concurrent.Queue
 
-import Environment.backendAddress
+import Environment.wsUrl
 
 class Main extends IOApp {
 
@@ -16,7 +16,7 @@ class Main extends IOApp {
       out <- Queue.unbounded[IO, String]
       circuit <- IO { AppCircuit(out.enqueue1(_).unsafeRunSync()) }
       socket <- ReconnectingWebsocket.create(
-        s"wss://$backendAddress/ws",
+        wsUrl("/ws"),
         in =>
           in.evalTap { msg =>
               for {

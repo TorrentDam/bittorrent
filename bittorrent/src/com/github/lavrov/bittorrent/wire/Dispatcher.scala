@@ -1,55 +1,67 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.{Concurrent, Timer}
-import cats.effect.concurrent.{MVar, Semaphore}
+import cats.effect.{Concurrent, Fiber, Resource, Timer}
+import cats.effect.concurrent.{Deferred, MVar, Ref, Semaphore}
 import cats.effect.implicits._
 import cats.implicits._
 import com.github.lavrov.bittorrent.wire.TorrentControl.{CompletePiece, IncompletePiece}
 import fs2.Stream
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.SignallingRef
 import logstage.LogIO
 
 import scala.collection.BitSet
 import scala.concurrent.duration._
 
 trait Dispatcher[F[_]] {
-  def dispatch(pieces: Stream[F, IncompletePiece]): Stream[F, CompletePiece]
+  def dispatch(piece: IncompletePiece): F[CompletePiece]
 }
 
 object Dispatcher {
 
   def start[F[_]](
     connectionManager: ConnectionManager[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Dispatcher[F]] =
-    F.pure {
-      new Dispatcher[F] {
-        def dispatch(pieces: Stream[F, IncompletePiece]): Stream[F, CompletePiece] = {
-          for {
-            completePieces <- Stream.eval { Queue.unbounded[F, CompletePiece] }
-            ps <- Stream.eval { Pieces(completePieces.enqueue1) }
-            _ <- connectionManager.connected.stream
-              .evalTap(c => c.interested >> downloadLoop(c, ps).start)
-              .spawn
-            _ <- pieces.chunks
-              .evalTap(chunk => ps.add(chunk.toList))
-              .spawn
-            completePiece <- completePieces.dequeue
-          } yield completePiece
-        }
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Dispatcher[F]] =
+    for {
+      pendingRequests <- Resource.liftF { Ref.of(Map.empty[Int, CompletePiece => F[Unit]]) }
+      ps <- Resource.liftF {
+        Pieces(
+          piece =>
+            pendingRequests
+              .modify { value =>
+                (value.removed(piece.index.toInt), value(piece.index.toInt))
+              }
+              .flatMap { cb =>
+                cb(piece)
+              }
+        )
       }
+      _ <- Resource {
+        for {
+          fibers <- Ref.of(List.empty[Fiber[F, _]])
+          fiber <- connectionManager.connected.stream
+            .evalTap { c =>
+              downloadLoop(c, ps).start.flatMap(f => fibers.update(f :: _))
+            }
+            .compile
+            .drain
+            .start
+          _ <- fibers.update(fiber :: _)
+          cancel = fibers.get.flatMap { list =>
+            list.traverse_(_.cancel)
+          }
+        } yield ((), cancel)
+      }
+    } yield new Dispatcher[F] {
+      def dispatch(piece: IncompletePiece): F[CompletePiece] =
+        for {
+          deferred <- Deferred[F, CompletePiece]
+          _ <- pendingRequests.update { value =>
+            value.updated(piece.index.toInt, deferred.complete)
+          }
+          _ <- ps.add(List(piece))
+          result <- deferred.get
+        } yield result
     }
-//  : Stream[F, CompletePiece] =
-//    Stream.eval {
-//      for {
-//        completePieces <- Queue.unbounded[F, CompletePiece]
-//        pieces <- Pieces(pieces, completePieces.enqueue1)
-//        _ <- connectionManager.connected.stream
-//          .evalTap(c => c.interested >> downloadLoop(c, pieces).start)
-//          .compile
-//          .drain
-//          .start
-//      } yield completePieces.dequeue
-//    }.flatten
 
   private def download[F[_]](
     connection: Connection[F],
@@ -92,6 +104,7 @@ object Dispatcher {
           (availabilityUpdates.start >> pieceUpdates.start).as(trigger.take)
         }
       }
+      _ <- connection.interested
       _ <- {
         for {
           a <- connection.availability.get
@@ -118,12 +131,12 @@ object Dispatcher {
   }
   object Pieces {
     def apply[F[_]](
-      completeSink: CompletePiece => F[Unit]
+      onComplete: CompletePiece => F[Unit]
     )(implicit F: Concurrent[F]): F[Pieces[F]] =
       for {
         stateRef <- SignallingRef(State(Map.empty))
         pickMutex <- Semaphore(1)
-      } yield new PiecesImpl(stateRef, pickMutex, completeSink)
+      } yield new PiecesImpl(stateRef, pickMutex, onComplete)
 
     case class State(
       incomplete: Map[Int, IncompletePiece],

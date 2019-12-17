@@ -2,7 +2,7 @@ import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.web.html._
 
-import Environment.backendAddress
+import Environment.httpUrl
 
 @react
 object TorrentPanel {
@@ -16,14 +16,14 @@ object TorrentPanel {
           p(
             key := "torrent-metadata",
             a(
-              href := s"https://$backendAddress/torrent/${props.model.infoHash}/metadata",
+              href := httpUrl(s"/torrent/${props.model.infoHash}/metadata"),
               target := "_blank"
             )("Metadata")
           ),
           p(
             key := "torrent-data",
             a(
-              href := s"https://$backendAddress/torrent/${props.model.infoHash}/data",
+              href := httpUrl(s"/torrent/${props.model.infoHash}/data"),
               target := "_blank"
             )("Download")
           ),
@@ -33,7 +33,7 @@ object TorrentPanel {
               width := "400",
               controls := true,
               source(
-                src := s"https://$backendAddress/torrent/${props.model.infoHash}/data"
+                src := httpUrl(s"/torrent/${props.model.infoHash}/data")
               )
             )
           )

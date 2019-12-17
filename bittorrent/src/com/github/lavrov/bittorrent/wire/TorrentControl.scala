@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.data.Chain
 import cats.effect.concurrent.Semaphore
-import cats.effect.{Concurrent, Timer}
+import cats.effect.{Concurrent, Resource, Timer}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
@@ -14,9 +14,9 @@ import fs2.Stream
 trait TorrentControl[F[_]] {
   def getMetaInfo: MetaInfo
   def stats: F[TorrentControl.Stats]
-  def download(pieces: Stream[F, Int]): Stream[F, TorrentControl.CompletePiece]
   def downloadAll: Stream[F, TorrentControl.CompletePiece]
   def downloadAllSequentially: Stream[F, TorrentControl.CompletePiece]
+  def close: F[Unit]
 }
 
 object TorrentControl {
@@ -27,29 +27,25 @@ object TorrentControl {
     fileStorage: FileStorage[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] =
     for {
-      dispatcher <- Dispatcher.start(connectionManager)
-      incompletePieces <- F.delay { buildQueue(metaInfo.parsed).toList }
-      pieceMap <- F.pure { incompletePieces.view.map(p => (p.index.toInt, p)).toMap }
+      result <- Dispatcher.start(connectionManager).allocated
+      (dispatcher, closeDispatcher) = result
+      incompletePieces = buildQueue(metaInfo.parsed).toList
     } yield new TorrentControl[F] {
       def getMetaInfo = metaInfo
       def stats: F[Stats] =
         connectionManager.connected.count.map(Stats)
-      def download(pieces: Stream[F, Int]): Stream[F, CompletePiece] =
-        dispatcher
-          .dispatch(pieces.map(pieceMap))
       def downloadAll: Stream[F, CompletePiece] =
-        dispatcher
-          .dispatch(Stream.emits(incompletePieces))
+        Stream
+          .emits(incompletePieces)
+          .covary[F]
+          .parEvalMapUnordered(Int.MaxValue)(dispatcher.dispatch)
       def downloadAllSequentially: Stream[F, CompletePiece] =
-        for {
-          mutex <- Stream.eval { Semaphore(1) }
-          p <- Stream
-            .emits(incompletePieces)
-            .unchunk
-            .evalTap(_ => mutex.acquire)
-            .through(dispatcher.dispatch)
-            .evalTap(_ => mutex.release)
-        } yield p
+        Stream
+          .emits(incompletePieces)
+          .covary[F]
+          .parEvalMap(5)(dispatcher.dispatch)
+      def close: F[Unit] =
+        closeDispatcher
     }
 
   def downloadMetaInfo[F[_]](

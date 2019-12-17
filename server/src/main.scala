@@ -50,9 +50,8 @@ object Main extends IOApp {
             peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash)
           )
           metaInfo <- Resource.liftF { TorrentControl.downloadMetaInfo(connectionManager) }
-          result <- Resource.liftF {
-            TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
-          }
+          makeTorrentControl = TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
+          result <- Resource.make(makeTorrentControl)(_.close)
           _ <- {
             val add = torrentRegistry.update { map =>
               map.updated(infoHash, result)
@@ -81,7 +80,10 @@ object Main extends IOApp {
                 case _ => infoHash.bytes.toHex
               }
               val bytes = com.github.lavrov.bencode.encode(bcode)
-              Ok(bytes.toByteArray, `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent")))
+              Ok(
+                bytes.toByteArray,
+                `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent"))
+              )
             case None => NotFound("Torrent not found")
           }
         }
