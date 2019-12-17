@@ -3,6 +3,7 @@ import slinky.core.FunctionalComponent
 import slinky.web.html._
 import material_ui.core._
 import material_ui.styles.makeStyles
+import scodec.bits.ByteVector
 
 import scala.scalajs.js.Dynamic
 import slinky.core.facade.Hooks
@@ -34,6 +35,7 @@ object DownloadPanel {
       props.dispatcher(Action.DownloadTorrentFile(value))
       setState("")
     }
+    val isInfoHash = ByteVector.fromHex(value).exists(_.size == 20)
     Paper(className = classes.root.toString)(
       InputBase(
         placeholder = "Info hash",
@@ -41,7 +43,7 @@ object DownloadPanel {
         onChange = event => setState(event.target.value.asInstanceOf[String]),
         className = classes.input.toString
       ),
-      Button(variant = "contained", disabled = value.isEmpty)(onClick := handleClick _)(
+      Button(variant = "contained", disabled = !isInfoHash)(onClick := handleClick _)(
         "Download"
       )
     )
