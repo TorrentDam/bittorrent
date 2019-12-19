@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.{Concurrent, Fiber, Resource, Timer}
+import cats.effect.{Concurrent, Fiber, Resource, Sync, Timer}
 import cats.effect.concurrent.{Deferred, MVar, Ref, Semaphore}
 import cats.effect.implicits._
 import cats.implicits._
@@ -69,15 +69,13 @@ object Dispatcher {
   )(implicit F: Concurrent[F], timer: Timer[F]): F[CompletePiece] = {
     Stream(i.requests: _*)
       .covary[F]
-      .evalTap { _ =>
-        connection.chokedStatus.discrete
-          .find(choked => !choked)
-          .compile
-          .lastOrError
-          .timeout(10.seconds)
-      }
-      .parEvalMap(20) { r =>
-        connection.request(r).tupleLeft(r)
+      .evalMap { r =>
+        connection.waitUnchoked
+          .timeoutTo(10.seconds, F.raiseError(Error.TimeoutWaitingForUnchoke())) >>
+        connection
+          .request(r)
+          .tupleLeft(r)
+          .timeoutTo(1.minute, F.raiseError(Error.TimeoutWaitingForPiece()))
       }
       .scan(i) { case (a, (r, bytes)) => a.add(r, bytes) }
       .compile
@@ -105,6 +103,7 @@ object Dispatcher {
         }
       }
       _ <- connection.interested
+      _ <- connection.waitUnchoked
       _ <- {
         for {
           a <- connection.availability.get
@@ -113,7 +112,11 @@ object Dispatcher {
             case Some(p) =>
               download(connection, p).attempt.flatMap {
                 case Right(cp) => pieces.complete(cp)
-                case Left(_) => pieces.unpick(p.index.toInt)
+                case Left(e) =>
+                  pieces.unpick(p.index.toInt) >>
+                  logger.info(s"Closing connection due to $e") >>
+                  connection.close >>
+                  F.raiseError[Unit](e)
               }
             case None => await
           }
@@ -185,6 +188,19 @@ object Dispatcher {
       }
 
       def updates: Stream[F, Unit] = stateRef.discrete.as(())
+    }
+  }
+
+  sealed trait Error extends Throwable
+  object Error {
+    case class TimeoutWaitingForUnchoke() extends Error
+    case class TimeoutWaitingForPiece() extends Error
+  }
+
+  implicit class ConnectionOps[F[_]](self: Connection[F])(implicit F: Sync[F]) {
+    def waitUnchoked: F[Unit] = self.chokedStatus.get.flatMap {
+      case false => F.unit
+      case true => self.chokedStatus.discrete.find(choked => !choked).compile.lastOrError.void
     }
   }
 }

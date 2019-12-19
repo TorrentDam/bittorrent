@@ -43,7 +43,7 @@ object TorrentControl {
         Stream
           .emits(incompletePieces)
           .covary[F]
-          .parEvalMap(5)(dispatcher.dispatch)
+          .parEvalMap(10)(dispatcher.dispatch)
       def close: F[Unit] =
         closeDispatcher
     }

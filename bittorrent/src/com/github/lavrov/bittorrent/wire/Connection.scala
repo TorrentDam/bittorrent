@@ -135,10 +135,7 @@ object Connection {
           } yield ()
 
         def request(request: Message.Request): F[ByteVector] =
-          socket.send(request) >>
-          requestRegistry
-            .register(request)
-            .timeout(10.seconds)
+          socket.send(request) >> requestRegistry.register(request)
 
         def chokedStatus: Signal[F, Boolean] = chokedStatusRef
 

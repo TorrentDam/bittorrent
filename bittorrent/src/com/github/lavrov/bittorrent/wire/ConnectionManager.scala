@@ -93,13 +93,18 @@ object ConnectionManager {
     timer: Timer[F],
     logger: LogIO[F]
   ): F[Unit] = {
-    val reconnect = logger.info(s"Reconnecting to ${peerInfo.address}") >> connect
+    val maxAttempts = 5
     val gaveUp = logger.info(s"Gave up on ${peerInfo.address}")
+    def reconnect(attempt: Int): F[Unit] =
+      logger.info(s"Reconnecting to ${peerInfo.address} ($attempt)") >>
+      connect
+        .handleErrorWith { e =>
+          if (attempt == maxAttempts) gaveUp >> F.raiseError(e)
+          else reconnect(attempt + 1)
+        }
     for {
       _ <- connect.handleErrorWith { _ =>
-        reconnect.handleErrorWith { e =>
-          gaveUp >> F.raiseError(e)
-        }
+        reconnect(1)
       }
       _ <- logger.info(s"Disconnected from ${peerInfo.address}. Reconnect in 10 seconds")
       _ <- timer.sleep(10.seconds)
