@@ -26,11 +26,12 @@ object TorrentPanel {
           ),
           value match {
             case Some(fileIndex) =>
+              val videoStreamUrl = s"/torrent/${props.model.infoHash}/data/$fileIndex"
               div(
                 p(
                   key := "torrent-data",
                   a(
-                    href := httpUrl(s"/torrent/${props.model.infoHash}/data"),
+                    href := httpUrl(videoStreamUrl),
                     target := "_blank"
                   )("Download")
                 ),
@@ -40,7 +41,7 @@ object TorrentPanel {
                     width := "400",
                     controls := true,
                     source(
-                      src := httpUrl(s"/torrent/${props.model.infoHash}/data/$fileIndex")
+                      src := httpUrl(videoStreamUrl)
                     )
                   )
                 )
