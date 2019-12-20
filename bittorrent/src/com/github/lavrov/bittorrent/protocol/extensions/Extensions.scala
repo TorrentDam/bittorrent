@@ -49,8 +49,7 @@ object Extensions {
       )
     } yield handshakeResponse
 
-  sealed class Error(message: String = null, cause: Throwable = null)
-      extends Throwable(message, cause)
+  sealed class Error(message: String = null, cause: Throwable = null) extends Throwable(message, cause)
   object Error {
     case class BencodeError(cause: Throwable) extends Error(cause = cause)
     case class HandshakeFormatError(message: String, cause: Throwable) extends Error(message, cause)

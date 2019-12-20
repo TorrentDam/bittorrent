@@ -240,5 +240,4 @@ package object format {
 
 }
 
-case class BencodeFormatException(message: String, cause: Throwable = null)
-    extends Exception(message, cause)
+case class BencodeFormatException(message: String, cause: Throwable = null) extends Exception(message, cause)

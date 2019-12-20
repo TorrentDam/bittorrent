@@ -5,10 +5,8 @@ import java.net.InetSocketAddress
 sealed trait RoutingTable
 
 object RoutingTable {
-  final case class Split(center: BigInt, lower: RoutingTable, higher: RoutingTable)
-      extends RoutingTable
-  final case class Bucket(from: BigInt, until: BigInt, nodes: Map[NodeId, InetSocketAddress])
-      extends RoutingTable
+  final case class Split(center: BigInt, lower: RoutingTable, higher: RoutingTable) extends RoutingTable
+  final case class Bucket(from: BigInt, until: BigInt, nodes: Map[NodeId, InetSocketAddress]) extends RoutingTable
 
   val MaxNodes = 8
 

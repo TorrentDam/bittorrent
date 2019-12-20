@@ -29,8 +29,7 @@ object TorrentMetadata {
       field[ByteVector]("pieces"),
       field[Long]("length")
     ).imapN(
-      (name, pieceLength, pieces, length) =>
-        TorrentMetadata(pieceLength, pieces, List(File(length, List(name))))
+      (name, pieceLength, pieces, length) => TorrentMetadata(pieceLength, pieces, List(File(length, List(name))))
     )(v => ???)
 
   implicit val FileFormat: BencodeFormat[File] =
@@ -47,8 +46,7 @@ object TorrentMetadata {
     ).imapN(TorrentMetadata.apply)(v => (v.pieceLength, v.pieces, v.files))
 
   implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] = BencodeFormat(
-    read =
-      BencodeReader(bcode => SingleFileFormat.read(bcode) orElse MultipleFileFormat.read(bcode)),
+    read = BencodeReader(bcode => SingleFileFormat.read(bcode) orElse MultipleFileFormat.read(bcode)),
     write = MultipleFileFormat.write
   )
 }

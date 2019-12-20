@@ -137,9 +137,7 @@ object Main extends IOApp {
         case GET -> Root / "ws" => handleSocket
         case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
           handleGetTorrent(infoHash)
-        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(
-              index
-            ) =>
+        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(index) =>
           handleGetData(infoHash, index)
       }
       .mapF(_.getOrElseF(NotFound()))
