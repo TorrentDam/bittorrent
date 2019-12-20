@@ -93,9 +93,7 @@ object Main extends IOApp {
           import org.http4s.dsl.io._
           map.get(infoHash) match {
             case Some(control) =>
-              if (fileIndex < control.getMetaInfo.parsed.files.size)
-                NotFound(s"Torrent does not contain file with index $fileIndex")
-              else {
+              if (fileIndex < control.getMetaInfo.parsed.files.size) {
                 val fileMapping = FileMapping.fromMetadata(control.getMetaInfo.parsed)
                 val span = fileMapping.value(fileIndex)
                 val dataStream = control
@@ -109,6 +107,9 @@ object Main extends IOApp {
                     case TorrentControl.CompletePiece(_, _, bytes) => bytes.toArray
                   }
                 Ok(dataStream, `Content-Type`(MediaType.video.`x-matroska`))
+              }
+              else {
+                NotFound(s"Torrent does not contain file with index $fileIndex")
               }
             case None => NotFound("Torrent not found")
           }
