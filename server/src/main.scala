@@ -16,6 +16,7 @@ import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
 
 import scala.util.Random
+import com.github.lavrov.bittorrent.FileMapping
 
 object Main extends IOApp {
 
@@ -87,13 +88,28 @@ object Main extends IOApp {
             case None => NotFound("Torrent not found")
           }
         }
-      handleGetData = (infoHash: InfoHash) =>
+      handleGetData = (infoHash: InfoHash, fileIndex: FileIndex) =>
         torrentRegistry.get.flatMap { map =>
           import org.http4s.dsl.io._
           map.get(infoHash) match {
             case Some(control) =>
-              val dataStream = control.downloadAllSequentially.map(p => p.bytes.toArray)
-              Ok(dataStream, `Content-Type`(MediaType.video.`x-matroska`))
+              if (fileIndex < control.getMetaInfo.parsed.files.size)
+                NotFound(s"Torrent does not contain file with index $fileIndex")
+              else {
+                val fileMapping = FileMapping.fromMetadata(control.getMetaInfo.parsed)
+                val span = fileMapping.value(fileIndex)
+                val dataStream = control
+                  .downloadAllSequentiallyFrom(span.beginIndex)
+                  .takeWhile(_.index <= span.endIndex)
+                  .map {
+                    case TorrentControl.CompletePiece(span.beginIndex, _, bytes) =>
+                      bytes.drop(span.beginOffset).toArray
+                    case TorrentControl.CompletePiece(span.endIndex, _, bytes) =>
+                      bytes.take(span.endOffset).toArray
+                    case TorrentControl.CompletePiece(_, _, bytes) => bytes.toArray
+                  }
+                Ok(dataStream, `Content-Type`(MediaType.video.`x-matroska`))
+              }
             case None => NotFound("Torrent not found")
           }
         }
@@ -112,7 +128,7 @@ object Main extends IOApp {
   def httpApp(
     handleSocket: IO[Response[IO]],
     handleGetTorrent: InfoHash => IO[Response[IO]],
-    handleGetData: InfoHash => IO[Response[IO]]
+    handleGetData: (InfoHash, FileIndex) => IO[Response[IO]]
   ): HttpApp[IO] = {
     import org.http4s.dsl.io._
     HttpRoutes
@@ -121,9 +137,16 @@ object Main extends IOApp {
         case GET -> Root / "ws" => handleSocket
         case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
           handleGetTorrent(infoHash)
-        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" =>
-          handleGetData(infoHash)
+        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(
+              index
+            ) =>
+          handleGetData(infoHash, index)
       }
       .mapF(_.getOrElseF(NotFound()))
+  }
+
+  type FileIndex = Int
+  val FileIndexVar: PartialFunction[String, FileIndex] = Function.unlift { (in: String) =>
+    in.toIntOption.filter(_ >= 0)
   }
 }

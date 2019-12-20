@@ -77,7 +77,8 @@ object SocketSession {
         for {
           _ <- send(Event.NewTorrent(infoHashString))
           control <- makeTorrentControl(infoHash)
-          _ <- send(Event.TorrentMetadata())
+          files = control.getMetaInfo.parsed.files.map(_.path)
+          _ <- send(Event.TorrentMetadata(files))
           _ <- controlRef.set(control.some)
           _ <- Stream
             .repeatEval(

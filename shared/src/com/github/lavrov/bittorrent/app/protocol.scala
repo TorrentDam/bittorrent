@@ -14,7 +14,7 @@ object Command {
 sealed trait Event
 object Event {
   case class NewTorrent(infoHash: String) extends Event
-  case class TorrentMetadata() extends Event
+  case class TorrentMetadata(files: List[List[String]]) extends Event
   case class TorrentStats(infoHash: String, connected: Int) extends Event
   implicit val rw: ReadWriter[Event] = ReadWriter.merge(
     macroRW[NewTorrent],

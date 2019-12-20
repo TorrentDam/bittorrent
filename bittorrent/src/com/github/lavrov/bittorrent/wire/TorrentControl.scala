@@ -16,6 +16,7 @@ trait TorrentControl[F[_]] {
   def stats: F[TorrentControl.Stats]
   def downloadAll: Stream[F, TorrentControl.CompletePiece]
   def downloadAllSequentially: Stream[F, TorrentControl.CompletePiece]
+  def downloadAllSequentiallyFrom(pieceIndex: Long): Stream[F, TorrentControl.CompletePiece]
   def close: F[Unit]
 }
 
@@ -42,6 +43,11 @@ object TorrentControl {
       def downloadAllSequentially: Stream[F, CompletePiece] =
         Stream
           .emits(incompletePieces)
+          .covary[F]
+          .parEvalMap(10)(dispatcher.dispatch)
+      def downloadAllSequentiallyFrom(pieceIndex: Long): Stream[F, CompletePiece] =
+        Stream
+          .emits(incompletePieces.drop(pieceIndex.toInt))
           .covary[F]
           .parEvalMap(10)(dispatcher.dispatch)
       def close: F[Unit] =
