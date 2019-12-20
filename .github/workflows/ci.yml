@@ -10,6 +10,16 @@ jobs:
 
     - uses: actions/checkout@v1
 
+    - uses: actions/cache@v1
+      with:
+        path: ~/.cache/coursier/v1
+        key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sc') }}
+
+    - uses: actions/cache@v1
+      with:
+        path: ~/.mill
+        key: ${{ runner.os }}-mill-${{ hashFiles('**/mill') }}
+
     - uses: olafurpg/setup-scala@v7
       with:
         java-version: graalvm@
