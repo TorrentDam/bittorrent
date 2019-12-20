@@ -63,10 +63,6 @@ object client extends JsModule {
     ivy"org.scodec::scodec-core::1.11.4",
   )
 
-  def scalacOptions = super.scalacOptions() ++ List(
-    "-P:scalajs:sjsDefinedByDefault"
-  )
-
   def `package`: T[PathRef] = T {
     val bundleFile = T.ctx().dest / "bundle.js"
     fullOpt()
