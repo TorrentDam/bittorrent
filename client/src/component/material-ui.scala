@@ -25,6 +25,7 @@ package core {
     val List: js.Object = js.native
     val ListItem: js.Object = js.native
     val ListItemText: js.Object = js.native
+    val ListItemSecondaryAction: js.Object = js.native
     val Divider: js.Object = js.native
     val CssBaseline: js.Object = js.native
   }
@@ -135,6 +136,19 @@ package core {
   }
 
   @react
+  object ListItemText extends ExternalComponent {
+    case class Props(
+      primary: String,
+      secondary: UndefOr[String] = js.undefined
+    )
+    val component = imports.ListItemText
+  }
+
+  object ListItemSecondaryAction extends ExternalComponentNoProps {
+    val component = imports.ListItemSecondaryAction
+  }
+
+  @react
   object Divider extends ExternalComponent {
     case class Props(
       className: UndefOr[String] = js.undefined
@@ -153,10 +167,18 @@ package icons {
   @JSImport("@material-ui/icons", JSImport.Default)
   private object imports extends js.Object {
     val Menu: js.Object = js.native
+    val GetApp: js.Object = js.native
+    val PlayArrow: js.Object = js.native
   }
 
   object Menu extends ExternalComponentNoProps {
     val component = imports.Menu
+  }
+  object GetApp extends ExternalComponentNoProps {
+    val component = imports.GetApp
+  }
+  object PlayArrow extends ExternalComponentNoProps {
+    val component = imports.PlayArrow
   }
 }
 
