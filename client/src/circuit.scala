@@ -15,9 +15,9 @@ class AppCircuit(send: Command => Unit, state: Var[RootModel]) {
           val event = upickle.default.read[Event](payload)
           val panel = value.torrentPanel
           val updatedPanel = event match {
-            case Event.NewTorrent(infoHash) =>
+            case Event.TorrentAccepted(infoHash) =>
               panel.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
-            case Event.TorrentMetadata(files) =>
+            case Event.TorrentMetadataReceived(files) =>
               panel.copy(torrent = panel.torrent.map(_.withMetadata(files)))
             case Event.TorrentStats(_, connected) =>
               panel.copy(

@@ -55,7 +55,7 @@ object SocketSession {
   }
 
   private def onCommand(command: Command, send: Event => IO[Unit]): IO[Unit] = command match {
-    case Command.AddTorrent(infoHash) => send(Event.NewTorrent(infoHash))
+    case Command.AddTorrent(infoHash) => send(Event.TorrentAccepted(infoHash))
   }
 
   private val Cmd: PartialFunction[String, Command] =
@@ -75,14 +75,14 @@ object SocketSession {
     def handle(command: Command): IO[Unit] = command match {
       case Command.AddTorrent(infoHashString @ InfoHashFromString(infoHash)) =>
         for {
-          _ <- send(Event.NewTorrent(infoHashString))
+          _ <- send(Event.TorrentAccepted(infoHashString))
           control <- makeTorrentControl(infoHash)
           files = control.getMetaInfo.parsed.files.map(_.path)
-          _ <- send(Event.TorrentMetadata(files))
+          _ <- send(Event.TorrentMetadataReceived(files))
           _ <- controlRef.set(control.some)
           _ <- Stream
             .repeatEval(
-              (timer.sleep(10.seconds) >> control.stats).flatMap { stats =>
+              (timer.sleep(2.seconds) >> control.stats).flatMap { stats =>
                 send(Event.TorrentStats(infoHashString, stats.connected))
               }
             )
