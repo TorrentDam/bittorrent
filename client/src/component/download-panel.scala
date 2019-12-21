@@ -5,7 +5,7 @@ import material_ui.styles.makeStyles
 import scodec.bits.ByteVector
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
-import slinky.core.facade.Hooks
+import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
 
 import scala.scalajs.js.Dynamic
@@ -33,11 +33,11 @@ object DownloadPanel {
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
     val (value, setState) = Hooks.useState("")
-    def handleClick(): Unit = {
-      props.dispatcher(Action.DownloadTorrentFile(value))
+    def handleClick(infoHash: String) = () => {
+      props.dispatcher(Action.DownloadTorrentFile(infoHash))
       setState("")
     }
-    val isInfoHash = ByteVector.fromHex(value).exists(_.size == 20)
+    val infoHashOpt = extractInfoHash(value)
     Paper(className = classes.root.toString)(
       InputBase(
         placeholder = "Info hash",
@@ -45,9 +45,19 @@ object DownloadPanel {
         onChange = event => setState(event.target.value.asInstanceOf[String]),
         className = classes.input.toString
       ),
-      Button(variant = "contained", disabled = !isInfoHash)(onClick := handleClick _)(
-        "Download"
-      )
+      infoHashOpt.map { infoHash =>
+        Button(variant = "contained")(onClick := handleClick(infoHash))(
+          "Open"
+        )
+      }
     )
+  }
+
+  private val regex = """xt=urn:btih:(\w+)""".r
+
+  private def extractInfoHash(value: String): Option[String] = {
+    def isInfoHash(str: String) = ByteVector.fromHex(str).exists(_.size == 20)
+    if (isInfoHash(value)) Some(value)
+    else regex.findFirstMatchIn(value).map(_.group(1)).filter(isInfoHash)
   }
 }
