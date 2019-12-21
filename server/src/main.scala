@@ -94,6 +94,8 @@ object Main extends IOApp {
           map.get(infoHash) match {
             case Some(control) =>
               if (fileIndex < control.getMetaInfo.parsed.files.size) {
+                val file = control.getMetaInfo.parsed.files(fileIndex)
+                val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
                 val fileMapping = FileMapping.fromMetadata(control.getMetaInfo.parsed)
                 val span = fileMapping.value(fileIndex)
                 val dataStream = control
@@ -106,7 +108,9 @@ object Main extends IOApp {
                       bytes.take(span.endOffset).toArray
                     case TorrentControl.CompletePiece(_, _, bytes) => bytes.toArray
                   }
-                Ok(dataStream, `Content-Type`(MediaType.video.`x-matroska`))
+                val mediaType =
+                  extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
+                Ok(dataStream, `Content-Type`(mediaType))
               }
               else {
                 NotFound(s"Torrent does not contain file with index $fileIndex")

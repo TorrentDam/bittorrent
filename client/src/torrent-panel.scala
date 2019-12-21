@@ -16,7 +16,7 @@ object TorrentPanel {
     div(
       p(s"Connected: ${props.model.connected}"),
       for (metadata <- props.model.metadata)
-        yield List(
+        yield div(
           p(
             key := "torrent-metadata",
             a(
