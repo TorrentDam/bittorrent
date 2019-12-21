@@ -48,7 +48,8 @@ object Main extends IOApp {
         for {
           connectionManager <- ConnectionManager[IO](
             Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
-            peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash)
+            peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
+            30
           )
           metaInfo <- Resource.liftF { TorrentControl.downloadMetaInfo(connectionManager) }
           makeTorrentControl = TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
