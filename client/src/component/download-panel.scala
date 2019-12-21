@@ -5,7 +5,7 @@ import material_ui.styles.makeStyles
 import scodec.bits.ByteVector
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
-import slinky.core.facade.{Hooks, ReactElement}
+import slinky.core.facade.Hooks
 import slinky.web.html._
 
 import scala.scalajs.js.Dynamic
@@ -35,7 +35,6 @@ object DownloadPanel {
     val (value, setState) = Hooks.useState("")
     def handleClick(infoHash: String) = () => {
       props.dispatcher(Action.DownloadTorrentFile(infoHash))
-      setState("")
     }
     val infoHashOpt = extractInfoHash(value)
     Paper(className = classes.root.toString)(

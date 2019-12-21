@@ -38,10 +38,12 @@ object App {
             case (true, _) =>
               Connect(props.model.zoomTo(_.torrentPanel), props.dispatcher)(
                 (model, dispatcher) =>
-                  model.torrent match {
-                    case Some(torrent) => Torrent(torrent, dispatcher)
-                    case _ => DownloadPanel(model, dispatcher)
-                  }
+                  List(
+                    DownloadPanel(model, dispatcher),
+                    model.torrent.map { torrent =>
+                      Torrent(torrent, dispatcher)
+                    }
+                  )
               )
             case _ =>
               p(className := classes.centered.toString)("Connecting...")
