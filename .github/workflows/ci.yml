@@ -16,11 +16,6 @@ jobs:
         key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sc') }}
 
     - uses: actions/cache@v1
-      with:
-        path: ~/.mill
-        key: ${{ runner.os }}-mill-${{ hashFiles('**/mill') }}
-
-    - uses: actions/cache@v1
       id: npm-cache
       with:
         path: client/node_modules
