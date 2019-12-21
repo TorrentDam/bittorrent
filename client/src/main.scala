@@ -1,4 +1,3 @@
-import Action.ServerEvent
 import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
@@ -6,22 +5,22 @@ import cats.effect.IOApp
 import cats.effect.IO
 import cats.effect.ExitCode
 import fs2.concurrent.Queue
-
-import Environment.wsUrl
+import component.App
+import logic.{Action, Circuit}
 
 class Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] = {
     for {
       out <- Queue.unbounded[IO, String]
-      circuit <- IO { AppCircuit(out.enqueue1(_).unsafeRunSync()) }
-      socket <- ReconnectingWebsocket.create(
-        wsUrl("/ws"),
+      circuit <- IO { Circuit(out.enqueue1(_).unsafeRunSync()) }
+      socket <- ReconnectingSocket.create(
+        environment.wsUrl("/ws"),
         in =>
           in.evalTap { msg =>
               for {
                 _ <- IO { org.scalajs.dom.console.info(s"WS << $msg") }
-                _ <- IO { circuit.dispatcher(ServerEvent(msg)) }
+                _ <- IO { circuit.dispatcher(Action.ServerEvent(msg)) }
               } yield ()
             }
             .drain

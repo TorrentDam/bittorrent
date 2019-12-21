@@ -1,3 +1,5 @@
+package logic
+
 sealed trait Action
 
 object Action {

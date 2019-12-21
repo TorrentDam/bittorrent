@@ -1,4 +1,4 @@
-object Environment {
+package object environment {
 
   private val backendAddress = "bittorrent-server.herokuapp.com"
 

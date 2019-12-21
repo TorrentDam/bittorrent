@@ -1,6 +1,8 @@
+package logic
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
+import frp.{Observable, Var}
 
-class AppCircuit(send: Command => Unit, state: Var[RootModel]) {
+class Circuit(send: Command => Unit, state: Var[RootModel]) {
   def actionHandler: (RootModel, Action) => Option[RootModel] =
     (value, action) =>
       action match {
@@ -37,49 +39,12 @@ class AppCircuit(send: Command => Unit, state: Var[RootModel]) {
   val dispatcher: Dispatcher = action => {
     actionHandler(state.value, action).foreach(state.set)
   }
-  def observed: Observed[RootModel] = state
+  def observed: Observable[RootModel] = state
 }
 
-trait Dispatcher {
-  def apply(action: Action): Unit
-}
-
-object AppCircuit {
-  def apply(send: String => Unit) = new AppCircuit(
+object Circuit {
+  def apply(send: String => Unit) = new Circuit(
     command => send(upickle.default.write(command)),
     Var(RootModel.initial)
   )
-}
-
-case class RootModel(
-  connected: Boolean,
-  mainPanel: MainPanel,
-  torrentPanel: TorrentPanelModel,
-  logs: List[String]
-)
-
-object RootModel {
-  def initial: RootModel = {
-    val torrentPanel = TorrentPanelModel()
-    RootModel(
-      connected = false,
-      mainPanel = torrentPanel,
-      torrentPanel = torrentPanel,
-      logs = List.empty
-    )
-  }
-}
-
-sealed trait MainPanel
-
-case class TorrentPanelModel(
-  torrent: Option[TorrentModel] = Option.empty
-) extends MainPanel
-
-case class TorrentModel(
-  infoHash: String,
-  connected: Int,
-  metadata: Option[List[List[String]]]
-) extends MainPanel {
-  def withMetadata(metadata: List[List[String]]): TorrentModel = copy(metadata = Some(metadata))
 }

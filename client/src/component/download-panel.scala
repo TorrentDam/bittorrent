@@ -1,12 +1,14 @@
-import slinky.core.annotations.react
-import slinky.core.FunctionalComponent
-import slinky.web.html._
+package component
+import logic.{Action, Dispatcher, TorrentPanelModel}
 import material_ui.core._
 import material_ui.styles.makeStyles
 import scodec.bits.ByteVector
+import slinky.core.FunctionalComponent
+import slinky.core.annotations.react
+import slinky.core.facade.Hooks
+import slinky.web.html._
 
 import scala.scalajs.js.Dynamic
-import slinky.core.facade.Hooks
 
 @react
 object DownloadPanel {

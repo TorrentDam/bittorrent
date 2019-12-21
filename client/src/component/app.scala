@@ -1,17 +1,18 @@
-import slinky.core.annotations.react
+package component
+
+import frp.Observable
+import logic.{Dispatcher, RootModel}
+import material_ui.core._
+import material_ui.styles.makeStyles
 import slinky.core.FunctionalComponent
+import slinky.core.annotations.react
 import slinky.web.html._
 
-import material_ui.core._
-import material_ui.icons.{Menu => MenuIcon}
-import material_ui.styles.makeStyles
-
 import scala.scalajs.js.Dynamic
-import slinky.web.svg.circle
 
 @react
 object App {
-  case class Props(model: Observed[RootModel], dispatcher: Dispatcher)
+  case class Props(model: Observable[RootModel], dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>
@@ -38,7 +39,7 @@ object App {
               Connect(props.model.zoomTo(_.torrentPanel), props.dispatcher)(
                 (model, dispatcher) =>
                   model.torrent match {
-                    case Some(torrent) => TorrentPanel(torrent, dispatcher)
+                    case Some(torrent) => Torrent(torrent, dispatcher)
                     case _ => DownloadPanel(model, dispatcher)
                   }
               )

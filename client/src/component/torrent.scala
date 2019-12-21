@@ -1,13 +1,15 @@
+package component
+
+import logic.{Dispatcher, TorrentModel}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
-import slinky.web.html._
-import Environment.httpUrl
 import slinky.core.facade.Hooks
+import slinky.web.html._
 
 import scala.scalajs.js
 
 @react
-object TorrentPanel {
+object Torrent {
   case class Props(model: TorrentModel, dispatcher: Dispatcher)
 
   val component = FunctionalComponent[Props] { props =>
@@ -20,7 +22,7 @@ object TorrentPanel {
           p(
             key := "torrent-metadata",
             a(
-              href := httpUrl(s"/torrent/${props.model.infoHash}/metadata"),
+              href := environment.httpUrl(s"/torrent/${props.model.infoHash}/metadata"),
               target := "_blank"
             )("Metadata")
           ),
@@ -31,7 +33,7 @@ object TorrentPanel {
                 p(
                   key := "torrent-data",
                   a(
-                    href := httpUrl(videoStreamUrl),
+                    href := environment.httpUrl(videoStreamUrl),
                     target := "_blank"
                   )("Download")
                 ),
@@ -41,7 +43,7 @@ object TorrentPanel {
                     width := "400",
                     controls := true,
                     source(
-                      src := httpUrl(videoStreamUrl)
+                      src := environment.httpUrl(videoStreamUrl)
                     )
                   )
                 )

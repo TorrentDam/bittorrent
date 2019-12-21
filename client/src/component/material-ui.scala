@@ -1,17 +1,14 @@
-package material_ui
+package component.material_ui
 
 import slinky.core._
 import slinky.core.annotations.react
 import slinky.web.html._
 
 import scala.scalajs.js
-import scala.scalajs.js.annotation.{JSExportTopLevel, JSImport}
 import scala.scalajs.js.UndefOr
+import scala.scalajs.js.annotation.JSImport
 
 package core {
-  import org.scalajs.dom.Event
-
-  import scala.scalajs.js.|
   @js.native
   @JSImport("@material-ui/core", JSImport.Default)
   private object imports extends js.Object {
