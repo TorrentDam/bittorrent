@@ -32,7 +32,7 @@ class MessageSocket[F[_]](
           )
         )
       }
-      _ <- logger.debug(s"Sent $message")
+      _ <- logger.debug(s">>> ${peerInfo.address} $message")
     } yield ()
 
   def receive: F[Message] =
@@ -47,7 +47,7 @@ class MessageSocket[F[_]](
           .decodeValue(bytes.toBitVector)
           .toTry
       )
-      _ <- logger.debug(s"Received $message")
+      _ <- logger.debug(s"<<< ${peerInfo.address} $message")
     } yield message
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
@@ -92,7 +92,7 @@ object MessageSocket {
   )(implicit F: Concurrent[F]): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
     for {
-      _ <- logger.debug(s"Initiate handshake")
+      _ <- logger.debug(s"Initiate handshake with ${}")
       _ <- socket.write(
         bytes = Chunk.byteVector(
           Handshake.HandshakeCodec.encode(message).require.toByteVector
