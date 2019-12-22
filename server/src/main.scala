@@ -111,7 +111,12 @@ object Main extends IOApp {
                   }
                 val mediaType =
                   extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
-                Ok(dataStream, `Content-Type`(mediaType))
+                val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
+                Ok(
+                  dataStream,
+                  `Content-Type`(mediaType),
+                  `Content-Disposition`("inline", Map("filename" -> filename))
+                )
               }
               else {
                 NotFound(s"Torrent does not contain file with index $fileIndex")
