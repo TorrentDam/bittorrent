@@ -9,25 +9,39 @@ import scala.scalajs.js.UndefOr
 import scala.scalajs.js.annotation.JSImport
 
 package core {
-  @js.native
-  @JSImport("@material-ui/core", JSImport.Default)
-  private object imports extends js.Object {
-    val AppBar: js.Object = js.native
-    val Button: js.Object = js.native
-    val Toolbar: js.Object = js.native
-    val IconButton: js.Object = js.native
-    val Typography: js.Object = js.native
-    val Container: js.Object = js.native
-    val TextField: js.Object = js.native
-    val Paper: js.Object = js.native
-    val InputBase: js.Object = js.native
-    val LinearProgress: js.Object = js.native
-    val List: js.Object = js.native
-    val ListItem: js.Object = js.native
-    val ListItemText: js.Object = js.native
-    val ListItemSecondaryAction: js.Object = js.native
-    val Divider: js.Object = js.native
-    val CssBaseline: js.Object = js.native
+  private object imports {
+    @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
+    object AppBar extends js.Object
+    @js.native @JSImport("@material-ui/core/Button", JSImport.Default)
+    object Button extends js.Object
+    @js.native @JSImport("@material-ui/core/Toolbar", JSImport.Default)
+    object Toolbar extends js.Object
+    @js.native @JSImport("@material-ui/core/IconButton", JSImport.Default)
+    object IconButton extends js.Object
+    @js.native @JSImport("@material-ui/core/Typography", JSImport.Default)
+    object Typography extends js.Object
+    @js.native @JSImport("@material-ui/core/Container", JSImport.Default)
+    object Container extends js.Object
+    @js.native @JSImport("@material-ui/core/TextField", JSImport.Default)
+    object TextField extends js.Object
+    @js.native @JSImport("@material-ui/core/Paper", JSImport.Default)
+    object Paper extends js.Object
+    @js.native @JSImport("@material-ui/core/InputBase", JSImport.Default)
+    object InputBase extends js.Object
+    @js.native @JSImport("@material-ui/core/LinearProgress", JSImport.Default)
+    object LinearProgress extends js.Object
+    @js.native @JSImport("@material-ui/core/List", JSImport.Default)
+    object List extends js.Object
+    @js.native @JSImport("@material-ui/core/ListItem", JSImport.Default)
+    object ListItem extends js.Object
+    @js.native @JSImport("@material-ui/core/ListItemText", JSImport.Default)
+    object ListItemText extends js.Object
+    @js.native @JSImport("@material-ui/core/ListItemSecondaryAction", JSImport.Default)
+    object ListItemSecondaryAction extends js.Object
+    @js.native @JSImport("@material-ui/core/Divider", JSImport.Default)
+    object Divider extends js.Object
+    @js.native @JSImport("@material-ui/core/CssBaseline", JSImport.Default)
+    object CssBaseline extends js.Object
   }
 
   @react
@@ -164,13 +178,15 @@ package core {
 }
 
 package icons {
-  @js.native
-  @JSImport("@material-ui/icons", JSImport.Default)
-  private object imports extends js.Object {
-    val Menu: js.Object = js.native
-    val GetApp: js.Object = js.native
-    val PlayArrow: js.Object = js.native
-    val ArrowBack: js.Object = js.native
+  private object imports {
+    @js.native @JSImport("@material-ui/icons/Menu", JSImport.Default)
+    object Menu extends js.Object
+    @js.native @JSImport("@material-ui/icons/GetApp", JSImport.Default)
+    object GetApp extends js.Object
+    @js.native @JSImport("@material-ui/icons/PlayArrow", JSImport.Default)
+    object PlayArrow extends js.Object
+    @js.native @JSImport("@material-ui/icons/ArrowBack", JSImport.Default)
+    object ArrowBack extends js.Object
   }
 
   object Menu extends ExternalComponentNoProps {
