@@ -78,7 +78,9 @@ object MessageSocket {
       )
       _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
       handshakeResponse <- Resource.liftF(
-        handshake(selfId, infoHash, socket, logger)
+        logger.debug(s"Initiate handshake with ${peerInfo.address}") *>
+        handshake(selfId, infoHash, socket) <*
+        logger.debug(s"Successful handshake with ${peerInfo.address}")
       )
       writeMutex <- Resource.liftF(Semaphore(1))
     } yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
@@ -87,12 +89,10 @@ object MessageSocket {
   def handshake[F[_]](
     selfId: PeerId,
     infoHash: InfoHash,
-    socket: Socket[F],
-    logger: LogIO[F]
+    socket: Socket[F]
   )(implicit F: Concurrent[F]): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
     for {
-      _ <- logger.debug(s"Initiate handshake with ${}")
       _ <- socket.write(
         bytes = Chunk.byteVector(
           Handshake.HandshakeCodec.encode(message).require.toByteVector
@@ -119,7 +119,6 @@ object MessageSocket {
             Error("Unable to decode handhshake reponse")
           }
       )
-      _ <- logger.debug(s"Successful handshake")
     } yield response
   }
 
