@@ -68,7 +68,7 @@ object client extends JsModule {
     fullOpt()
     os
       .proc("npm", "run", "package", "--", s"--output=$bundleFile")
-      .call(millSourcePath)
+      .call(cwd = millSourcePath, stdout = os.Inherit)
     PathRef(bundleFile)
   }
 
