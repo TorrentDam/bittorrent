@@ -53,9 +53,10 @@ package core {
   @react
   object IconButton extends ExternalComponent {
     case class Props(
-      edge: String,
+      edge: UndefOr[String] = js.undefined,
       color: String = "inherit",
-      `aria-label`: String = "open drawer"
+      `aria-label`: String = "open drawer",
+      href: UndefOr[String] = js.undefined
     )
     val component = imports.IconButton
   }
@@ -169,6 +170,7 @@ package icons {
     val Menu: js.Object = js.native
     val GetApp: js.Object = js.native
     val PlayArrow: js.Object = js.native
+    val ArrowBack: js.Object = js.native
   }
 
   object Menu extends ExternalComponentNoProps {
@@ -179,6 +181,9 @@ package icons {
   }
   object PlayArrow extends ExternalComponentNoProps {
     val component = imports.PlayArrow
+  }
+  object ArrowBack extends ExternalComponentNoProps {
+    val component = imports.ArrowBack
   }
 }
 

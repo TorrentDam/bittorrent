@@ -17,68 +17,56 @@ object Torrent {
 
   val component = FunctionalComponent[Props] { props =>
     val (value, setState) = Hooks.useState(Option.empty[Int])
-    def handleClick(index: Int): js.Function0[Unit] = () => setState(Some(index))
-    div(
-      for (metadata <- props.model.metadata)
-        yield div(
-          value match {
-            case Some(fileIndex) => renderFile(props.model.infoHash, fileIndex)
-            case None => renderList(metadata, handleClick)
-          },
-          renderMetadata(props.model.infoHash)
-        ),
-      p(s"Connected: ${props.model.connected}")
-    )
+    def handlePlayClick(index: Int): js.Function0[Unit] = () => setState(Some(index))
+    def handleBackClick: js.Function0[Unit] = () => setState(None)
+    def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash}/data/$index")
+    for (metadata <- props.model.metadata)
+      yield value match {
+        case Some(fileIndex) => renderFile(videoStreamUrl(fileIndex), handleBackClick)
+        case None => renderList(videoStreamUrl, metadata, handlePlayClick)
+      }
   }
 
-  private def renderMetadata(infoHash: String): ReactElement = {
-    p(
-      key := "torrent-metadata",
-      a(
-        href := environment.httpUrl(s"/torrent/${infoHash}/metadata"),
-        target := "_blank"
-      )("Metadata")
-    )
-  }
-
-  private def renderList(metadata: List[List[String]], handleClick: Int => () => Unit): ReactElement =
+  private def renderList(
+    videoSrc: Int => String,
+    metadata: List[List[String]],
+    handleClick: Int => () => Unit
+  ): ReactElement = {
     MUIList()(
       for ((file, index) <- metadata.zipWithIndex)
-        yield ListItem()(
-          key := s"file-$index",
-          ListItemText(primary = file.last),
-          ListItemSecondaryAction(
-            IconButton(edge = "end", `aria-label` = "play")(
-              onClick := handleClick(index),
-              icons.PlayArrow()
-            ),
-            IconButton(edge = "end", `aria-label` = "download")(
-              icons.GetApp()
+        yield {
+          ListItem()(
+            key := s"file-$index",
+            ListItemText(primary = file.last),
+            ListItemSecondaryAction(
+              IconButton(edge = "end", `aria-label` = "play")(
+                onClick := handleClick(index),
+                icons.PlayArrow()
+              ),
+              IconButton(edge = "end", `aria-label` = "download", href = videoSrc(index))(
+                icons.GetApp()
+              )
             )
           )
-        )
+        }
     )
+  }
 
-  private def renderFile(infoHash: String, fileIndex: Int): ReactElement = {
-    val videoStreamUrl = s"/torrent/$infoHash/data/$fileIndex"
+  private def renderFile(videoStreamUrl: String, handleBackClick: () => Unit): ReactElement = {
     div(
-      p(
+      div(
+        IconButton(icons.ArrowBack(), onClick := handleBackClick)
+      ),
+      div(
         key := "torrent-video-player",
         video(
           width := "100%",
           controls := true,
-          new CustomAttribute[Boolean]("autoplay") := true,
+          new CustomAttribute[Boolean]("autoPlay") := true,
           source(
             src := environment.httpUrl(videoStreamUrl)
           )
         )
-      ),
-      p(
-        key := "torrent-data",
-        a(
-          href := environment.httpUrl(videoStreamUrl),
-          target := "_blank"
-        )("Download")
       )
     )
   }
