@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.effect.Concurrent
 import cats.syntax.all._
+import com.github.lavrov.bittorrent.MetaInfo
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.Message
 import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
 import com.github.lavrov.bittorrent.protocol.message.Message.Extended
@@ -36,8 +37,8 @@ object ExtensionHandshaker {
   case class HandshakeError() extends Exception
 }
 
-object MetadataDownloader {
-  def apply[F[_]](messageId: Long, size: Long, socket: ExtendedMessageSocket[F])(
+object UtMetadata {
+  def download[F[_]](messageId: Long, size: Long, socket: ExtendedMessageSocket[F])(
     implicit F: Concurrent[F],
     logger: LogIO[F]
   ): F[ByteVector] = {
@@ -66,6 +67,20 @@ object MetadataDownloader {
       .compile
       .lastOrError
   }
+
+  def download[F[_]](
+    swarm: Swarm[F]
+  )(implicit F: Concurrent[F]): F[MetaInfo] =
+    swarm.connected.stream
+      .evalMap(_.downloadMetadata.attempt)
+      .collectFirst {
+        case Right(Some(metadata)) => metadata
+      }
+      .evalMap { bytes =>
+        F.fromEither(MetaInfo.fromBytes(bytes))
+      }
+      .compile
+      .lastOrError
 
   case class InvalidMessage(message: String) extends Exception(message)
 }

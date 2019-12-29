@@ -8,7 +8,7 @@ import cats.effect.implicits._
 import cats.syntax.all._
 import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
 import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
-import com.github.lavrov.bittorrent.wire.{MetadataDownloader, TorrentControl, _}
+import com.github.lavrov.bittorrent.wire.{UtMetadata, Torrent, _}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
@@ -134,29 +134,29 @@ object Main extends IOApp {
                 }
             )
             (infoHash, metaInfoOpt) = result
-            _ <- makeConnectionManager(infoHash).use { connectionManager =>
+            _ <- makeSwarm(infoHash).use { swarm =>
               for {
                 metaInfo <- metaInfoOpt.map(IO.pure).getOrElse {
                   for {
                     _ <- logger.info("Downloading torrent file using info-hash")
                     _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
-                    i <- TorrentControl.downloadMetaInfo(connectionManager)
+                    i <- UtMetadata.download(swarm)
                   } yield i
                 }
                 _ <- FileStorage[IO](metaInfo.parsed, targetDirectory).use { fileStorage =>
                   for {
                     _ <- logger.info(s"Start downloading")
-                    control <- TorrentControl[IO](
+                    control <- Torrent[IO](
                       metaInfo,
-                      connectionManager,
+                      swarm,
                       fileStorage
                     )
-                    _ <- control.downloadAll
-                      .evalTap { piece =>
-                        fileStorage.save(FileStorage.Piece(piece.begin, piece.bytes))
-                      }
-                      .compile
-                      .drain
+//                    _ <- torrent.downloadAll
+//                      .evalTap { piece =>
+//                        fileStorage.save(FileStorage.Piece(piece.begin, piece.bytes))
+//                      }
+//                      .compile
+//                      .drain
                   } yield ()
                 }
               } yield ()
@@ -165,11 +165,11 @@ object Main extends IOApp {
       }
     } yield ()
 
-  def makeConnectionManager(
+  def makeSwarm(
     infoHash: InfoHash
-  )(implicit ev0: TcpSocketGroup, ev1: UdpScoketGroup): Resource[IO, ConnectionManager[IO]] = {
+  )(implicit ev0: TcpSocketGroup, ev1: UdpScoketGroup): Resource[IO, Swarm[IO]] = {
     val connect = (p: PeerInfo) => Connection.connect[IO](selfId, p, infoHash)
-    ConnectionManager[IO](
+    Swarm[IO](
       discoverPeers(infoHash),
       connect
     )
@@ -214,11 +214,11 @@ object Main extends IOApp {
         case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
           implicit val usg0: UdpScoketGroup = usg
           implicit val tsg0: TcpSocketGroup = tsg
-          makeConnectionManager(infoHash)
+          makeSwarm(infoHash)
       }
-      .use { connectionManager =>
+      .use { swarm =>
         for {
-          metadata <- getTorrent(infoHash, connectionManager)
+          metadata <- getTorrent(infoHash, swarm)
           metaInfo <- IO.fromEither(
             MetaInfo.fromBytes(metadata)
           )
@@ -239,15 +239,15 @@ object Main extends IOApp {
       implicit val usg0: UdpScoketGroup = usg
       implicit val tsg0: TcpSocketGroup = tsg
       val peers = discoverPeers(infoHash)
-      val connectionManagerR =
-        ConnectionManager[IO](
+      val swarmR =
+        Swarm[IO](
           peers,
           Connection.connect(selfId, _, infoHash),
           10
         )
       for {
-        _ <- connectionManagerR.use { connectionManager =>
-          connectionManager.connected.count
+        _ <- swarmR.use { swarm =>
+          swarm.connected.count
             .flatMap { n =>
               logger.info(s"$n open connections")
             }
@@ -272,11 +272,11 @@ object Main extends IOApp {
 
   private def getTorrent(
     infoHash: InfoHash,
-    connectionManager: ConnectionManager[IO]
+    swarm: Swarm[IO]
   ): IO[ByteVector] = {
-    connectionManager.connected.stream
+    swarm.connected.stream
       .evalMap { c =>
-        c.downloadTorrentFile.attempt.flatMap {
+        c.downloadMetadata.attempt.flatMap {
           case Right(v) => v.pure[IO]
           case Left(e) =>
             logger.error(s"Error: $e") >> none[ByteVector].pure[IO]

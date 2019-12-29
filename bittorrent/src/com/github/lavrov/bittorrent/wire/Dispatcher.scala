@@ -4,7 +4,7 @@ import cats.effect.{Concurrent, Fiber, Resource, Sync, Timer}
 import cats.effect.concurrent.{Deferred, MVar, Ref, Semaphore}
 import cats.effect.implicits._
 import cats.implicits._
-import com.github.lavrov.bittorrent.wire.TorrentControl.{CompletePiece, IncompletePiece}
+import com.github.lavrov.bittorrent.wire.Torrent.{CompletePiece, IncompletePiece}
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import logstage.LogIO
@@ -19,7 +19,7 @@ trait Dispatcher[F[_]] {
 object Dispatcher {
 
   def start[F[_]](
-    connectionManager: ConnectionManager[F]
+    swarm: Swarm[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Dispatcher[F]] =
     for {
       pendingRequests <- Resource.liftF { Ref.of(Map.empty[Int, CompletePiece => F[Unit]]) }
@@ -38,7 +38,7 @@ object Dispatcher {
       _ <- Resource {
         for {
           fibers <- Ref.of(List.empty[Fiber[F, _]])
-          fiber <- connectionManager.connected.stream
+          fiber <- swarm.connected.stream
             .evalTap { c =>
               downloadLoop(c, ps).start.flatMap(f => fibers.update(f :: _))
             }

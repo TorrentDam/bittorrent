@@ -11,62 +11,32 @@ import logstage.LogIO
 import scodec.bits.ByteVector
 import fs2.Stream
 
-trait TorrentControl[F[_]] {
+trait Torrent[F[_]] {
   def getMetaInfo: MetaInfo
-  def stats: F[TorrentControl.Stats]
-  def downloadAll: Stream[F, TorrentControl.CompletePiece]
-  def downloadAllSequentially: Stream[F, TorrentControl.CompletePiece]
-  def downloadAllSequentiallyFrom(pieceIndex: Long): Stream[F, TorrentControl.CompletePiece]
+  def stats: F[Torrent.Stats]
+  def piece(index: Int): F[ByteVector]
   def close: F[Unit]
 }
 
-object TorrentControl {
+object Torrent {
 
   def apply[F[_]](
     metaInfo: MetaInfo,
-    connectionManager: ConnectionManager[F],
+    swarm: Swarm[F],
     fileStorage: FileStorage[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[TorrentControl[F]] =
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Torrent[F]] =
     for {
-      result <- Dispatcher.start(connectionManager).allocated
+      result <- Dispatcher.start(swarm).allocated
       (dispatcher, closeDispatcher) = result
       incompletePieces = buildQueue(metaInfo.parsed).toList
-    } yield new TorrentControl[F] {
+    } yield new Torrent[F] {
       def getMetaInfo = metaInfo
       def stats: F[Stats] =
-        connectionManager.connected.count.map(Stats)
-      def downloadAll: Stream[F, CompletePiece] =
-        Stream
-          .emits(incompletePieces)
-          .covary[F]
-          .parEvalMapUnordered(Int.MaxValue)(dispatcher.dispatch)
-      def downloadAllSequentially: Stream[F, CompletePiece] =
-        Stream
-          .emits(incompletePieces)
-          .covary[F]
-          .parEvalMap(10)(dispatcher.dispatch)
-      def downloadAllSequentiallyFrom(pieceIndex: Long): Stream[F, CompletePiece] =
-        Stream
-          .emits(incompletePieces.drop(pieceIndex.toInt))
-          .covary[F]
-          .parEvalMap(10)(dispatcher.dispatch)
+        swarm.connected.count.map(Stats)
+      def piece(index: Int): F[ByteVector] = ???
       def close: F[Unit] =
         closeDispatcher
     }
-
-  def downloadMetaInfo[F[_]](
-    connectionManager: ConnectionManager[F]
-  )(implicit F: Concurrent[F]): F[MetaInfo] =
-    connectionManager.connected.stream
-      .evalMap(_.downloadTorrentFile.attempt)
-      .collectFirst {
-        case Right(Some(metadata)) => metadata
-      }
-      .evalMap { bytes =>
-        F.fromEither(MetaInfo.fromBytes(bytes))
-      }
-      .compile
-      .lastOrError
 
   case class Stats(
     connected: Int

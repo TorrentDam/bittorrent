@@ -2,7 +2,7 @@ import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
-import com.github.lavrov.bittorrent.wire.{ConnectionManager, TorrentControl}
+import com.github.lavrov.bittorrent.wire.{Swarm, Torrent}
 import com.github.lavrov.bittorrent.{FileStorage, InfoHash, InfoHashFromString, TorrentMetadata}
 import fs2.Stream
 import fs2.concurrent.Queue
@@ -16,7 +16,7 @@ import scala.util.Try
 
 object SocketSession {
   def apply(
-    makeTorrentControl: InfoHash => Resource[IO, TorrentControl[IO]]
+    makeTorrentControl: InfoHash => Resource[IO, Torrent[IO]]
   )(
     implicit F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -62,9 +62,9 @@ object SocketSession {
     ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
 
   class CommandHandler(
-    controlRef: Ref[IO, Option[TorrentControl[IO]]],
+    controlRef: Ref[IO, Option[Torrent[IO]]],
     send: Event => IO[Unit],
-    makeTorrentControl: InfoHash => IO[TorrentControl[IO]]
+    makeTorrentControl: InfoHash => IO[Torrent[IO]]
   )(
     implicit
     F: Concurrent[IO],
@@ -96,7 +96,7 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrentControl: InfoHash => Resource[IO, TorrentControl[IO]]
+      makeTorrentControl: InfoHash => Resource[IO, Torrent[IO]]
     )(
       implicit
       F: Concurrent[IO],
@@ -106,7 +106,7 @@ object SocketSession {
     ): Resource[IO, CommandHandler] = Resource {
       for {
         finalizer <- Ref.of(IO.unit)
-        controlRef <- Ref.of(Option.empty[TorrentControl[IO]])
+        controlRef <- Ref.of(Option.empty[Torrent[IO]])
       } yield {
         val impl = new CommandHandler(
           controlRef,

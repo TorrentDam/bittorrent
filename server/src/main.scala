@@ -2,7 +2,7 @@ import cats.syntax.all._
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
-import com.github.lavrov.bittorrent.wire.{Connection, ConnectionManager, TorrentControl}
+import com.github.lavrov.bittorrent.wire.{Connection, Swarm, Torrent, UtMetadata}
 import com.github.lavrov.bittorrent.{FileStorage, InfoHash, InfoHashFromString, PeerId, TorrentFile}
 import fs2.Stream
 import fs2.io.tcp.SocketGroup
@@ -42,18 +42,18 @@ object Main extends IOApp {
         implicit val ev0 = udpSocketGroup
         Client.start[IO](selfNodeId, 9596)
       }
-      torrentRegistry <- Resource.liftF { Ref.of[IO, Map[InfoHash, TorrentControl[IO]]](Map.empty) }
+      torrentRegistry <- Resource.liftF { Ref.of[IO, Map[InfoHash, Torrent[IO]]](Map.empty) }
       makeTorrentControl = { (infoHash: InfoHash) =>
         implicit val ev0 = socketGroup
         for {
-          connectionManager <- ConnectionManager[IO](
+          swarm <- Swarm[IO](
             Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
             peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
             30
           )
-          metaInfo <- Resource.liftF { TorrentControl.downloadMetaInfo(connectionManager) }
-          makeTorrentControl = TorrentControl[IO](metaInfo, connectionManager, FileStorage.noop)
-          result <- Resource.make(makeTorrentControl)(_.close)
+          metaInfo <- Resource.liftF { UtMetadata.download[IO](swarm) }
+          makeTorrent = Torrent[IO](metaInfo, swarm, FileStorage.noop)
+          result <- Resource.make(makeTorrent)(_.close)
           _ <- {
             val add = torrentRegistry.update { map =>
               map.updated(infoHash, result)
@@ -93,21 +93,22 @@ object Main extends IOApp {
         torrentRegistry.get.flatMap { map =>
           import org.http4s.dsl.io._
           map.get(infoHash) match {
-            case Some(control) =>
-              if (fileIndex < control.getMetaInfo.parsed.files.size) {
-                val file = control.getMetaInfo.parsed.files(fileIndex)
+            case Some(torrent) =>
+              if (fileIndex < torrent.getMetaInfo.parsed.files.size) {
+                val file = torrent.getMetaInfo.parsed.files(fileIndex)
                 val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
-                val fileMapping = FileMapping.fromMetadata(control.getMetaInfo.parsed)
+                val fileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
                 val span = fileMapping.value(fileIndex)
-                val dataStream = control
-                  .downloadAllSequentiallyFrom(span.beginIndex)
-                  .takeWhile(_.index <= span.endIndex)
+                val dataStream = Stream
+                  .emits(span.beginIndex to span.endIndex)
+                  .covary[IO]
+                  .evalMap(index => torrent.piece(index.toInt) tupleLeft index)
                   .map {
-                    case TorrentControl.CompletePiece(span.beginIndex, _, bytes) =>
+                    case (span.beginIndex, bytes) =>
                       bytes.drop(span.beginOffset).toArray
-                    case TorrentControl.CompletePiece(span.endIndex, _, bytes) =>
+                    case (span.endIndex, bytes) =>
                       bytes.take(span.endOffset).toArray
-                    case TorrentControl.CompletePiece(_, _, bytes) => bytes.toArray
+                    case (_, bytes) => bytes.toArray
                   }
                 val mediaType =
                   extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)

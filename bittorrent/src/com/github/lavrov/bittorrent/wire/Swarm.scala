@@ -6,19 +6,18 @@ import cats.effect.implicits._
 import cats.effect.{Concurrent, Fiber, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
-import com.github.lavrov.bittorrent.wire.ConnectionManager.Connected
+import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
 import fs2.concurrent.{Queue, SignallingRef}
-import fs2.io.tcp.SocketGroup
 import logstage.LogIO
 
 import scala.concurrent.duration._
 
-trait ConnectionManager[F[_]] {
+trait Swarm[F[_]] {
   def connected: Connected[F]
 }
 
-object ConnectionManager {
+object Swarm {
 
   def apply[F[_]](
     dhtPeers: Stream[F, PeerInfo],
@@ -27,9 +26,8 @@ object ConnectionManager {
   )(
     implicit F: Concurrent[F],
     timer: Timer[F],
-    socketGroup: SocketGroup,
     logger: LogIO[F]
-  ): Resource[F, ConnectionManager[F]] = Resource {
+  ): Resource[F, Swarm[F]] = Resource {
     for {
       semaphore <- Semaphore(maxConnections)
       stateRef <- Ref.of(Map.empty[PeerInfo, Connection[F]])
@@ -80,7 +78,7 @@ object ConnectionManager {
     stateRef: Ref[F, Map[PeerInfo, Connection[F]]],
     lastConnected: SignallingRef[F, Connection[F]]
   )(implicit F: Monad[F])
-      extends ConnectionManager[F] {
+      extends Swarm[F] {
     val connected: Connected[F] = new Connected[F] {
       def count: F[Int] = stateRef.get.map(_.size)
       def stream: Stream[F, Connection[F]] =

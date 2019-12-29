@@ -26,7 +26,7 @@ trait Connection[F[_]] {
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
   def close: F[Unit]
-  def downloadTorrentFile: F[Option[ByteVector]]
+  def downloadMetadata: F[Option[ByteVector]]
 }
 
 object Connection {
@@ -145,13 +145,14 @@ object Connection {
 
         def close: F[Unit] = doClose(().asRight)
 
-        def downloadTorrentFile: F[Option[ByteVector]] =
+        def downloadMetadata: F[Option[ByteVector]] =
           for {
             handshake <- ExtensionHandshaker(extendedMessageSocket)
             metadata <- (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled
               .traverse {
                 case (messageId, size) =>
-                  MetadataDownloader(messageId, size, extendedMessageSocket)
+                  UtMetadata
+                    .download(messageId, size, extendedMessageSocket)
                     .ensure(InvalidMetadata()) { metadata =>
                       metadata.digest("SHA-1") == infoHash.bytes
                     }
