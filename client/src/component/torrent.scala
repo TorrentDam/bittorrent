@@ -64,7 +64,7 @@ object Torrent {
           controls := true,
           new CustomAttribute[Boolean]("autoPlay") := true,
           source(
-            src := environment.httpUrl(videoStreamUrl)
+            src := videoStreamUrl
           )
         )
       )

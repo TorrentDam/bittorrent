@@ -49,7 +49,7 @@ object Main extends IOApp {
           swarm <- Swarm[IO](
             Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
             peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
-            30
+            50
           )
           metaInfo <- Resource.liftF { UtMetadata.download[IO](swarm) }
           makeTorrent = Torrent[IO](metaInfo, swarm, FileStorage.noop)

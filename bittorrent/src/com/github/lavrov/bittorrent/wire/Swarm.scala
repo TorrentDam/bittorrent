@@ -93,13 +93,16 @@ object Swarm {
   ): F[Unit] = {
     val maxAttempts = 5
     val gaveUp = logger.info(s"Gave up on ${peerInfo.address}")
-    def reconnect(attempt: Int): F[Unit] =
-      logger.info(s"Reconnecting to ${peerInfo.address} ($attempt)") >>
+    def reconnect(attempt: Int): F[Unit] = {
+      val waitDuration = (10 * attempt).seconds
+      logger.info(s"Reconnecting to ${peerInfo.address} in $waitDuration ($attempt)") >>
+      timer.sleep(waitDuration) >>
       connect
         .handleErrorWith { e =>
           if (attempt == maxAttempts) gaveUp >> F.raiseError(e)
           else reconnect(attempt + 1)
         }
+    }
     for {
       _ <- connect.handleErrorWith { _ =>
         reconnect(1)

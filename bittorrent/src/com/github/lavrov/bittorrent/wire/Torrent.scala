@@ -1,15 +1,15 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.data.Chain
-import cats.effect.concurrent.Semaphore
-import cats.effect.{Concurrent, Resource, Timer}
-import cats.syntax.all._
+import cats.effect.concurrent.MVar
+import cats.effect.implicits._
+import cats.effect.{Concurrent, Timer}
+import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
 import com.github.lavrov.bittorrent.{FileStorage, MetaInfo, TorrentMetadata}
 import logstage.LogIO
 import scodec.bits.ByteVector
-import fs2.Stream
 
 trait Torrent[F[_]] {
   def getMetaInfo: MetaInfo
@@ -26,16 +26,25 @@ object Torrent {
     fileStorage: FileStorage[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Torrent[F]] =
     for {
-      result <- Dispatcher.start(swarm).allocated
-      (dispatcher, closeDispatcher) = result
+      completePieceVar <- MVar.empty[F, CompletePiece]
+      piecePicker <- PiecePicker(completePieceVar.put)
       incompletePieces = buildQueue(metaInfo.parsed).toList
+      pieceStore <- PieceStore(
+        index => logger.info(s"RequestPiece $index") >> piecePicker.add(incompletePieces(index) :: Nil)
+      )
+      addToStoreFiber <- completePieceVar.take
+        .flatMap { p =>
+          logger.info(s"CompletePiece ${p.index}") >>
+          pieceStore.put(p.index.toInt, p.bytes)
+        }
+        .foreverM[Unit]
+        .start
+      downloadFiber <- SwarmTasks.download(swarm, piecePicker).start
     } yield new Torrent[F] {
       def getMetaInfo = metaInfo
-      def stats: F[Stats] =
-        swarm.connected.count.map(Stats)
-      def piece(index: Int): F[ByteVector] = ???
-      def close: F[Unit] =
-        closeDispatcher
+      def stats: F[Stats] = swarm.connected.count.map(Stats)
+      def piece(index: Int): F[ByteVector] = pieceStore.get(index)
+      def close: F[Unit] = downloadFiber.cancel >> addToStoreFiber.cancel
     }
 
   case class Stats(
