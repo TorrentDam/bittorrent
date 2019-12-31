@@ -35,6 +35,7 @@ object SwarmTasks {
     pieces: PiecePicker[F]
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[Unit] = {
     for {
+      logger <- logger.withCustomContext(("address", connection.info.address.toString)).pure[F]
       waitForUpdate <- {
         MVar.empty[F, Unit].flatMap { trigger =>
           val notify = trigger.tryPut()

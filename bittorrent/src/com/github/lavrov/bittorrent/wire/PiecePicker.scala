@@ -60,12 +60,6 @@ object PiecePicker {
         for {
           state <- stateRef.get
           result = state.incomplete.find { case (i, p) => availability(i) && p.requests.nonEmpty }
-          _ <- if (result.isEmpty) {
-            val avail = availability.iterator.mkString(",")
-            val piecesIncomp = state.incomplete.iterator.map { case (i, p) => s"$i-${p.requests.size}" }.mkString(",")
-            logger.info(s"No pieces $avail and $piecesIncomp")
-          }
-          else F.unit
           request <- result.traverse {
             case (i, p) =>
               val request = p.requests.head
