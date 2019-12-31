@@ -8,23 +8,39 @@ import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
 import material_ui.core.{IconButton, ListItem, ListItemSecondaryAction, ListItemText, List => MUIList}
 import material_ui.icons
+import material_ui.styles.makeStyles
 
 import scala.scalajs.js
+import scala.scalajs.js.Dynamic.literal
 
 @react
 object Torrent {
   case class Props(model: TorrentModel, dispatcher: Dispatcher)
 
+  private val useStyles = makeStyles(
+    _ =>
+      literal(
+        centered = literal(
+          textAlign = "center"
+        )
+      )
+  )
+
   val component = FunctionalComponent[Props] { props =>
+    val classes = useStyles()
     val (value, setState) = Hooks.useState(Option.empty[Int])
     def handlePlayClick(index: Int): js.Function0[Unit] = () => setState(Some(index))
     def handleBackClick: js.Function0[Unit] = () => setState(None)
     def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash}/data/$index")
-    for (metadata <- props.model.metadata)
-      yield value match {
-        case Some(fileIndex) => renderFile(videoStreamUrl(fileIndex), handleBackClick)
-        case None => renderList(videoStreamUrl, metadata, handlePlayClick)
-      }
+    props.model.metadata match {
+      case Some(metadata) =>
+        value match {
+          case Some(fileIndex) => renderFile(videoStreamUrl(fileIndex), handleBackClick)
+          case None => renderList(videoStreamUrl, metadata, handlePlayClick)
+        }
+      case None =>
+        p(className := classes.centered.toString)("Fetching torrent metadata...")
+    }
   }
 
   private def renderList(
