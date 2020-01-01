@@ -65,8 +65,6 @@ object SwarmTasks {
                   case Left(e) =>
                     logger.info(s"Unpick $request") >>
                     pieces.unpick(request) >>
-                    logger.info(s"Closing connection due to $e") >>
-                    connection.close >>
                     F.raiseError[Unit](e)
                 }
             case None =>
@@ -74,6 +72,10 @@ object SwarmTasks {
           }
         } yield ()
       }.foreverM[Unit]
+        .handleErrorWith { e =>
+          logger.info(s"Closing connection due to $e") >>
+          connection.close
+        }
     } yield ()
   }
 
