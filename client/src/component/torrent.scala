@@ -60,6 +60,7 @@ object Torrent {
                 icons.PlayArrow()
               ),
               IconButton(edge = "end", `aria-label` = "download", href = videoSrc(index))(
+                target := "_blank",
                 icons.GetApp()
               )
             )
