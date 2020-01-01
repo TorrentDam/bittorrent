@@ -102,7 +102,7 @@ object Main extends IOApp {
                 val dataStream = Stream
                   .emits(span.beginIndex to span.endIndex)
                   .covary[IO]
-                  .evalMap(index => torrent.piece(index.toInt) tupleLeft index)
+                  .parEvalMap(2)(index => torrent.piece(index.toInt) tupleLeft index)
                   .map {
                     case (span.beginIndex, bytes) =>
                       bytes.drop(span.beginOffset).toArray
