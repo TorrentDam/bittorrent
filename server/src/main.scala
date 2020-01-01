@@ -11,6 +11,7 @@ import izumi.logstage.api.IzLogger
 import logstage.LogIO
 import org.http4s.headers.`Content-Type`
 import org.http4s.headers.`Content-Disposition`
+import org.http4s.headers.`Content-Length`
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -116,7 +117,8 @@ object Main extends IOApp {
                 Ok(
                   dataStream,
                   `Content-Type`(mediaType),
-                  `Content-Disposition`("inline", Map("filename" -> filename))
+                  `Content-Disposition`("inline", Map("filename" -> filename)),
+                  `Content-Length`.unsafeFromLong(file.length)
                 )
               }
               else {
