@@ -143,22 +143,22 @@ object Main extends IOApp {
                     i <- UtMetadata.download(swarm)
                   } yield i
                 }
-                _ <- FileStorage[IO](metaInfo.parsed, targetDirectory).use { fileStorage =>
-                  for {
-                    _ <- logger.info(s"Start downloading")
-                    control <- Torrent[IO](
-                      metaInfo,
-                      swarm,
-                      fileStorage
-                    )
+//                _ <- FileStorage[IO](metaInfo.parsed, targetDirectory).use { fileStorage =>
+//                  for {
+//                    _ <- logger.info(s"Start downloading")
+//                    control <- Torrent[IO](
+//                      metaInfo,
+//                      swarm,
+//                      fileStorage
+//                    )
 //                    _ <- torrent.downloadAll
 //                      .evalTap { piece =>
 //                        fileStorage.save(FileStorage.Piece(piece.begin, piece.bytes))
 //                      }
 //                      .compile
 //                      .drain
-                  } yield ()
-                }
+//                  } yield ()
+//                }
               } yield ()
             }
           } yield ()

@@ -2,8 +2,8 @@ import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
-import com.github.lavrov.bittorrent.wire.{Swarm, Torrent}
-import com.github.lavrov.bittorrent.{FileStorage, InfoHash, InfoHashFromString, TorrentMetadata}
+import com.github.lavrov.bittorrent.wire.Torrent
+import com.github.lavrov.bittorrent.{InfoHash, InfoHashFromString}
 import fs2.Stream
 import fs2.concurrent.Queue
 import logstage.LogIO
@@ -16,7 +16,7 @@ import scala.util.Try
 
 object SocketSession {
   def apply(
-    makeTorrentControl: InfoHash => Resource[IO, Torrent[IO]]
+    makeTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]]
   )(
     implicit F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -28,7 +28,7 @@ object SocketSession {
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
       send = (e: Event) => output.enqueue1(WebSocketFrame.Text(upickle.default.write(e)))
-      handlerAndClose <- CommandHandler(send, makeTorrentControl).allocated
+      handlerAndClose <- CommandHandler(send, makeTorrent).allocated
       (handler, closeHandler) = handlerAndClose
       fiber <- processor(input, send, handler).compile.drain.start
       pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
@@ -96,7 +96,7 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrentControl: InfoHash => Resource[IO, Torrent[IO]]
+      makeTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]]
     )(
       implicit
       F: Concurrent[IO],
@@ -111,9 +111,9 @@ object SocketSession {
         val impl = new CommandHandler(
           controlRef,
           send,
-          makeTorrentControl(_).allocated.flatMap {
-            case (instance, close) =>
-              finalizer.get.flatten >> finalizer.set(close).as(instance)
+          makeTorrent(_).allocated.flatMap {
+            case (get, close) =>
+              finalizer.get.flatten >> finalizer.set(close) >> get
           }
         )
         val close: IO[Unit] = finalizer.get.flatten
