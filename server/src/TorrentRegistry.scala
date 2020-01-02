@@ -1,5 +1,5 @@
 import cats.effect._
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.wire.{Swarm, Torrent, UtMetadata}
@@ -22,7 +22,13 @@ object TorrentRegistry {
       mutex <- Semaphore[IO](1)
     } yield new Impl(ref, mutex, makeSwarm)
 
-  case class UsageCountingCell(get: IO[Torrent[IO]], resolved: Option[Torrent[IO]], close: IO[Unit], count: Int)
+  case class UsageCountingCell(
+    get: IO[Torrent[IO]],
+    resolved: Option[Torrent[IO]],
+    close: IO[Unit],
+    count: Int,
+    usedCount: Int
+  )
 
   private type Registry = Map[InfoHash, UsageCountingCell]
   private val emptyRegistry: Registry = Map.empty
@@ -38,12 +44,12 @@ object TorrentRegistry {
           registry <- ref.get
           cell <- registry.get(infoHash) match {
             case Some(cell) =>
-              val updatedCell = cell.copy(count = cell.count + 1)
               logger.info(s"Found existing torrent $infoHash") >>
-              IO.pure(updatedCell)
+              IO.pure(cell)
             case None =>
               make(infoHash)
           }
+          cell <- IO.pure(cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1))
           updatedRegistry = registry.updated(infoHash, cell)
           _ <- ref.set(updatedRegistry)
         } yield (cell.get, release(infoHash))
@@ -82,15 +88,24 @@ object TorrentRegistry {
         } yield torrent
       for {
         _ <- logger.info(s"Make new torrent $infoHash")
-        fiber <- makeTorrent.allocated.flatTap {
-          case (torrent, close) =>
-            ref.update { registry =>
-              val cell = registry(infoHash)
-              val updatedCell = cell.copy(get = IO.pure(torrent), resolved = torrent.some, close = close)
-              registry.updated(infoHash, updatedCell)
-            }
-        }.start
-      } yield UsageCountingCell(fiber.join.map(_._1), none, fiber.cancel, 1)
+        torrentDeferred <- Deferred[IO, Either[Throwable, Torrent[IO]]]
+        fiber <- makeTorrent
+          .use { torrent =>
+            ref
+              .update { registry =>
+                val cell = registry(infoHash)
+                val updatedCell = cell.copy(get = IO.pure(torrent), resolved = torrent.some)
+                registry.updated(infoHash, updatedCell)
+              } >>
+            torrentDeferred.complete(torrent.asRight) >>
+            IO.never
+          }
+          .handleErrorWith { e =>
+            torrentDeferred.complete(e.asLeft)
+          }
+          .start
+        result = torrentDeferred.get.flatMap(IO.fromEither)
+      } yield UsageCountingCell(result, none, fiber.cancel, 0, 0)
     }
 
     private def release(infoHash: InfoHash): IO[Unit] =
@@ -103,23 +118,26 @@ object TorrentRegistry {
         }
         .flatMap { cell =>
           if (cell.count == 0)
-            logger.info(s"Schedule torrent closure in 10 minutes $infoHash") >>
+            logger.info(s"Schedule torrent closure in 10 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
             timer.sleep(10.minutes) >>
             ref
               .modify { registry =>
-                if (registry.get(infoHash).exists(_.count == 0))
+                if (registry.get(infoHash).exists(_.usedCount == cell.usedCount))
                   (
                     registry.removed(infoHash),
                     cell.close >> logger.info(s"Closed torrent $infoHash")
                   )
                 else
-                  (registry, IO.unit)
+                  (
+                    registry,
+                    logger.info(s"Keep this torrent running $infoHash")
+                  )
               }
               .flatten
               .start
               .void
           else
-            logger.info(s"Keep this torrent running ${cell.count} $infoHash")
+            logger.info(s"Torrent is still in use ${cell.count} $infoHash")
         }
   }
 }
