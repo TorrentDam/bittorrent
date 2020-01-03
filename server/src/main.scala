@@ -8,7 +8,7 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{`Content-Disposition`, `Content-Length`, `Content-Type`}
+import org.http4s.headers.{`Accept-Ranges`, `Content-Disposition`, `Content-Range`, `Content-Type`, Range}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -71,14 +71,21 @@ object Main extends IOApp {
             )
           case None => NotFound("Torrent not found")
         }
-      handleGetData = (infoHash: InfoHash, fileIndex: FileIndex) =>
+      handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
         torrentRegistry.tryGet(infoHash).allocated.flatMap {
           case (Some(torrent), close) =>
             if (fileIndex < torrent.getMetaInfo.parsed.files.size) {
               val file = torrent.getMetaInfo.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
-              val span = fileMapping.value(fileIndex)
+              val span0 = fileMapping.value(fileIndex)
+              val span = rangeOpt.fold(span0) { range =>
+                val first = range.ranges.head.first
+                val advanced = span0.advance(first)
+                range.ranges.head.second.fold(advanced) { second =>
+                  advanced.take(second - first)
+                }
+              }
               val dataStream = Stream
                 .emits(span.beginIndex to span.endIndex)
                 .covary[IO]
@@ -93,11 +100,20 @@ object Main extends IOApp {
               val mediaType =
                 extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
               val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
-              Ok(
+              val subRange = rangeOpt match {
+                case Some(range) =>
+                  val first = range.ranges.head.first
+                  val second = range.ranges.head.second.getOrElse(file.length - 1)
+                  Range.SubRange(first, second)
+                case None =>
+                  Range.SubRange(0L, file.length - 1)
+              }
+              PartialContent(
                 dataStream.onFinalize(close),
                 `Content-Type`(mediaType),
                 `Content-Disposition`("inline", Map("filename" -> filename)),
-                `Content-Length`.unsafeFromLong(file.length)
+                `Accept-Ranges`.bytes,
+                `Content-Range`(subRange, file.length.some)
               )
             }
             else {
@@ -121,7 +137,7 @@ object Main extends IOApp {
   def httpApp(
     handleSocket: IO[Response[IO]],
     handleGetTorrent: InfoHash => IO[Response[IO]],
-    handleGetData: (InfoHash, FileIndex) => IO[Response[IO]]
+    handleGetData: (InfoHash, FileIndex, Option[Range]) => IO[Response[IO]]
   ): HttpApp[IO] = {
     import org.http4s.dsl.io._
     HttpRoutes
@@ -130,8 +146,8 @@ object Main extends IOApp {
         case GET -> Root / "ws" => handleSocket
         case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
           handleGetTorrent(infoHash)
-        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(index) =>
-          handleGetData(infoHash, index)
+        case req @ GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(index) =>
+          handleGetData(infoHash, index, req.headers.get(Range))
       }
       .mapF(_.getOrElseF(NotFound()))
   }
