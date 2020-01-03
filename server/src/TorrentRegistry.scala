@@ -47,11 +47,12 @@ object TorrentRegistry {
               (updatedRegistry, Right(updatedCell.get))
             case None =>
               val completeDeferred = Deferred.unsafe[IO, Either[Throwable, Torrent[IO]]]
-              val cancelDeferred = Deferred.unsafe[IO, Unit]
+              val closeDeferred = Deferred.unsafe[IO, Unit]
               val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
-              val createdCell = UsageCountingCell(getTorrent, none, cancelDeferred.complete(()), 1, 1)
+              val closeTorrent = closeDeferred.complete(())
+              val createdCell = UsageCountingCell(getTorrent, none, closeTorrent, 1, 1)
               val updatedRegistry = registry.updated(infoHash, createdCell)
-              (updatedRegistry, Left((createdCell.get, completeDeferred.complete _, cancelDeferred.complete(()))))
+              (updatedRegistry, Left((createdCell.get, completeDeferred.complete _, closeDeferred.get)))
           }
         }
         .flatMap {
