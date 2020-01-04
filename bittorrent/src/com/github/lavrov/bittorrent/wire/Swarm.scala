@@ -42,6 +42,7 @@ object Swarm {
               for {
                 _ <- logger.info(s"Connecting to ${peerInfo.address}")
                 connection <- connect(peerInfo)
+                  .timeoutTo(1.second, F raiseError Error.ConnectTimeout(1.second))
                 _ <- stateRef.update(_.updated(peerInfo, connection))
                 _ <- lastConnected.set(connection)
                 _ <- connection.disconnected
@@ -118,5 +119,11 @@ object Swarm {
   trait Connected[F[_]] {
     def count: F[Int]
     def stream: Stream[F, Connection[F]]
+  }
+
+  sealed class Error(message: String) extends Throwable(message)
+
+  object Error {
+    case class ConnectTimeout(duration: FiniteDuration) extends Error(s"Connect timeout after $duration")
   }
 }

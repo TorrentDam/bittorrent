@@ -45,7 +45,7 @@ object Main extends IOApp {
         Swarm[IO](
           Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
           peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
-          50
+          30
         )
       }
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(makeSwarm) }
