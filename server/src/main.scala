@@ -8,7 +8,14 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{`Accept-Ranges`, `Content-Disposition`, `Content-Range`, `Content-Type`, Range}
+import org.http4s.headers.{
+  `Accept-Ranges`,
+  `Content-Disposition`,
+  `Content-Length`,
+  `Content-Range`,
+  `Content-Type`,
+  Range
+}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -78,43 +85,53 @@ object Main extends IOApp {
               val file = torrent.getMetaInfo.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
-              val span0 = fileMapping.value(fileIndex)
-              val span = rangeOpt.fold(span0) { range =>
-                val first = range.ranges.head.first
-                val advanced = span0.advance(first)
-                range.ranges.head.second.fold(advanced) { second =>
-                  advanced.take(second - first)
-                }
-              }
-              val dataStream = Stream
-                .emits(span.beginIndex to span.endIndex)
-                .covary[IO]
-                .parEvalMap(2)(index => torrent.piece(index.toInt) tupleLeft index)
-                .map {
-                  case (span.beginIndex, bytes) =>
-                    bytes.drop(span.beginOffset).toArray
-                  case (span.endIndex, bytes) =>
-                    bytes.take(span.endOffset).toArray
-                  case (_, bytes) => bytes.toArray
-                }
+              def dataStream(span: FileMapping.Span) =
+                Stream
+                  .emits(span.beginIndex to span.endIndex)
+                  .covary[IO]
+                  .parEvalMap(2)(index => torrent.piece(index.toInt) tupleLeft index)
+                  .map {
+                    case (span.beginIndex, bytes) =>
+                      bytes.drop(span.beginOffset).toArray
+                    case (span.endIndex, bytes) =>
+                      bytes.take(span.endOffset).toArray
+                    case (_, bytes) => bytes.toArray
+                  }
               val mediaType =
                 extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
-              val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
-              val subRange = rangeOpt match {
+              val span0 = fileMapping.value(fileIndex)
+              rangeOpt match {
                 case Some(range) =>
                   val first = range.ranges.head.first
-                  val second = range.ranges.head.second.getOrElse(file.length - 1)
-                  Range.SubRange(first, second)
+                  val second = range.ranges.head.second
+                  val advanced = span0.advance(first)
+                  val span = second.fold(advanced) { second =>
+                    advanced.take(second - first)
+                  }
+                  val subRange = rangeOpt match {
+                    case Some(range) =>
+                      val first = range.ranges.head.first
+                      val second = range.ranges.head.second.getOrElse(file.length - 1)
+                      Range.SubRange(first, second)
+                    case None =>
+                      Range.SubRange(0L, file.length - 1)
+                  }
+                  PartialContent(
+                    dataStream(span).onFinalize(close),
+                    `Content-Type`(mediaType),
+                    `Accept-Ranges`.bytes,
+                    `Content-Range`(subRange, file.length.some)
+                  )
                 case None =>
-                  Range.SubRange(0L, file.length - 1)
+                  val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
+                  Ok(
+                    dataStream(span0).onFinalize(close),
+                    `Accept-Ranges`.bytes,
+                    `Content-Type`(mediaType),
+                    `Content-Disposition`("inline", Map("filename" -> filename)),
+                    `Content-Length`.unsafeFromLong(file.length)
+                  )
               }
-              PartialContent(
-                dataStream.onFinalize(close),
-                `Content-Type`(mediaType),
-                `Content-Disposition`("inline", Map("filename" -> filename)),
-                `Accept-Ranges`.bytes,
-                `Content-Range`(subRange, file.length.some)
-              )
             }
             else {
               NotFound(s"Torrent does not contain file with index $fileIndex")
