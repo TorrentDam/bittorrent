@@ -5,7 +5,7 @@ import cats.effect.IOApp
 import cats.effect.IO
 import cats.effect.ExitCode
 import fs2.concurrent.Queue
-import component.App
+import component.{App, Router}
 import logic.{Action, Circuit}
 
 class Main extends IOApp {
@@ -37,9 +37,14 @@ class Main extends IOApp {
         .compile
         .drain
         .start
+      router <- IO { Router() }
+      _ <- IO {
+        circuit.dispatcher(Action.Navigate(router.current))
+        router.onNavigate(route => circuit.dispatcher(Action.Navigate(route)))
+      }
       _ <- IO {
         ReactDOM.render(
-          App(circuit.observed, circuit.dispatcher),
+          App(router, circuit.observed, circuit.dispatcher),
           dom.document.getElementById("root")
         )
       }

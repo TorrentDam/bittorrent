@@ -12,7 +12,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object App {
-  case class Props(model: Observable[RootModel], dispatcher: Dispatcher)
+  case class Props(router: Router, model: Observable[RootModel], dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>
@@ -36,15 +36,17 @@ object App {
         Container(maxWidth = "md", className = classes.container.toString)(
           Connect(props.model.zoomTo(_.connected), props.dispatcher) {
             case (true, _) =>
-              Connect(props.model.zoomTo(_.torrentPanel), props.dispatcher)(
-                (model, dispatcher) =>
-                  model.torrent match {
-                    case Some(torrent) =>
+              props.router.when {
+                case Router.Route.Root =>
+                  DownloadPanel(props.router)
+                case Router.Route.Torrent(_) =>
+                  Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
+                    case (Some(torrent), dispatcher) =>
                       Torrent(torrent, dispatcher)
-                    case None =>
-                      DownloadPanel(model, dispatcher)
+                    case _ =>
+                      div()
                   }
-              )
+              }
             case _ =>
               p(className := classes.centered.toString)("Connecting...")
           }

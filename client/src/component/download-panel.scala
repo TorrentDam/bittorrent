@@ -1,5 +1,5 @@
 package component
-import logic.{Action, Dispatcher, TorrentPanelModel}
+import component.Router.Route
 import material_ui.core._
 import material_ui.styles.makeStyles
 import scodec.bits.ByteVector
@@ -12,7 +12,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object DownloadPanel {
-  case class Props(model: TorrentPanelModel, dispatcher: Dispatcher)
+  case class Props(router: Router)
 
   private val useStyles = makeStyles(
     theme =>
@@ -34,7 +34,7 @@ object DownloadPanel {
     val classes = useStyles()
     val (value, setState) = Hooks.useState("")
     def handleClick(infoHash: String) = () => {
-      props.dispatcher(Action.DownloadTorrentFile(infoHash))
+      props.router.navigate(Route.Torrent(infoHash))
     }
     val infoHashOpt = extractInfoHash(value)
     Paper(className = classes.root.toString)(
