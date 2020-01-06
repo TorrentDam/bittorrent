@@ -13,7 +13,7 @@ object Var {
 
     def set(a: A): Unit = {
       value = a
-      subscribers.values.foreach(f => f(a))
+      subscribers.values.toList.foreach(f => f(a))
     }
 
     def subscribe(f: A => Unit): Observable.Unsubscribe = {
