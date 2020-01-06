@@ -19,7 +19,17 @@ object RootModel {
 case class TorrentModel(
   infoHash: String,
   connected: Int,
-  metadata: Option[List[List[String]]]
+  metadata: Option[Metadata]
 ) {
-  def withMetadata(metadata: List[List[String]]): TorrentModel = copy(metadata = Some(metadata))
+  def withMetadata(metadata: Metadata): TorrentModel = copy(metadata = Some(metadata))
+}
+
+case class Metadata(
+  files: List[Metadata.File]
+)
+object Metadata {
+  case class File(
+    path: List[String],
+    size: Long
+  )
 }

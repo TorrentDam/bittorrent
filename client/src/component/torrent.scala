@@ -1,6 +1,6 @@
 package component
 
-import logic.{Dispatcher, TorrentModel}
+import logic.{Dispatcher, Metadata, TorrentModel}
 import slinky.core.CustomAttribute
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
@@ -45,15 +45,15 @@ object Torrent {
 
   private def renderList(
     videoSrc: Int => String,
-    metadata: List[List[String]],
+    metadata: Metadata,
     handleClick: Int => () => Unit
   ): ReactElement = {
     MUIList()(
-      for ((file, index) <- metadata.zipWithIndex)
+      for ((file, index) <- metadata.files.zipWithIndex)
         yield {
           ListItem()(
             key := s"file-$index",
-            ListItemText(primary = file.last),
+            ListItemText(primary = file.path.last, secondary = s"${file.size} bytes"),
             ListItemSecondaryAction(
               IconButton(edge = "end", `aria-label` = "play")(
                 onClick := handleClick(index),

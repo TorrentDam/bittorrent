@@ -14,10 +14,11 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
         case Action.ServerEvent(payload) =>
           val event = upickle.default.read[Event](payload)
           val updatedModel = event match {
-            case Event.TorrentAccepted(infoHash) =>
+            case Event.RequestAccepted(infoHash) =>
               value.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
             case Event.TorrentMetadataReceived(files) =>
-              value.copy(torrent = value.torrent.map(_.withMetadata(files)))
+              val metadata = Metadata(files.map(f => Metadata.File(f.path, f.size)))
+              value.copy(torrent = value.torrent.map(_.withMetadata(metadata)))
             case Event.TorrentStats(_, connected) =>
               value.copy(
                 torrent = value.torrent.map(_.copy(connected = connected))
@@ -36,7 +37,7 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
               None
             case Route.Torrent(infoHash) =>
               if (!value.torrent.exists(_.infoHash == infoHash))
-                send(Command.AddTorrent(infoHash))
+                send(Command.GetTorrent(infoHash))
               None
           }
       }
