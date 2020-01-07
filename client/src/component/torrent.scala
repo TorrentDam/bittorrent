@@ -6,7 +6,15 @@ import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
-import material_ui.core.{IconButton, ListItem, ListItemSecondaryAction, ListItemText, List => MUIList}
+import material_ui.core.{
+  IconButton,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
+  ListSubheader,
+  Paper,
+  List => MUIList
+}
 import material_ui.icons
 import material_ui.styles.makeStyles
 import squants.experimental.formatter.Formatters.InformationMetricFormatter
@@ -49,27 +57,32 @@ object Torrent {
     metadata: Metadata,
     handleClick: Int => () => Unit
   ): ReactElement = {
-    MUIList()(
-      for ((file, index) <- metadata.files.zipWithIndex)
-        yield {
-          ListItem()(
-            key := s"file-$index",
-            ListItemText(
-              primary = file.path.last,
-              secondary = InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString()
-            ),
-            ListItemSecondaryAction(
-              IconButton(edge = "end", `aria-label` = "play")(
-                onClick := handleClick(index),
-                icons.PlayArrow()
+    Paper(
+      MUIList(
+        for ((file, index) <- metadata.files.zipWithIndex)
+          yield {
+            ListItem(button = true)(
+              key := s"file-$index",
+              onClick := { () =>
+                println("hello")
+              },
+              ListItemText(
+                primary = file.path.last,
+                secondary = InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString()
               ),
-              IconButton(edge = "end", `aria-label` = "download", href = videoSrc(index))(
-                target := "_blank",
-                icons.GetApp()
+              ListItemSecondaryAction(
+                IconButton(edge = "end", `aria-label` = "play")(
+                  onClick := handleClick(index),
+                  icons.PlayArrow()
+                ),
+                IconButton(edge = "end", `aria-label` = "download", href = videoSrc(index))(
+                  target := "_blank",
+                  icons.GetApp()
+                )
               )
             )
-          )
-        }
+          }
+      )
     )
   }
 

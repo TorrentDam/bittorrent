@@ -9,6 +9,7 @@ import scala.scalajs.js.UndefOr
 import scala.scalajs.js.annotation.JSImport
 
 package core {
+  import slinky.core.facade.ReactElement
   private object imports {
     @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
     object AppBar extends js.Object
@@ -34,6 +35,8 @@ package core {
     object LinearProgress extends js.Object
     @js.native @JSImport("@material-ui/core/List", JSImport.Default)
     object List extends js.Object
+    @js.native @JSImport("@material-ui/core/ListSubheader", JSImport.Default)
+    object ListSubheader extends js.Object
     @js.native @JSImport("@material-ui/core/ListItem", JSImport.Default)
     object ListItem extends js.Object
     @js.native @JSImport("@material-ui/core/ListItemAvatar", JSImport.Default)
@@ -82,8 +85,8 @@ package core {
   @react
   object Typography extends ExternalComponent {
     case class Props(
-      component: String,
-      variant: String = "h6",
+      variant: String,
+      component: UndefOr[String] = js.undefined,
       color: String = "inherit"
     )
     val component = imports.Typography
@@ -141,15 +144,21 @@ package core {
   @react
   object List extends ExternalComponent {
     case class Props(
-      className: UndefOr[String] = js.undefined
+      className: UndefOr[String] = js.undefined,
+      subheader: UndefOr[ReactElement] = js.undefined
     )
     val component = imports.List
+  }
+
+  object ListSubheader extends ExternalComponentNoProps {
+    val component = imports.ListSubheader
   }
 
   @react
   object ListItem extends ExternalComponent {
     case class Props(
-      className: UndefOr[String] = js.undefined
+      className: UndefOr[String] = js.undefined,
+      button: UndefOr[Boolean] = js.undefined
     )
     val component = imports.ListItem
   }
