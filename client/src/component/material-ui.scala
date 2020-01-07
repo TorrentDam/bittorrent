@@ -12,6 +12,8 @@ package core {
   private object imports {
     @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
     object AppBar extends js.Object
+    @js.native @JSImport("@material-ui/core/Avatar", JSImport.Default)
+    object Avatar extends js.Object
     @js.native @JSImport("@material-ui/core/Button", JSImport.Default)
     object Button extends js.Object
     @js.native @JSImport("@material-ui/core/Toolbar", JSImport.Default)
@@ -34,6 +36,8 @@ package core {
     object List extends js.Object
     @js.native @JSImport("@material-ui/core/ListItem", JSImport.Default)
     object ListItem extends js.Object
+    @js.native @JSImport("@material-ui/core/ListItemAvatar", JSImport.Default)
+    object ListItemAvatar extends js.Object
     @js.native @JSImport("@material-ui/core/ListItemText", JSImport.Default)
     object ListItemText extends js.Object
     @js.native @JSImport("@material-ui/core/ListItemSecondaryAction", JSImport.Default)
