@@ -2,6 +2,7 @@ package logic
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import component.Router.Route
 import frp.{Observable, Var}
+import squants.information
 
 class Circuit(send: Command => Unit, state: Var[RootModel]) {
   def actionHandler: (RootModel, Action) => Option[RootModel] =
@@ -17,7 +18,13 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
             case Event.RequestAccepted(infoHash) =>
               value.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
             case Event.TorrentMetadataReceived(files) =>
-              val metadata = Metadata(files.map(f => Metadata.File(f.path, f.size)))
+              val metadataFiles = files.map { f =>
+                Metadata.File(
+                  f.path,
+                  information.Bytes(f.size)
+                )
+              }
+              val metadata = Metadata(metadataFiles)
               value.copy(torrent = value.torrent.map(_.withMetadata(metadata)))
             case Event.TorrentStats(_, connected) =>
               value.copy(

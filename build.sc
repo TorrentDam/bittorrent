@@ -61,6 +61,7 @@ object client extends JsModule {
     ivy"me.shadaj::slinky-web::0.6.2",
     ivy"co.fs2::fs2-core::2.0.0",
     ivy"org.scodec::scodec-core::1.11.4",
+    ivy"org.typelevel::squants::1.6.0"
   )
 
   def `package`: T[PathRef] = T {

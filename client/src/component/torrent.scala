@@ -9,6 +9,7 @@ import slinky.web.html._
 import material_ui.core.{IconButton, ListItem, ListItemSecondaryAction, ListItemText, List => MUIList}
 import material_ui.icons
 import material_ui.styles.makeStyles
+import squants.experimental.formatter.Formatters.InformationMetricFormatter
 
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.literal
@@ -53,7 +54,10 @@ object Torrent {
         yield {
           ListItem()(
             key := s"file-$index",
-            ListItemText(primary = file.path.last, secondary = s"${file.size} bytes"),
+            ListItemText(
+              primary = file.path.last,
+              secondary = InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString()
+            ),
             ListItemSecondaryAction(
               IconButton(edge = "end", `aria-label` = "play")(
                 onClick := handleClick(index),

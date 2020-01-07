@@ -1,4 +1,6 @@
 package logic
+import squants.Quantity
+import squants.information.Information
 
 case class RootModel(
   connected: Boolean,
@@ -30,6 +32,6 @@ case class Metadata(
 object Metadata {
   case class File(
     path: List[String],
-    size: Long
+    size: Quantity[Information]
   )
 }
