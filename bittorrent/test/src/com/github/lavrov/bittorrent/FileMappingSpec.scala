@@ -20,9 +20,9 @@ object FileMappingSpec extends BasicTestSuite {
     val result = FileMapping.fromMetadata(metadata)
     val expectation = FileMapping(
       List(
-        Span(0, 0, 0, 5),
-        Span(0, 5, 0, 8),
-        Span(0, 8, 1, 0)
+        Span(0, 0, 0, 5, 10),
+        Span(0, 5, 0, 8, 10),
+        Span(0, 8, 1, 0, 10)
       )
     )
     assert(result == expectation)
@@ -41,9 +41,9 @@ object FileMappingSpec extends BasicTestSuite {
     val result = FileMapping.fromMetadata(metadata)
     val expectation = FileMapping(
       List(
-        Span(0, 0, 0, 5),
-        Span(0, 5, 1, 8),
-        Span(1, 8, 2, 0)
+        Span(0, 0, 0, 5, 10),
+        Span(0, 5, 1, 8, 10),
+        Span(1, 8, 2, 0, 10)
       )
     )
     assert(result == expectation)

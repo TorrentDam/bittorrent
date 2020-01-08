@@ -1,12 +1,13 @@
 package com.github.lavrov.bittorrent.wire
 
+import cats.data.Chain
 import cats.implicits._
 import cats.effect.implicits._
 import cats.effect.{Concurrent, Timer}
 import cats.effect.concurrent.{Ref, Semaphore}
+import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.SwarmTasks.Error
-import com.github.lavrov.bittorrent.wire.Torrent.{CompletePiece, IncompletePiece}
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import logstage.LogIO
@@ -16,7 +17,7 @@ import scala.collection.BitSet
 import scala.concurrent.duration._
 
 trait PiecePicker[F[_]] {
-  def add(pieces: List[IncompletePiece]): F[Unit]
+  def download(index: Int): F[Unit]
   def pick(availability: BitSet): F[Option[Message.Request]]
   def unpick(request: Message.Request): F[Unit]
   def complete(request: Message.Request, bytes: ByteVector): F[Unit]
@@ -24,13 +25,15 @@ trait PiecePicker[F[_]] {
 }
 object PiecePicker {
   def apply[F[_]](
+    metadata: TorrentMetadata,
     onComplete: CompletePiece => F[Unit]
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[PiecePicker[F]] =
     for {
       stateRef <- Ref.of(State(Map.empty, Set.empty))
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
-    } yield new Impl(stateRef, pickMutex, notifyRef, onComplete)
+      incompletePieces = buildQueue(metadata).toList
+    } yield new Impl(stateRef, pickMutex, notifyRef, incompletePieces, onComplete)
 
   case class State(
     incomplete: Map[Int, IncompletePiece],
@@ -41,14 +44,15 @@ object PiecePicker {
     stateRef: Ref[F, State],
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
+    incompletePieces: List[IncompletePiece],
     onComplete: CompletePiece => F[Unit]
   )(implicit F: Concurrent[F], logger: LogIO[F])
       extends PiecePicker[F] {
 
-    def add(pieces: List[IncompletePiece]): F[Unit] = mutex.withPermit {
+    def download(index: Int): F[Unit] = mutex.withPermit {
       stateRef.update { state =>
         state.copy(
-          incomplete = state.incomplete ++ pieces.view.map(p => (p.index.toInt, p))
+          incomplete = state.incomplete.updated(index, incompletePieces(index))
         )
       } >>
       notifyRef.set(())
@@ -94,7 +98,7 @@ object PiecePicker {
         }
         _ <- F.whenA(piece.isComplete) {
           F.fromOption(piece.verified, Error.InvalidChecksum())
-            .map(CompletePiece(piece.index, piece.begin, _))
+            .map(CompletePiece(piece.index, _))
             .flatMap(onComplete)
         }
       } yield ()
@@ -102,4 +106,78 @@ object PiecePicker {
 
     def updates: Stream[F, Unit] = notifyRef.discrete
   }
+
+  def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {
+
+    def downloadFile(
+      pieceLength: Long,
+      totalLength: Long,
+      pieces: ByteVector
+    ): Chain[IncompletePiece] = {
+      var result = Chain.empty[IncompletePiece]
+      def loop(index: Long): Unit = {
+        val thisPieceLength =
+          math.min(pieceLength, totalLength - index * pieceLength)
+        if (thisPieceLength > 0) {
+          val list =
+            downloadPiece(index, thisPieceLength)
+          result = result append IncompletePiece(
+              index,
+              thisPieceLength,
+              pieces.drop(index * 20).take(20),
+              list.toList
+            )
+          loop(index + 1)
+        }
+      }
+      loop(0)
+      result
+    }
+
+    def downloadPiece(pieceIndex: Long, length: Long): Chain[Message.Request] = {
+      val chunkSize = 16 * 1024
+      var result = Chain.empty[Message.Request]
+      def loop(index: Long): Unit = {
+        val thisChunkSize = math.min(chunkSize, length - index * chunkSize)
+        if (thisChunkSize > 0) {
+          val begin = index * chunkSize
+          result = result append Message.Request(
+              pieceIndex,
+              begin,
+              thisChunkSize
+            )
+          loop(index + 1)
+        }
+      }
+      loop(0)
+      result
+    }
+
+    downloadFile(metadata.pieceLength, metadata.files.map(_.length).sum, metadata.pieces)
+  }
+
+  case class IncompletePiece(
+    index: Long,
+    size: Long,
+    checksum: ByteVector,
+    requests: List[Message.Request],
+    downloadedSize: Long = 0,
+    downloaded: Map[Message.Request, ByteVector] = Map.empty
+  ) {
+    def add(request: Message.Request, bytes: ByteVector): IncompletePiece =
+      copy(
+        downloadedSize = downloadedSize + request.length,
+        downloaded = downloaded.updated(request, bytes)
+      )
+    def isComplete: Boolean = size == downloadedSize
+    def verified: Option[ByteVector] = {
+      val joinedChunks: ByteVector =
+        downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
+      if (joinedChunks.digest("SHA-1") == checksum) joinedChunks.some else none
+    }
+    def reset: IncompletePiece =
+      copy(downloadedSize = 0, downloaded = Map.empty)
+  }
+
+  case class CompletePiece(index: Long, bytes: ByteVector)
 }
