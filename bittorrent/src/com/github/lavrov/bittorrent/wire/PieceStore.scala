@@ -13,16 +13,19 @@ trait PieceStore[F[_]] {
 
 object PieceStore {
 
+  val MaxSize = 10
+
   def apply[F[_]](request: Int => F[Unit])(implicit F: Concurrent[F]): F[PieceStore[F]] = {
     sealed trait Cell
     case class Requested(deferred: Deferred[F, ByteVector]) extends Cell
     case class Complete(bytes: ByteVector) extends Cell
+    case class State(cells: Map[Int, Cell], complete: List[Int])
     for {
-      pieces <- Ref.of(Map.empty[Int, Cell])
+      pieces <- Ref.of(State(Map.empty, List.empty))
     } yield new PieceStore[F] {
       def get(index: Int): F[ByteVector] =
         pieces.modify { pieces =>
-          pieces.get(index) match {
+          pieces.cells.get(index) match {
             case Some(cell) =>
               cell match {
                 case Complete(bytes) => (pieces, bytes.pure[F])
@@ -30,20 +33,35 @@ object PieceStore {
               }
             case None =>
               val deferred = Deferred.unsafe[F, ByteVector]
-              (pieces.updated(index, Requested(deferred)), request(index) >> deferred.get)
+              val cells = pieces.cells.updated(index, Requested(deferred))
+              (pieces.copy(cells = cells), request(index) >> deferred.get)
           }
         }.flatten
+
       def put(index: Int, bytes: ByteVector): F[Unit] =
         pieces
           .modify { pieces =>
-            pieces.get(index) match {
-              case Some(Requested(deferred)) => (pieces.updated(index, Complete(bytes)), deferred.some)
+            pieces.cells.get(index) match {
+              case Some(Requested(deferred)) =>
+                val cells = pieces.cells.updated(index, Complete(bytes))
+                val complete = index :: pieces.complete
+                (pieces.copy(cells = cells, complete = complete), (deferred, complete).some)
               case _ => (pieces, none)
             }
           }
           .flatMap {
-            case Some(deferred) => deferred.complete(bytes)
+            case Some((deferred, complete)) =>
+              deferred.complete(bytes) >>
+              F.whenA(complete.size > MaxSize)(clean)
             case _ => F.unit
+          }
+
+      val clean: F[Unit] =
+        pieces
+          .update { pieces =>
+            val (keep, delete) = pieces.complete.splitAt(MaxSize)
+            val cells = pieces.cells -- delete
+            (pieces.copy(cells = cells, complete = keep))
           }
     }
   }
