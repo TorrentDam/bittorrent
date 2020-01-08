@@ -63,9 +63,7 @@ object Torrent {
           yield {
             ListItem(button = true)(
               key := s"file-$index",
-              onClick := { () =>
-                println("hello")
-              },
+              onClick := handleClick(index),
               ListItemText(
                 primary = file.path.last,
                 secondary = InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString()
