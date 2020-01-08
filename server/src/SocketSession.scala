@@ -64,7 +64,7 @@ object SocketSession {
   class CommandHandler(
     controlRef: Ref[IO, Option[Torrent[IO]]],
     send: Event => IO[Unit],
-    makeTorrentControl: InfoHash => IO[Torrent[IO]]
+    getTorrent: InfoHash => IO[Torrent[IO]]
   )(
     implicit
     F: Concurrent[IO],
@@ -75,22 +75,35 @@ object SocketSession {
     def handle(command: Command): IO[Unit] = command match {
       case Command.GetTorrent(infoHashString @ InfoHashFromString(infoHash)) =>
         for {
-          _ <- send(Event.RequestAccepted(infoHashString))
-          control <- makeTorrentControl(infoHash)
-          files = control.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
-          _ <- send(Event.TorrentMetadataReceived(files))
-          _ <- controlRef.set(control.some)
-          _ <- Stream
-            .repeatEval(
-              (timer.sleep(2.seconds) >> control.stats).flatMap { stats =>
-                send(Event.TorrentStats(infoHashString, stats.connected))
-              }
-            )
-            .compile
-            .drain
-            .start
+          torrent <- controlRef.get
+          _ <- torrent match {
+            case Some(_) => IO.unit
+            case None =>
+              for {
+                _ <- send(Event.RequestAccepted(infoHashString))
+                _ <- handleGetTorrent(infoHash).flatMap(sentTorrentStats(infoHashString, _)).start
+              } yield ()
+          }
         } yield ()
     }
+
+    private def handleGetTorrent(infoHash: InfoHash): IO[Torrent[IO]] =
+      for {
+        torrent <- getTorrent(infoHash)
+        files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
+        _ <- send(Event.TorrentMetadataReceived(files))
+        _ <- controlRef.set(torrent.some)
+      } yield torrent
+
+    private def sentTorrentStats(infoHash: String, torrent: Torrent[IO]): IO[Unit] =
+      Stream
+        .repeatEval(
+          (timer.sleep(2.seconds) >> torrent.stats).flatMap { stats =>
+            send(Event.TorrentStats(infoHash, stats.connected))
+          }
+        )
+        .compile
+        .drain
   }
 
   object CommandHandler {
