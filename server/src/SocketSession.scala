@@ -62,7 +62,6 @@ object SocketSession {
     ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
 
   class CommandHandler(
-    controlRef: Ref[IO, Option[Torrent[IO]]],
     send: Event => IO[Unit],
     getTorrent: InfoHash => IO[Torrent[IO]]
   )(
@@ -75,15 +74,11 @@ object SocketSession {
     def handle(command: Command): IO[Unit] = command match {
       case Command.GetTorrent(infoHashString @ InfoHashFromString(infoHash)) =>
         for {
-          torrent <- controlRef.get
-          _ <- torrent match {
-            case Some(_) => IO.unit
-            case None =>
-              for {
-                _ <- send(Event.RequestAccepted(infoHashString))
-                _ <- handleGetTorrent(infoHash).flatMap(sentTorrentStats(infoHashString, _)).start
-              } yield ()
-          }
+          _ <- send(Event.RequestAccepted(infoHashString))
+          _ <- (
+            handleGetTorrent(infoHash) >>=
+            (sentTorrentStats(infoHashString, _))
+          ).start
         } yield ()
     }
 
@@ -92,7 +87,6 @@ object SocketSession {
         torrent <- getTorrent(infoHash)
         files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
         _ <- send(Event.TorrentMetadataReceived(files))
-        _ <- controlRef.set(torrent.some)
       } yield torrent
 
     private def sentTorrentStats(infoHash: String, torrent: Torrent[IO]): IO[Unit] =
@@ -118,20 +112,24 @@ object SocketSession {
       logger: LogIO[IO]
     ): Resource[IO, CommandHandler] = Resource {
       for {
-        finalizer <- Ref.of(IO.unit)
-        controlRef <- Ref.of(Option.empty[Torrent[IO]])
+        torrentRef <- Ref.of(Option.empty[OpenTorrent])
       } yield {
+        val closeCurrentTorrent = torrentRef
+          .getAndSet(none)
+          .flatMap { opneTorrent =>
+            opneTorrent.traverse_(_.close)
+          }
         val impl = new CommandHandler(
-          controlRef,
           send,
+          closeCurrentTorrent >>
           makeTorrent(_).allocated.flatMap {
-            case (get, close) =>
-              finalizer.get.flatten >> finalizer.set(close) >> get
+            case (torrent, close) =>
+              torrentRef.set(OpenTorrent(torrent, close).some) >> torrent
           }
         )
-        val close: IO[Unit] = finalizer.get.flatten
-        (impl, close)
+        (impl, closeCurrentTorrent)
       }
     }
+    case class OpenTorrent(torrent: IO[Torrent[IO]], close: IO[Unit])
   }
 }
