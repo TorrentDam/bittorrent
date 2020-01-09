@@ -42,13 +42,15 @@ object Torrent {
     def handleBackClick: js.Function0[Unit] = () => setState(None)
     def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash}/data/$index")
     props.model.metadata match {
-      case Some(metadata) =>
+      case None =>
+        p(className := classes.centered.toString)("Fetching torrent metadata...")
+      case Some(Right(metadata)) =>
         value match {
           case Some(fileIndex) => renderFile(videoStreamUrl(fileIndex), handleBackClick)
           case None => renderList(videoStreamUrl, metadata, handlePlayClick)
         }
-      case None =>
-        p(className := classes.centered.toString)("Fetching torrent metadata...")
+      case Some(Left(message)) =>
+        p(className := classes.centered.toString)("Could not fetch metadata")
     }
   }
 

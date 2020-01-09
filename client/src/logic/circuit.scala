@@ -26,6 +26,8 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
               }
               val metadata = Metadata(metadataFiles)
               value.copy(torrent = value.torrent.map(_.withMetadata(metadata)))
+            case Event.TorrentError(message) =>
+              value.copy(torrent = value.torrent.map(_.withError(message)))
             case Event.TorrentStats(_, connected) =>
               value.copy(
                 torrent = value.torrent.map(_.copy(connected = connected))

@@ -83,11 +83,13 @@ object SocketSession {
     }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Torrent[IO]] =
-      for {
-        torrent <- getTorrent(infoHash)
-        files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
-        _ <- send(Event.TorrentMetadataReceived(files))
-      } yield torrent
+      getTorrent(infoHash).timeout(30.seconds).attempt.flatMap {
+        case Right(torrent) =>
+          val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
+          send(Event.TorrentMetadataReceived(files)).as(torrent)
+        case Left(e) =>
+          send(Event.TorrentError("Could not fetch metadata")) >> IO.raiseError(e)
+      }
 
     private def sentTorrentStats(infoHash: String, torrent: Torrent[IO]): IO[Unit] =
       Stream

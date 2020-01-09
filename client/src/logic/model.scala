@@ -21,9 +21,10 @@ object RootModel {
 case class TorrentModel(
   infoHash: String,
   connected: Int,
-  metadata: Option[Metadata]
+  metadata: Option[Either[String, Metadata]]
 ) {
-  def withMetadata(metadata: Metadata): TorrentModel = copy(metadata = Some(metadata))
+  def withMetadata(metadata: Metadata): TorrentModel = copy(metadata = Some(Right(metadata)))
+  def withError(message: String): TorrentModel = copy(metadata = Some(Left(message)))
 }
 
 case class Metadata(
