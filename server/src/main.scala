@@ -24,7 +24,7 @@ import scala.util.Random
 
 object Main extends IOApp {
 
-  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger())
+  implicit val logger: LogIO[IO] = LogIO.fromLogger(IzLogger(IzLogger.Level.Info))
   implicit val decoder: Codec[String] = scodec.codecs.utf8
   val rnd = new Random
   val selfId: PeerId = PeerId.generate(rnd)

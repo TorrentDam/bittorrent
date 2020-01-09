@@ -127,23 +127,23 @@ object TorrentRegistry {
         .flatMap { cell =>
           if (cell.count == 0)
             logger.info(s"Schedule torrent closure in 10 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
-            timer.sleep(10.minutes) >>
-            ref
-              .modify { registry =>
-                if (registry.get(infoHash).exists(_.usedCount == cell.usedCount))
-                  (
-                    registry.removed(infoHash),
-                    cell.close >> logger.info(s"Closed torrent $infoHash")
-                  )
-                else
-                  (
-                    registry,
-                    logger.info(s"Keep this torrent running $infoHash")
-                  )
-              }
-              .flatten
-              .start
-              .void
+            (
+              timer.sleep(10.minutes) >>
+              ref
+                .modify { registry =>
+                  if (registry.get(infoHash).exists(_.usedCount == cell.usedCount))
+                    (
+                      registry.removed(infoHash),
+                      cell.close >> logger.info(s"Closed torrent $infoHash")
+                    )
+                  else
+                    (
+                      registry,
+                      logger.info(s"Keep this torrent running $infoHash")
+                    )
+                }
+                .flatten
+            ).start.void
           else
             logger.info(s"Torrent is still in use ${cell.count} $infoHash")
         }
