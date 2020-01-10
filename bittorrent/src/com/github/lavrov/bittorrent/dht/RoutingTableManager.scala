@@ -92,6 +92,6 @@ object RoutingTableManager {
             val msg = e.getMessage()
             logger.info(s"Bootstrap failed $msg $e") >> timer.sleep(5.seconds) >> loop
         }
-    logger.info("Boostrapping") >> loop << logger.info("Bootstrap complete")
+    logger.info("Boostrapping") *> loop <* logger.info("Bootstrap complete")
   }
 }

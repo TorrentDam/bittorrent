@@ -4,7 +4,7 @@ import $file.release, release.ReleaseModule
 object bencode extends Module {
   def ivyDeps = Agg(
     ivy"org.scodec::scodec-core:1.11.4", 
-    ivy"org.typelevel::cats-core:2.0.0",
+    ivy"org.typelevel::cats-core:2.1.0",
   )
   object test extends TestModule
 }
@@ -14,7 +14,7 @@ object bittorrent extends Module {
   def ivyDeps = Agg(
     ivy"org.typelevel::cats-effect::2.0.0",
     ivy"org.typelevel::cats-mtl-core:0.7.0",
-    ivy"com.olegpy::meow-mtl:0.3.0-M1",
+    ivy"com.olegpy::meow-mtl-effects:0.4.0",
     ivy"io.github.timwspence::cats-stm:0.5.0",
     ivy"co.fs2::fs2-io:2.1.0",
     ivy"io.7mind.izumi::logstage-core:${Versions.logstage}",
