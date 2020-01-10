@@ -39,7 +39,7 @@ object DownloadPanel {
     val infoHashOpt = extractInfoHash(value)
     Paper(className = classes.root.toString)(
       InputBase(
-        placeholder = "Info hash",
+        placeholder = "Info hash or magnet link",
         value = value,
         onChange = event => setState(event.target.value.asInstanceOf[String]),
         className = classes.input.toString
