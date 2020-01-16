@@ -89,7 +89,7 @@ object Main extends IOApp {
                 Stream
                   .emits(span.beginIndex to span.endIndex)
                   .covary[IO]
-                  .parEvalMap(2)(index => torrent.piece(index.toInt) tupleLeft index)
+                  .parEvalMap(3)(index => torrent.piece(index.toInt) tupleLeft index)
                   .map {
                     case (span.beginIndex, bytes) =>
                       bytes.drop(span.beginOffset).toArray
