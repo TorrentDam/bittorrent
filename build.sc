@@ -92,15 +92,15 @@ object client extends JsModule {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.0"
+  def scalaVersion = "2.13.1"
   def scalacOptions = List(
     "-language:higherKinds",
     "-Ymacro-annotations",
   )
 
   def scalacPluginIvyDeps = Agg(
+    ivy"org.typelevel:::kind-projector:0.11.0",
     ivy"com.olegpy::better-monadic-for:0.3.1",
-    ivy"org.typelevel::kind-projector:0.10.3",
   )
   trait TestModule extends Tests {
     def ivyDeps = Agg(

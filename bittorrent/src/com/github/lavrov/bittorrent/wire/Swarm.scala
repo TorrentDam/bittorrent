@@ -1,9 +1,10 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats._
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.data.ContT
+import cats.effect.concurrent.Ref
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Fiber, Resource, Timer}
+import cats.effect.{Concurrent, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
@@ -29,16 +30,18 @@ object Swarm {
     logger: LogIO[F]
   ): Resource[F, Swarm[F]] = Resource {
     for {
-      semaphore <- Semaphore(maxConnections)
       stateRef <- Ref.of(Map.empty[PeerInfo, Connection[F]])
       lastConnected <- SignallingRef[F, Connection[F]](null)
       peerBuffer <- Queue.bounded[F, PeerInfo](10)
+      reconnects <- Queue.unbounded[F, F[Unit]]
       fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
-      connectionFibers <- Ref.of[F, List[Fiber[F, Unit]]](List.empty)
-      fiber2 <- {
-        def spawn(peerInfo: PeerInfo): F[Fiber[F, Unit]] =
-          connectRoutine(peerInfo) {
-            semaphore.withPermit {
+      connectionFibers <- F
+        .replicateA(
+          maxConnections,
+          openConnections[F](
+            peerBuffer.dequeue1,
+            reconnects,
+            peerInfo =>
               for {
                 _ <- logger.info(s"Connecting to ${peerInfo.address}")
                 connection <- connect(peerInfo)
@@ -48,29 +51,11 @@ object Swarm {
                 _ <- connection.disconnected
                 _ <- stateRef.update(_ - peerInfo)
               } yield ()
-            }
-          }.start
-        semaphore.available
-          .flatMap {
-            case 0L => F.unit
-            case n =>
-              val spawnOne = peerBuffer.dequeue1 >>= spawn
-              F.replicateA(n.toInt, spawnOne)
-                .flatMap(fibers => connectionFibers.update(fibers ++ _))
-                .void
-          }
-          .flatMap { _ =>
-            timer.sleep(1.second)
-          }
-          .foreverM[Unit]
-          .start
-      }
-      cancelConnectionFibers = connectionFibers.get.flatMap(_.traverse_(_.cancel))
-      closeConnections = stateRef.get.flatMap(_.values.toList.traverse_(_.close))
+          ).foreverM[Unit].start
+        )
     } yield {
       val impl = new Impl(stateRef, lastConnected)
-      val close = fiber1.cancel >> fiber2.cancel >> cancelConnectionFibers >> closeConnections >> logger
-          .info("Closed CM")
+      val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
       (impl, close)
     }
   }
@@ -87,32 +72,72 @@ object Swarm {
     }
   }
 
-  private def connectRoutine[F[_]](peerInfo: PeerInfo)(connect: F[Unit])(
-    implicit F: MonadError[F, Throwable],
+  private def openConnections[F[_]](discover: F[PeerInfo], reconnects: Queue[F, F[Unit]], connect: PeerInfo => F[Unit])(
+    implicit F: Concurrent[F],
     timer: Timer[F],
     logger: LogIO[F]
+  ): F[Unit] =
+    for {
+      continuation <- reconnects.tryDequeue1.flatMap {
+        case Some(c) => c.pure[F]
+        case None =>
+          type Cont[A] = ContT[F, Unit, A]
+          implicit val liftF: F ~> Cont = λ[F ~> Cont] { fa =>
+            ContT { k =>
+              fa >>= k
+            }
+          }
+          F.race(discover, reconnects.dequeue1).map {
+            _.leftMap { discovered =>
+              connectRoutine[Cont, F](discovered)(
+                connect = liftF {
+                  connect(discovered).attempt
+                },
+                coolDown = duration =>
+                  ContT { k0 =>
+                    val k = k0(())
+                    (timer.sleep(duration) >> reconnects.enqueue1(k)).start.void
+                  }
+              ).run(_ => F.unit)
+            }.merge
+          }
+      }
+      _ <- continuation
+    } yield ()
+
+  private def connectRoutine[F[_], F0[_]](
+    peerInfo: PeerInfo
+  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(
+    implicit F: Monad[F],
+    logger: LogIO[F0],
+    lift: F0 ~> F
   ): F[Unit] = {
     val maxAttempts = 5
-    val gaveUp = logger.info(s"Gave up on ${peerInfo.address}")
-    def retry(reason: Throwable, attempt: Int): F[Unit] = {
-      val waitDuration = (10 * attempt).seconds
-      val cause = reason.getMessage
+    val gaveUp = lift {
+      logger.info(s"Gave up on ${peerInfo.address}")
+    }
+    def logRetry(cause: String, attempt: Int, waitDuration: FiniteDuration) = lift {
       logger.info(
-        s"Connection failed $cause. Retry connecting to ${peerInfo.address} in at least $waitDuration ($attempt)"
-      ) >>
-      timer.sleep(waitDuration) >>
+        s"Connection failed $attempt $cause. Retry connecting to ${peerInfo.address} in at least $waitDuration"
+      )
+    }
+    def connectWithRetry(attempt: Int): F[Unit] = {
       connect
-        .handleErrorWith { e =>
-          if (attempt == maxAttempts) gaveUp >> F.raiseError(e)
-          else retry(e, attempt + 1)
+        .flatMap {
+          case Right(_) => F.unit
+          case Left(e) =>
+            val cause = e.getMessage
+            if (attempt == maxAttempts) gaveUp
+            else {
+              val duration = (10 * attempt).seconds
+              logRetry(cause, attempt, duration) >> coolDown(duration) >> connectWithRetry(attempt + 1)
+            }
         }
     }
     for {
-      _ <- connect.handleErrorWith { e =>
-        retry(e, 1)
-      }
-      _ <- logger.info(s"Disconnected from ${peerInfo.address}. Reconnect.")
-      _ <- connectRoutine(peerInfo)(connect)
+      _ <- connectWithRetry(1)
+      _ <- lift { logger.info(s"Disconnected from ${peerInfo.address}. Reconnect.") }
+      _ <- connectRoutine(peerInfo)(connect, coolDown)
     } yield ()
   }
 
