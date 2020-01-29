@@ -14,23 +14,14 @@ object SwarmTasks {
     swarm: Swarm[F],
     piecePicker: PiecePicker[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Unit] =
-    for {
-      fibers <- Ref.of(List.empty[Fiber[F, _]])
-      cancel = fibers.get.flatMap { list =>
-        list.traverse_(_.cancel)
+    swarm.connected.stream
+      .parEvalMapUnordered(Int.MaxValue) { c =>
+        download(c, piecePicker).attempt
       }
-      _ <- swarm.connected.stream
-        .evalTap { c =>
-          F.uncancelable(
-            downloadLoop(c, piecePicker).start.flatMap(f => fibers.update(f :: _))
-          )
-        }
-        .compile
-        .drain
-        .guarantee(cancel)
-    } yield ()
+      .compile
+      .drain
 
-  private def downloadLoop[F[_]](
+  private def download[F[_]](
     connection: Connection[F],
     pieces: PiecePicker[F]
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[Unit] = {
