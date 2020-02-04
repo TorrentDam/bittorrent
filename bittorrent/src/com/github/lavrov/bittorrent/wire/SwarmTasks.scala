@@ -31,9 +31,10 @@ object SwarmTasks {
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[Unit] = {
     for {
       implicit0(logger: LogIO[F]) <- logger.withCustomContext(("address", connection.info.address.toString)).pure[F]
-      demand <- Semaphore[F](MaxParallelRequests)
+      demand <- Semaphore(MaxParallelRequests)
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- Ref.of[F, Set[Message.Request]](Set.empty)
+      pickMutex <- Semaphore(1)
       waitForUpdate <- {
         MVar.empty[F, Unit].flatMap { trigger =>
           val notify = trigger.tryPut()
@@ -50,17 +51,19 @@ object SwarmTasks {
           _ <- connection.waitUnchoked.timeoutTo(30.seconds, F.raiseError(Error.TimeoutWaitingForUnchoke(30.seconds)))
           a <- connection.availability.get
           wait <- F.uncancelable {
-            for {
-              request <- pieces.pick(a, connection.info.address)
-              wait <- request match {
-                case Some(request) =>
-                  logger.info(s"Picked $request") >>
-                  incompleteRequests.update(_ + request) >>
-                  requestQueue.enqueue1(request).as(false)
-                case None =>
-                  logger.info(s"No pieces dispatched for ${connection.info.address}").as(true)
-              }
-            } yield wait
+            pickMutex.withPermit {
+              for {
+                request <- pieces.pick(a, connection.info.address)
+                wait <- request match {
+                  case Some(request) =>
+                    logger.info(s"Picked $request") >>
+                    incompleteRequests.update(_ + request) >>
+                    requestQueue.enqueue1(request).as(false)
+                  case None =>
+                    logger.info(s"No pieces dispatched for ${connection.info.address}").as(true)
+                }
+              } yield wait
+            }
           }
           _ <- F.whenA(wait)(waitForUpdate)
         } yield ()
@@ -85,6 +88,7 @@ object SwarmTasks {
         .drain
       _ <- (fillQueue race drainQueue).void
         .handleErrorWith { e =>
+          pickMutex.acquire >>
           logger.info(s"Closing connection due to ${e.getMessage}") >>
           incompleteRequests.get.flatMap { requests =>
             logger.info(s"Unpick $requests") >>
