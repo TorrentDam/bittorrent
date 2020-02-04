@@ -44,7 +44,7 @@ package object format {
     implicit val StringReader: BencodeFormat[String] = BencodeFormat(
       ReaderT {
         case Bencode.BString(v) =>
-          v.decodeAscii.left.map(BencodeFormatException("Unable to decode ascii", _))
+          v.decodeUtf8.left.map(BencodeFormatException("Unable to decode UTF8", _))
         case other => Left(BencodeFormatException(s"String is expected, $other found"))
       },
       ReaderT { value =>
@@ -192,9 +192,12 @@ package object format {
           values
             .get(name)
             .toRight(
-              BencodeFormatException(s"Field $name not found. Available fields: ${values.keys}")
+              BencodeFormatException(s"Faield $name not found. Available fields: ${values.keys}")
             )
             .flatMap(bReader.read.run)
+            .leftMap { cause =>
+              BencodeFormatException(s"Faield while reading '$name'", cause)
+            }
         case _ =>
           Left(BencodeFormatException("Dictionary is expected"))
       },
