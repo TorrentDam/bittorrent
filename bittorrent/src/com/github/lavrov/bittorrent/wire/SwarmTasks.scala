@@ -1,14 +1,18 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.concurrent.{MVar, Ref}
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Fiber, Resource, Sync, Timer}
+import cats.effect.concurrent.{MVar, Ref, Semaphore}
+import cats.effect.{Concurrent, Sync, Timer}
 import cats.implicits._
+import com.github.lavrov.bittorrent.protocol.message.Message
+import fs2.concurrent.Queue
 import logstage.LogIO
 
 import scala.concurrent.duration._
 
 object SwarmTasks {
+
+  private val MaxParallelRequests = 10
 
   def download[F[_]](
     swarm: Swarm[F],
@@ -26,7 +30,10 @@ object SwarmTasks {
     pieces: PiecePicker[F]
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[Unit] = {
     for {
-      logger <- logger.withCustomContext(("address", connection.info.address.toString)).pure[F]
+      implicit0(logger: LogIO[F]) <- logger.withCustomContext(("address", connection.info.address.toString)).pure[F]
+      demand <- Semaphore[F](MaxParallelRequests)
+      requestQueue <- Queue.unbounded[F, Message.Request]
+      incompleteRequests <- Ref.of[F, Set[Message.Request]](Set.empty)
       waitForUpdate <- {
         MVar.empty[F, Unit].flatMap { trigger =>
           val notify = trigger.tryPut()
@@ -37,34 +44,52 @@ object SwarmTasks {
         }
       }
       _ <- connection.interested
-      _ <- {
+      fillQueue = (
         for {
+          _ <- demand.acquire
           _ <- connection.waitUnchoked.timeoutTo(30.seconds, F.raiseError(Error.TimeoutWaitingForUnchoke(30.seconds)))
           a <- connection.availability.get
-          request <- pieces.pick(a)
-          _ <- logger.info(s"Picked $request")
-          _ <- request match {
-            case Some(request) =>
-              connection
-                .request(request)
-                .timeoutTo(5.seconds, F.raiseError(Error.TimeoutWaitingForPiece(5.seconds)))
-                .attempt
-                .flatMap {
-                  case Right(bytes) =>
-                    logger.info(s"Complete $request") >>
-                    pieces.complete(request, bytes)
-                  case Left(e) =>
-                    logger.info(s"Unpick $request") >>
-                    pieces.unpick(request) >>
-                    F.raiseError[Unit](e)
-                }
-            case None =>
-              waitForUpdate
+          wait <- F.uncancelable {
+            for {
+              request <- pieces.pick(a, connection.info.address)
+              wait <- request match {
+                case Some(request) =>
+                  logger.info(s"Picked $request") >>
+                  incompleteRequests.update(_ + request) >>
+                  requestQueue.enqueue1(request).as(false)
+                case None =>
+                  logger.info(s"No pieces dispatched for ${connection.info.address}").as(true)
+              }
+            } yield wait
           }
+          _ <- F.whenA(wait)(waitForUpdate)
         } yield ()
-      }.foreverM[Unit]
+      ).foreverM[Unit]
+      sendRequest = { (request: Message.Request) =>
+        logger.info(s"Request $request") >>
+        connection
+          .request(request)
+          .timeoutTo(5.seconds, F.raiseError(Error.TimeoutWaitingForPiece(5.seconds)))
+          .flatMap { bytes =>
+            F.uncancelable {
+              logger.info(s"Complete $request") >>
+              pieces.complete(request, bytes) >>
+              incompleteRequests.update(_ - request) >>
+              demand.release
+            }
+          }
+      }
+      drainQueue = requestQueue.dequeue
+        .parEvalMapUnordered(Int.MaxValue)(sendRequest)
+        .compile
+        .drain
+      _ <- (fillQueue race drainQueue).void
         .handleErrorWith { e =>
-          logger.info(s"Closing connection due to $e") >>
+          logger.info(s"Closing connection due to ${e.getMessage}") >>
+          incompleteRequests.get.flatMap { requests =>
+            logger.info(s"Unpick $requests") >>
+            requests.toList.traverse_(pieces.unpick)
+          } >>
           connection.close
         }
     } yield ()

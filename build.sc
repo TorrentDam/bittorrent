@@ -12,7 +12,7 @@ object bencode extends Module {
 object bittorrent extends Module {
   def moduleDeps = List(bencode)
   def ivyDeps = Agg(
-    ivy"org.typelevel::cats-effect::2.0.0",
+    ivy"org.typelevel::cats-effect::2.1.0",
     ivy"org.typelevel::cats-mtl-core:0.7.0",
     ivy"com.olegpy::meow-mtl-effects:0.4.0",
     ivy"io.github.timwspence::cats-stm:0.5.0",
