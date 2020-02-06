@@ -41,11 +41,25 @@ object App {
                   DownloadPanel(props.router)
                 case Router.Route.Torrent(_) =>
                   Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
-                    case (Some(torrent), dispatcher) =>
-                      Torrent(torrent, dispatcher)
+                    case (Some(torrent), _) =>
+                      FetchingMetadata(
+                        torrent,
+                        metadata => Torrent(props.router, torrent, metadata)
+                      )
                     case _ =>
                       div()
                   }
+                case Router.Route.File(index, _) =>
+                  Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
+                    case (Some(torrent), _) =>
+                      FetchingMetadata(
+                        torrent,
+                        _ => Player(props.router, torrent.infoHash, index)
+                      )
+                    case _ =>
+                      div()
+                  }
+
               }
             case _ =>
               p(className := classes.centered.toString)("Connecting...")

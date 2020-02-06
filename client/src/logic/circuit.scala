@@ -45,11 +45,17 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
             case Route.Root =>
               None
             case Route.Torrent(infoHash) =>
-              if (!value.torrent.exists(_.infoHash == infoHash))
-                send(Command.GetTorrent(infoHash))
+              getTorrent(value, infoHash)
+              None
+            case Route.File(_, Route.Torrent(infoHash)) =>
+              getTorrent(value, infoHash)
               None
           }
       }
+  private def getTorrent(model: RootModel, infoHash: String) = {
+    if (!model.torrent.exists(_.infoHash == infoHash))
+      send(Command.GetTorrent(infoHash))
+  }
 
   val dispatcher: Dispatcher = action => {
     actionHandler(state.value, action).foreach(state.set)
