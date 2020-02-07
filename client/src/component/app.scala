@@ -3,6 +3,7 @@ package component
 import frp.Observable
 import logic.{Dispatcher, RootModel}
 import material_ui.core._
+import material_ui.icons
 import material_ui.styles.makeStyles
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
@@ -32,6 +33,16 @@ object App {
     val classes = useStyles()
     div(
       div(className := classes.appBarSpacer.toString),
+      AppBar(position = "fixed")(
+        Container(maxWidth = "md")(
+          Toolbar(disableGutters = true)(
+            IconButton(edge = "start", href = "#")(
+              icons.Home()
+            ),
+            Typography(variant = "h6")("BitTorrent")
+          )
+        )
+      ),
       main(
         Container(maxWidth = "md", className = classes.container.toString)(
           Connect(props.model.zoomTo(_.connected), props.dispatcher) {

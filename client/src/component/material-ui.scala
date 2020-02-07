@@ -53,7 +53,7 @@ package core {
 
   @react
   object AppBar extends ExternalComponentWithAttributes[*.tag.type] {
-    case class Props(position: String)
+    case class Props(position: String, color: UndefOr[String] = js.undefined, className: UndefOr[String] = js.undefined)
     val component = imports.AppBar
   }
 
@@ -67,7 +67,9 @@ package core {
     val component = imports.Button
   }
 
-  object Toolbar extends ExternalComponentNoProps {
+  @react
+  object Toolbar extends ExternalComponent {
+    case class Props(disableGutters: UndefOr[Boolean] = js.undefined)
     val component = imports.Toolbar
   }
 
@@ -85,7 +87,7 @@ package core {
   @react
   object Typography extends ExternalComponent {
     case class Props(
-      variant: String,
+      variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined,
       color: String = "inherit"
     )
@@ -192,6 +194,8 @@ package core {
 
 package icons {
   private object imports {
+    @js.native @JSImport("@material-ui/icons/Home", JSImport.Default)
+    object Home extends js.Object
     @js.native @JSImport("@material-ui/icons/Menu", JSImport.Default)
     object Menu extends js.Object
     @js.native @JSImport("@material-ui/icons/GetApp", JSImport.Default)
@@ -202,6 +206,9 @@ package icons {
     object ArrowBack extends js.Object
   }
 
+  object Home extends ExternalComponentNoProps {
+    val component = imports.Home
+  }
   object Menu extends ExternalComponentNoProps {
     val component = imports.Menu
   }
