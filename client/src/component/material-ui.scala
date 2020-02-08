@@ -17,6 +17,8 @@ package core {
     object Avatar extends js.Object
     @js.native @JSImport("@material-ui/core/Button", JSImport.Default)
     object Button extends js.Object
+    @js.native @JSImport("@material-ui/core/Breadcrumbs", JSImport.Default)
+    object Breadcrumbs extends js.Object
     @js.native @JSImport("@material-ui/core/Toolbar", JSImport.Default)
     object Toolbar extends js.Object
     @js.native @JSImport("@material-ui/core/IconButton", JSImport.Default)
@@ -31,6 +33,8 @@ package core {
     object Paper extends js.Object
     @js.native @JSImport("@material-ui/core/InputBase", JSImport.Default)
     object InputBase extends js.Object
+    @js.native @JSImport("@material-ui/core/Link", JSImport.Default)
+    object Link extends js.Object
     @js.native @JSImport("@material-ui/core/LinearProgress", JSImport.Default)
     object LinearProgress extends js.Object
     @js.native @JSImport("@material-ui/core/List", JSImport.Default)
@@ -68,6 +72,12 @@ package core {
   }
 
   @react
+  object Breadcrumbs extends ExternalComponent {
+    case class Props(className: UndefOr[String] = js.undefined)
+    val component = imports.Breadcrumbs
+  }
+
+  @react
   object Toolbar extends ExternalComponent {
     case class Props(disableGutters: UndefOr[Boolean] = js.undefined)
     val component = imports.Toolbar
@@ -97,7 +107,7 @@ package core {
   @react
   object Container extends ExternalComponent {
     case class Props(
-      maxWidth: String,
+      maxWidth: UndefOr[String] = js.undefined,
       className: UndefOr[String] = js.undefined
     )
     val component = imports.Container
@@ -131,6 +141,12 @@ package core {
       disabled: UndefOr[Boolean] = js.undefined
     )
     val component = imports.InputBase
+  }
+
+  @react
+  object Link extends ExternalComponent {
+    case class Props(href: UndefOr[String] = js.undefined, onClick: UndefOr[js.Function0[Unit]] = js.undefined)
+    val component = imports.Link
   }
 
   @react

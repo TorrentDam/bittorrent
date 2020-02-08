@@ -23,6 +23,9 @@ object App {
           paddingTop = theme.spacing(4),
           paddingBottom = theme.spacing(4)
         ),
+        breadcrumb = Dynamic.literal(
+          paddingBottom = theme.spacing(2)
+        ),
         centered = Dynamic.literal(
           textAlign = "center"
         )
@@ -55,17 +58,32 @@ object App {
                     case (Some(torrent), _) =>
                       FetchingMetadata(
                         torrent,
-                        metadata => Torrent(props.router, torrent, metadata)
+                        metadata =>
+                          div(
+                            Breadcrumbs(className = classes.breadcrumb.toString)(
+                              Typography(color = "textPrimary")("Files")
+                            ),
+                            Divider(),
+                            Torrent(props.router, torrent, metadata)
+                          )
                       )
                     case _ =>
                       div()
                   }
-                case Router.Route.File(index, _) =>
+                case Router.Route.File(index, torrentRoute) =>
                   Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
                     case (Some(torrent), _) =>
                       FetchingMetadata(
                         torrent,
-                        _ => Player(props.router, torrent.infoHash, index)
+                        metadata =>
+                          div(
+                            Breadcrumbs(className = classes.breadcrumb.toString)(
+                              Link(href = "#" + Router.Route.toString(torrentRoute))("Files"),
+                              Typography(color = "textPrimary")(metadata.files(index).path.last)
+                            ),
+                            Divider(),
+                            VideoPlayer(props.router, torrent.infoHash, index)
+                          )
                       )
                     case _ =>
                       div()

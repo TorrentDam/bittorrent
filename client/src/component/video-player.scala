@@ -9,7 +9,7 @@ import slinky.web.html._
 import scala.scalajs.js
 
 @react
-object Player {
+object VideoPlayer {
 
   case class Props(router: Router, infoHash: String, index: Int)
 
@@ -17,18 +17,13 @@ object Player {
     val navigateBack: js.Function0[Unit] = () => props.router.navigate(Router.Route.Torrent(props.infoHash))
     val videoStreamUrl = environment.httpUrl(s"/torrent/${props.infoHash}/data/${props.index}")
     div(
-      div(
-        IconButton(icons.ArrowBack(), onClick := navigateBack)
-      ),
-      div(
-        key := "torrent-video-player",
-        video(
-          width := "100%",
-          controls := true,
-          new CustomAttribute[Boolean]("autoPlay") := true,
-          source(
-            src := videoStreamUrl
-          )
+      key := "torrent-video-player",
+      video(
+        width := "100%",
+        controls := true,
+        new CustomAttribute[Boolean]("autoPlay") := true,
+        source(
+          src := videoStreamUrl
         )
       )
     )

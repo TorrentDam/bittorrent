@@ -1,6 +1,16 @@
 package component
 
-import component.material_ui.core.{IconButton, ListItem, ListItemSecondaryAction, ListItemText, Paper, List => MUIList}
+import component.material_ui.core.{
+  Breadcrumbs,
+  Divider,
+  IconButton,
+  Link,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
+  Typography,
+  List => MUIList
+}
 import component.material_ui.icons
 import logic.{Metadata, TorrentModel}
 import slinky.core.FunctionalComponent
@@ -26,8 +36,8 @@ object Torrent {
     videoSrc: Int => String,
     metadata: Metadata,
     handleClick: Int => () => Unit
-  ): ReactElement = {
-    Paper(
+  ): ReactElement =
+    div(
       MUIList(
         for ((file, index) <- metadata.files.zipWithIndex)
           yield {
@@ -52,6 +62,5 @@ object Torrent {
           }
       )
     )
-  }
 
 }
