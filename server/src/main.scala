@@ -47,10 +47,11 @@ object Main extends IOApp {
         implicit val ev0 = udpSocketGroup
         Client.start[IO](selfNodeId, 9596)
       }
+      peerDiscovery <- PeerDiscovery.make[IO](dhtClient)
       makeSwarm = (infoHash: InfoHash) => {
         implicit val ev0 = socketGroup
         Swarm[IO](
-          Stream.eval(PeerDiscovery.start(infoHash, dhtClient)).flatten,
+          peerDiscovery.discover(infoHash),
           peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
           30
         )
