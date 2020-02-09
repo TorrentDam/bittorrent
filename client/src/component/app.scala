@@ -1,12 +1,13 @@
 package component
 
 import frp.Observable
-import logic.{Dispatcher, RootModel}
+import logic.{Dispatcher, Metadata, RootModel, TorrentModel}
 import material_ui.core._
 import material_ui.icons
 import material_ui.styles.makeStyles
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
+import slinky.core.facade.ReactElement
 import slinky.web.html._
 
 import scala.scalajs.js.Dynamic
@@ -53,41 +54,31 @@ object App {
               props.router.when {
                 case Router.Route.Root =>
                   DownloadPanel(props.router)
-                case Router.Route.Torrent(_) =>
-                  Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
-                    case (Some(torrent), _) =>
-                      FetchingMetadata(
-                        torrent,
-                        metadata =>
-                          div(
-                            Breadcrumbs(className = classes.breadcrumb.toString)(
-                              Typography(color = "textPrimary")("Files")
-                            ),
-                            Divider(),
-                            Torrent(props.router, torrent, metadata)
-                          )
-                      )
-                    case _ =>
-                      div()
-                  }
+                case torrentRoute: Router.Route.Torrent =>
+                  withTorrent(torrentRoute, props.model, props.dispatcher)(
+                    torrent =>
+                      metadata =>
+                        div(
+                          Breadcrumbs(className = classes.breadcrumb.toString)(
+                            Typography(color = "textPrimary")("Files")
+                          ),
+                          Divider(),
+                          Torrent(props.router, torrent, metadata)
+                        )
+                  )
                 case Router.Route.File(index, torrentRoute) =>
-                  Connect(props.model.zoomTo(_.torrent), props.dispatcher) {
-                    case (Some(torrent), _) =>
-                      FetchingMetadata(
-                        torrent,
-                        metadata =>
-                          div(
-                            Breadcrumbs(className = classes.breadcrumb.toString)(
-                              Link(href = "#" + Router.Route.toString(torrentRoute))("Files"),
-                              Typography(color = "textPrimary")(metadata.files(index).path.last)
-                            ),
-                            Divider(),
-                            VideoPlayer(props.router, torrent.infoHash, index)
-                          )
-                      )
-                    case _ =>
-                      div()
-                  }
+                  withTorrent(torrentRoute, props.model, props.dispatcher)(
+                    torrent =>
+                      metadata =>
+                        div(
+                          Breadcrumbs(className = classes.breadcrumb.toString)(
+                            Link(href = "#" + Router.Route.toString(torrentRoute))("Files"),
+                            Typography(color = "textPrimary")(metadata.files(index).path.last)
+                          ),
+                          Divider(),
+                          VideoPlayer(props.router, torrent.infoHash, index)
+                        )
+                  )
 
               }
             case _ =>
@@ -96,5 +87,16 @@ object App {
         )
       )
     )
+  }
+
+  private def withTorrent(route: Router.Route.Torrent, model: Observable[RootModel], dispatcher: Dispatcher)(
+    component: TorrentModel => Metadata => ReactElement
+  ): ReactElement = {
+    Connect(model.zoomTo(_.torrent), dispatcher) {
+      case (Some(torrent), _) =>
+        FetchingMetadata(torrent, component(torrent))
+      case _ =>
+        div()
+    }
   }
 }
