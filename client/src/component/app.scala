@@ -82,7 +82,7 @@ object App {
 
               }
             case _ =>
-              p(className := classes.centered.toString)("Connecting...")
+              p(className := classes.centered.toString)("Connecting to server...")
           }
         )
       )
