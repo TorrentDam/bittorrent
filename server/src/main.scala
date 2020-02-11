@@ -2,20 +2,14 @@ import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
-import com.github.lavrov.bittorrent._
+import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import fs2.Stream
 import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{
-  `Accept-Ranges`,
-  `Content-Disposition`,
-  `Content-Length`,
-  `Content-Range`,
-  `Content-Type`,
-  Range
-}
+import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -51,8 +45,8 @@ object Main extends IOApp {
       makeSwarm = (infoHash: InfoHash) => {
         implicit val ev0 = socketGroup
         Swarm[IO](
-          peerDiscovery.discover(infoHash),
-          peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
+          peerDiscovery.discover(BTInfoHash(infoHash.bytes)),
+          peerInfo => Connection.connect[IO](selfId, peerInfo, BTInfoHash(infoHash.bytes)),
           30
         )
       }
@@ -162,9 +156,9 @@ object Main extends IOApp {
       .of[IO] {
         case GET -> Root => Ok("Success")
         case GET -> Root / "ws" => handleSocket
-        case GET -> Root / "torrent" / InfoHashFromString(infoHash) / "metadata" =>
+        case GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "metadata" =>
           handleGetTorrent(infoHash)
-        case req @ GET -> Root / "torrent" / InfoHashFromString(infoHash) / "data" / FileIndexVar(index) =>
+        case req @ GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "data" / FileIndexVar(index) =>
           handleGetData(infoHash, index, req.headers.get(Range))
       }
       .mapF(_.getOrElseF(NotFound()))

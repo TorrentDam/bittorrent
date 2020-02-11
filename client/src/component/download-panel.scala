@@ -1,4 +1,5 @@
 package component
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.Router.Route
 import material_ui.core._
 import material_ui.styles.makeStyles
@@ -33,7 +34,7 @@ object DownloadPanel {
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
     val (value, setState) = Hooks.useState("")
-    def handleClick(infoHash: String) = () => {
+    def handleClick(infoHash: InfoHash) = () => {
       props.router.navigate(Route.Torrent(infoHash))
     }
     val infoHashOpt = extractInfoHash(value)
@@ -54,9 +55,12 @@ object DownloadPanel {
 
   private val regex = """xt=urn:btih:(\w+)""".r
 
-  private def extractInfoHash(value: String): Option[String] = {
+  private def extractInfoHash(value: String): Option[InfoHash] = {
     def isInfoHash(str: String) = ByteVector.fromHex(str).exists(_.size == 20)
-    if (isInfoHash(value)) Some(value)
-    else regex.findFirstMatchIn(value).map(_.group(1)).filter(isInfoHash)
+    InfoHash.fromString.lift(value).orElse(
+      regex.findFirstMatchIn(value).map(_.group(1)).collectFirst {
+        case InfoHash.fromString(infoHash) => infoHash
+      }
+    )
   }
 }

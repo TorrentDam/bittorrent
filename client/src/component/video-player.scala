@@ -1,5 +1,6 @@
 package component
 
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.material_ui.icons
 import component.material_ui.core._
 import slinky.core.annotations.react
@@ -11,7 +12,7 @@ import scala.scalajs.js
 @react
 object VideoPlayer {
 
-  case class Props(router: Router, infoHash: String, index: Int)
+  case class Props(router: Router, infoHash: InfoHash, index: Int)
 
   val component = FunctionalComponent[Props] { props =>
     val navigateBack: js.Function0[Unit] = () => props.router.navigate(Router.Route.Torrent(props.infoHash))

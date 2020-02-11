@@ -1,4 +1,6 @@
 package logic
+
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import squants.Quantity
 import squants.information.Information
 
@@ -19,7 +21,7 @@ object RootModel {
 }
 
 case class TorrentModel(
-  infoHash: String,
+  infoHash: InfoHash,
   connected: Int,
   metadata: Option[Either[String, Metadata]]
 ) {

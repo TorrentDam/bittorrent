@@ -35,12 +35,14 @@ object cli extends Module with ReleaseModule {
 
 object shared extends Module {
   def ivyDeps = Agg(
-    ivy"com.lihaoyi::upickle:0.8.0"
+    ivy"com.lihaoyi::upickle:0.8.0",
+    ivy"org.scodec::scodec-core:1.11.4",
   )
   object js extends JsModule {
     def sources = shared.sources
     def ivyDeps = Agg(
-      ivy"com.lihaoyi::upickle::0.8.0"
+      ivy"com.lihaoyi::upickle::0.8.0",
+      ivy"org.scodec::scodec-core::1.11.4",
     )
   }
 }

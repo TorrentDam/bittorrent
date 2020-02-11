@@ -1,4 +1,5 @@
 package logic
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import component.Router.Route
 import frp.{Observable, Var}
@@ -54,7 +55,7 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
               getTorrent(value, infoHash)
           }
       }
-  private def getTorrent(model: RootModel, infoHash: String) = {
+  private def getTorrent(model: RootModel, infoHash: InfoHash) = {
     if (model.torrent.exists(_.infoHash == infoHash))
       None
     else {

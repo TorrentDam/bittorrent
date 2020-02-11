@@ -2,8 +2,8 @@ import cats.effect.concurrent.Ref
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.wire.Torrent
-import com.github.lavrov.bittorrent.{InfoHash, InfoHashFromString}
 import fs2.Stream
 import fs2.concurrent.Queue
 import logstage.LogIO
@@ -72,12 +72,12 @@ object SocketSession {
     logger: LogIO[IO]
   ) {
     def handle(command: Command): IO[Unit] = command match {
-      case Command.GetTorrent(infoHashString @ InfoHashFromString(infoHash)) =>
+      case Command.GetTorrent(infoHash) =>
         for {
-          _ <- send(Event.RequestAccepted(infoHashString))
+          _ <- send(Event.RequestAccepted(infoHash))
           _ <- (
             handleGetTorrent(infoHash) >>=
-            (sentTorrentStats(infoHashString, _))
+            (sentTorrentStats(infoHash, _))
           ).start
         } yield ()
     }
@@ -86,12 +86,12 @@ object SocketSession {
       getTorrent(infoHash).timeout(30.seconds).attempt.flatMap {
         case Right(torrent) =>
           val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
-          send(Event.TorrentMetadataReceived(infoHash.bytes.toHex, files)).as(torrent)
+          send(Event.TorrentMetadataReceived(infoHash, files)).as(torrent)
         case Left(e) =>
           send(Event.TorrentError("Could not fetch metadata")) >> IO.raiseError(e)
       }
 
-    private def sentTorrentStats(infoHash: String, torrent: Torrent[IO]): IO[Unit] =
+    private def sentTorrentStats(infoHash: InfoHash, torrent: Torrent[IO]): IO[Unit] =
       Stream
         .repeatEval(
           (timer.sleep(2.seconds) >> torrent.stats).flatMap { stats =>
