@@ -128,7 +128,7 @@ object TorrentRegistry {
           if (cell.count == 0)
             logger.info(s"Schedule torrent closure in 10 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
             (
-              timer.sleep(10.minutes) >>
+              timer.sleep(2.minutes) >>
               ref.modify { registry =>
                 if (registry.get(infoHash).exists(_.usedCount == cell.usedCount))
                   (
