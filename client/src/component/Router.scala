@@ -60,8 +60,8 @@ object Router {
 
     def toString(route: Route): String = route match {
       case Root => ""
-      case Torrent(infoHash) => s"torrent/${InfoHash.toString(infoHash)}"
-      case File(index, Torrent(infoHash)) => s"torrent/${InfoHash.toString(infoHash)}/file/$index"
+      case Torrent(infoHash) => s"torrent/$infoHash"
+      case File(index, Torrent(infoHash)) => s"torrent/$infoHash/file/$index"
     }
 
     private val Number: PartialFunction[String, Int] = Function.unlift(_.toIntOption)

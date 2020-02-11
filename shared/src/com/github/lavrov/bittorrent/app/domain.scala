@@ -3,7 +3,9 @@ package com.github.lavrov.bittorrent.app.domain
 import scodec.bits.ByteVector
 import upickle.default.ReadWriter
 
-final case class InfoHash(bytes: ByteVector)
+final case class InfoHash(bytes: ByteVector) {
+  override def toString = bytes.toHex
+}
 
 object InfoHash {
 
@@ -14,8 +16,6 @@ object InfoHash {
         _ <- if (b.length == 20) Some(()) else None
       } yield InfoHash(b)
     }
-
-  def toString(infoHash: InfoHash): String = infoHash.bytes.toHex
 
   implicit val infoHashRW: ReadWriter[InfoHash] =
     implicitly[ReadWriter[String]].bimap(

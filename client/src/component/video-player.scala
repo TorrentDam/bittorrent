@@ -16,7 +16,7 @@ object VideoPlayer {
 
   val component = FunctionalComponent[Props] { props =>
     val navigateBack: js.Function0[Unit] = () => props.router.navigate(Router.Route.Torrent(props.infoHash))
-    val videoStreamUrl = environment.httpUrl(s"/torrent/${props.infoHash}/data/${props.index}")
+    val videoStreamUrl = environment.httpUrl(s"/torrent/${props.infoHash.toString}/data/${props.index}")
     div(
       key := "torrent-video-player",
       video(

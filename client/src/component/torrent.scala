@@ -26,7 +26,7 @@ object Torrent {
   case class Props(router: Router, model: TorrentModel, metadata: Metadata)
 
   val component = FunctionalComponent[Props] { props =>
-    def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash}/data/$index")
+    def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash.toString}/data/$index")
     def handlePlayClick(index: Int): js.Function0[Unit] =
       () => props.router.navigate(Router.Route.File(index, Router.Route.Torrent(props.model.infoHash)))
     renderList(videoStreamUrl, props.metadata, handlePlayClick)
