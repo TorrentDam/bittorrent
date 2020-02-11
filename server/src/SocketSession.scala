@@ -86,7 +86,7 @@ object SocketSession {
       getTorrent(infoHash).timeout(30.seconds).attempt.flatMap {
         case Right(torrent) =>
           val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
-          send(Event.TorrentMetadataReceived(files)).as(torrent)
+          send(Event.TorrentMetadataReceived(infoHash.bytes.toHex, files)).as(torrent)
         case Left(e) =>
           send(Event.TorrentError("Could not fetch metadata")) >> IO.raiseError(e)
       }

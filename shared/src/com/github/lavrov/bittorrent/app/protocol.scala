@@ -15,7 +15,7 @@ sealed trait Event
 object Event {
   case class RequestAccepted(infoHash: String) extends Event
 
-  case class TorrentMetadataReceived(files: List[File]) extends Event
+  case class TorrentMetadataReceived(infoHash: String, files: List[File]) extends Event
   case class File(path: List[String], size: Long)
 
   case class TorrentError(message: String) extends Event

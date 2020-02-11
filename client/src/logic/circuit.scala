@@ -14,47 +14,57 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
           )
         case Action.ServerEvent(payload) =>
           val event = upickle.default.read[Event](payload)
-          val updatedModel = event match {
+          event match {
             case Event.RequestAccepted(infoHash) =>
-              value.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
-            case Event.TorrentMetadataReceived(files) =>
-              val metadataFiles = files.map { f =>
-                Metadata.File(
-                  f.path,
-                  information.Bytes(f.size)
-                )
+              Some(
+                value.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
+              )
+            case Event.TorrentMetadataReceived(infoHash, files) =>
+              value.torrent.filter(_.infoHash == infoHash).map { torrent =>
+                val metadataFiles = files.map { f =>
+                  Metadata.File(
+                    f.path,
+                    information.Bytes(f.size)
+                  )
+                }
+                val metadata = Metadata(metadataFiles)
+                val withMetadata = torrent.withMetadata(metadata)
+                value.copy(torrent = Some(withMetadata))
               }
-              val metadata = Metadata(metadataFiles)
-              value.copy(torrent = value.torrent.map(_.withMetadata(metadata)))
             case Event.TorrentError(message) =>
-              value.copy(torrent = value.torrent.map(_.withError(message)))
+              Some(
+                value.copy(torrent = value.torrent.map(_.withError(message)))
+              )
             case Event.TorrentStats(_, connected) =>
-              value.copy(
-                torrent = value.torrent.map(_.copy(connected = connected))
+              Some(
+                value.copy(
+                  torrent = value.torrent.map(_.copy(connected = connected))
+                )
               )
             case _ =>
-              value
+              None
           }
-          Some(
-            updatedModel.copy(
-              logs = payload :: value.logs
-            )
-          )
         case Action.Navigate(route) =>
           route match {
             case Route.Root =>
               None
             case Route.Torrent(infoHash) =>
               getTorrent(value, infoHash)
-              None
             case Route.File(_, Route.Torrent(infoHash)) =>
               getTorrent(value, infoHash)
-              None
           }
       }
   private def getTorrent(model: RootModel, infoHash: String) = {
-    if (!model.torrent.exists(_.infoHash == infoHash))
+    if (model.torrent.exists(_.infoHash == infoHash))
+      None
+    else {
       send(Command.GetTorrent(infoHash))
+      Some(
+        model.copy(
+          torrent = Some(TorrentModel(infoHash, 0, None))
+        )
+      )
+    }
   }
 
   val dispatcher: Dispatcher = action => {
