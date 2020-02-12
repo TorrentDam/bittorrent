@@ -9,7 +9,14 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
+import org.http4s.headers.{
+  `Accept-Ranges`,
+  `Content-Disposition`,
+  `Content-Length`,
+  `Content-Range`,
+  `Content-Type`,
+  Range
+}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
@@ -74,24 +81,29 @@ object Main extends IOApp {
           case None => NotFound("Torrent not found")
         }
       handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
-        torrentRegistry.tryGet(infoHash).allocated.flatMap {
-          case (Some(torrent), close) =>
+        torrentRegistry.tryGet(infoHash).use {
+          case Some(torrent) =>
             if (fileIndex < torrent.getMetaInfo.parsed.files.size) {
               val file = torrent.getMetaInfo.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
               def dataStream(span: FileMapping.Span) =
-                Stream
-                  .emits(span.beginIndex to span.endIndex)
-                  .covary[IO]
-                  .parEvalMap(3)(index => torrent.piece(index.toInt) tupleLeft index)
-                  .map {
-                    case (span.beginIndex, bytes) =>
-                      bytes.drop(span.beginOffset).toArray
-                    case (span.endIndex, bytes) =>
-                      bytes.take(span.endOffset).toArray
-                    case (_, bytes) => bytes.toArray
-                  }
+                Stream.resource(torrentRegistry.tryGet(infoHash)).flatMap {
+                  case Some(torrent) =>
+                    Stream
+                      .emits(span.beginIndex to span.endIndex)
+                      .covary[IO]
+                      .parEvalMap(3)(index => torrent.piece(index.toInt) tupleLeft index)
+                      .map {
+                        case (span.beginIndex, bytes) =>
+                          bytes.drop(span.beginOffset).toArray
+                        case (span.endIndex, bytes) =>
+                          bytes.take(span.endOffset).toArray
+                        case (_, bytes) => bytes.toArray
+                      }
+                  case _ =>
+                    Stream.empty
+                }
               val mediaType =
                 extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
               val span0 = fileMapping.value(fileIndex)
@@ -112,7 +124,7 @@ object Main extends IOApp {
                       Range.SubRange(0L, file.length - 1)
                   }
                   PartialContent(
-                    dataStream(span).onFinalize(close),
+                    dataStream(span),
                     `Content-Type`(mediaType),
                     `Accept-Ranges`.bytes,
                     `Content-Range`(subRange, file.length.some)
@@ -120,7 +132,7 @@ object Main extends IOApp {
                 case None =>
                   val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
                   Ok(
-                    dataStream(span0).onFinalize(close),
+                    dataStream(span0),
                     `Accept-Ranges`.bytes,
                     `Content-Type`(mediaType),
                     `Content-Disposition`("inline", Map("filename" -> filename)),
@@ -131,7 +143,7 @@ object Main extends IOApp {
             else {
               NotFound(s"Torrent does not contain file with index $fileIndex")
             }
-          case (None, _) => NotFound("Torrent not found")
+          case None => NotFound("Torrent not found")
         }
 
     } yield httpApp(handleSocket, handleGetTorrent, handleGetData)
