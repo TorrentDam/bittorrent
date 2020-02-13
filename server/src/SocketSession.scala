@@ -1,4 +1,4 @@
-import cats.effect.concurrent.Ref
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
@@ -54,16 +54,13 @@ object SocketSession {
     }
   }
 
-  private def onCommand(command: Command, send: Event => IO[Unit]): IO[Unit] = command match {
-    case Command.GetTorrent(infoHash) => send(Event.RequestAccepted(infoHash))
-  }
-
   private val Cmd: PartialFunction[String, Command] =
     ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
 
   class CommandHandler(
     send: Event => IO[Unit],
-    getTorrent: InfoHash => IO[Torrent[IO]]
+    getTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]],
+    closed: IO[Unit]
   )(
     implicit
     F: Concurrent[IO],
@@ -75,23 +72,33 @@ object SocketSession {
       case Command.GetTorrent(infoHash) =>
         for {
           _ <- send(Event.RequestAccepted(infoHash))
-          _ <- (
-            handleGetTorrent(infoHash) >>=
-            (sentTorrentStats(infoHash, _))
-          ).start
+          _ <- handleGetTorrent(infoHash)
         } yield ()
     }
 
-    private def handleGetTorrent(infoHash: InfoHash): IO[Torrent[IO]] =
-      getTorrent(infoHash).timeout(30.seconds).attempt.flatMap {
-        case Right(torrent) =>
-          val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
-          send(Event.TorrentMetadataReceived(infoHash, files)).as(torrent)
-        case Left(e) =>
-          send(Event.TorrentError("Could not fetch metadata")) >> IO.raiseError(e)
+    private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
+      F.uncancelable {
+        getTorrent(infoHash)
+          .use { getTorrent =>
+            getTorrent
+              .timeout(30.seconds)
+              .attempt
+              .flatMap {
+                case Right(torrent) =>
+                  val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
+                  send(Event.TorrentMetadataReceived(infoHash, files)) >>
+                  sendTorrentStats(infoHash, torrent) >>
+                  IO.never
+                case Left(_) =>
+                  send(Event.TorrentError("Could not fetch metadata"))
+              }
+          }
+          .start
+          .flatMap(fiber => (closed >> fiber.cancel).start)
+          .void
       }
 
-    private def sentTorrentStats(infoHash: InfoHash, torrent: Torrent[IO]): IO[Unit] =
+    private def sendTorrentStats(infoHash: InfoHash, torrent: Torrent[IO]): IO[Unit] =
       Stream
         .repeatEval(
           (timer.sleep(2.seconds) >> torrent.stats).flatMap { stats =>
@@ -114,24 +121,15 @@ object SocketSession {
       logger: LogIO[IO]
     ): Resource[IO, CommandHandler] = Resource {
       for {
-        torrentRef <- Ref.of(Option.empty[OpenTorrent])
+        closed <- Deferred[IO, Unit]
       } yield {
-        val closeCurrentTorrent = torrentRef
-          .getAndSet(none)
-          .flatMap { opneTorrent =>
-            opneTorrent.traverse_(_.close)
-          }
         val impl = new CommandHandler(
           send,
-          closeCurrentTorrent >>
-          makeTorrent(_).allocated.flatMap {
-            case (torrent, close) =>
-              torrentRef.set(OpenTorrent(torrent, close).some) >> torrent
-          }
+          makeTorrent,
+          closed.get
         )
-        (impl, closeCurrentTorrent)
+        (impl, closed.complete(()))
       }
     }
-    case class OpenTorrent(torrent: IO[Torrent[IO]], close: IO[Unit])
   }
 }

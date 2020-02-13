@@ -126,7 +126,7 @@ object TorrentRegistry {
         }
         .flatMap { cell =>
           if (cell.count == 0)
-            logger.info(s"Schedule torrent closure in 10 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
+            logger.info(s"Schedule torrent closure in 2 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
             (
               timer.sleep(2.minutes) >>
               ref.modify { registry =>
@@ -138,7 +138,7 @@ object TorrentRegistry {
                 else
                   (
                     registry,
-                    logger.info(s"Keep this torrent running $infoHash")
+                    logger.info(s"Keep this torrent running ${cell.count} $infoHash")
                   )
               }.flatten
             ).start.void
