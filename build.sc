@@ -49,7 +49,7 @@ object shared extends Module {
 
 object server extends Module {
   def moduleDeps = List(bittorrent, shared)
-  private val http4sVersion = "0.21.0-M6"
+  private val http4sVersion = "0.21.0"
   def ivyDeps = Agg(
     ivy"org.http4s::http4s-core:$http4sVersion",
     ivy"org.http4s::http4s-dsl:$http4sVersion",
