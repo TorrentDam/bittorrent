@@ -80,9 +80,7 @@ object SocketSession {
       F.uncancelable {
         getTorrent(infoHash)
           .use { getTorrent =>
-            getTorrent
-              .timeout(30.seconds)
-              .attempt
+            getTorrent.attempt
               .flatMap {
                 case Right(torrent) =>
                   val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))

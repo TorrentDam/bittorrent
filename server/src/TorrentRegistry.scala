@@ -109,6 +109,7 @@ object TorrentRegistry {
           complete(torrent.asRight) >>
           waitCancel
         }
+        .timeout(1.minute)
         .handleErrorWith { e =>
           complete(e.asLeft)
         }
