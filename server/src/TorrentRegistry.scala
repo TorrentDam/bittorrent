@@ -70,7 +70,7 @@ object TorrentRegistry {
         .modify { registry =>
           registry.get(infoHash) match {
             case Some(cell) if cell.resolved.isDefined =>
-              val updatedCell = cell.copy(count = cell.count + 1)
+              val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
               val updatedRegistry = registry.updated(infoHash, updatedCell)
               (updatedRegistry, cell.resolved)
             case _ =>
