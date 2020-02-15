@@ -95,7 +95,10 @@ object TorrentRegistry {
       val makeTorrent =
         for {
           (swarm, metadata) <- makeSwarm(infoHash).evalMap { swarm =>
-            UtMetadata.download(swarm).tupleLeft(swarm)
+            UtMetadata
+              .download(swarm)
+              .timeout(1.minute)
+              .tupleLeft(swarm)
           }
           torrent <- Torrent.make(metadata, swarm)
         } yield torrent
@@ -109,7 +112,6 @@ object TorrentRegistry {
           complete(torrent.asRight) >>
           waitCancel
         }
-        .timeout(1.minute)
         .handleErrorWith { e =>
           complete(e.asLeft)
         }
