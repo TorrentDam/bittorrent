@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.effect.{Concurrent, ConcurrentEffect, Resource, Timer}
+import cats.effect.{Concurrent, ConcurrentEffect, ExitCase, Resource, Timer}
 import cats.instances.all._
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.message.Response
@@ -22,42 +22,48 @@ object PeerDiscovery {
       bootstrapNode <- Resource.liftF { RoutingTableManager.bootstrap(client, logger) }
     } yield new PeerDiscovery[F] {
       def discover(infoHash: InfoHash): Stream[F, PeerInfo] =
-        Stream.eval {
-          for {
-            _ <- logger.info("Start discovery")
-            tvar <- TVar.of(State(bootstrapNode :: Nil)).commit[F]
-          } yield {
-            val next = STM.atomically {
-              tvar.get
-                .flatMap { state =>
-                  val check = STM.check(state.nodesToTry.nonEmpty)
-                  def update: STM[Unit] = {
-                    val state1 = state.copy(nodesToTry = state.nodesToTry.tail)
-                    tvar.set(state1)
+        Stream
+          .eval {
+            for {
+              _ <- logger.info("Start discovery")
+              tvar <- TVar.of(State(bootstrapNode :: Nil)).commit[F]
+            } yield {
+              val next = STM.atomically {
+                tvar.get
+                  .flatMap { state =>
+                    val check = STM.check(state.nodesToTry.nonEmpty)
+                    def update: STM[Unit] = {
+                      val state1 = state.copy(nodesToTry = state.nodesToTry.tail)
+                      tvar.set(state1)
+                    }
+                    check >> update as state.nodesToTry.headOption
                   }
-                  check >> update as state.nodesToTry.headOption
-                }
-            }
-            def update(nodes: List[NodeInfo]): F[Unit] =
-              tvar.modify(updateNodeList(nodes, infoHash)).commit[F]
-            def filter(peers: List[PeerInfo]): F[List[PeerInfo]] = {
-              for {
-                state <- tvar.get
-                (state1, newPeers) = filterNewPeers(peers)(state)
-                _ <- tvar.set(state1)
-              } yield newPeers
-            }.commit[F]
+              }
+              def update(nodes: List[NodeInfo]): F[Unit] =
+                tvar.modify(updateNodeList(nodes, infoHash)).commit[F]
+              def filter(peers: List[PeerInfo]): F[List[PeerInfo]] = {
+                for {
+                  state <- tvar.get
+                  (state1, newPeers) = filterNewPeers(peers)(state)
+                  _ <- tvar.set(state1)
+                } yield newPeers
+              }.commit[F]
 
-            start(
-              infoHash,
-              next,
-              update,
-              filter,
-              client.getPeers,
-              logger
-            )
+              start(
+                infoHash,
+                next,
+                update,
+                filter,
+                client.getPeers,
+                logger
+              )
+            }
           }
-        }.flatten
+          .flatten
+          .onFinalizeCase {
+            case ExitCase.Error(e) => logger.error(s"Discovery failed with ${e.getMessage}")
+            case _ => F.unit
+          }
     }
 
   private case class State(
