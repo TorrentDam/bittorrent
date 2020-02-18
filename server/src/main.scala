@@ -1,3 +1,4 @@
+import cats.data.Kleisli
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
@@ -164,16 +165,15 @@ object Main extends IOApp {
     handleGetData: (InfoHash, FileIndex, Option[Range]) => IO[Response[IO]]
   ): HttpApp[IO] = {
     import org.http4s.dsl.io._
-    HttpRoutes
-      .of[IO] {
-        case GET -> Root => Ok("Success")
-        case GET -> Root / "ws" => handleSocket
-        case GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "metadata" =>
-          handleGetTorrent(infoHash)
-        case req @ GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "data" / FileIndexVar(index) =>
-          handleGetData(infoHash, index, req.headers.get(Range))
-      }
-      .mapF(_.getOrElseF(NotFound()))
+    Kleisli {
+      case GET -> Root => Ok("Success")
+      case GET -> Root / "ws" => handleSocket
+      case GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "metadata" =>
+        handleGetTorrent(infoHash)
+      case req @ GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "data" / FileIndexVar(index) =>
+        handleGetData(infoHash, index, req.headers.get(Range))
+      case _ => NotFound()
+    }
   }
 
   type FileIndex = Int

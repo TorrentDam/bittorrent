@@ -1,4 +1,5 @@
 import mill._, scalalib._, scalafmt.ScalafmtModule
+import mill.eval.Result
 import $file.release, release.ReleaseModule
 
 object bencode extends Module {
@@ -47,7 +48,7 @@ object shared extends Module {
   }
 }
 
-object server extends Module {
+object server extends Module with NativeImageModule {
   def moduleDeps = List(bittorrent, shared)
   private val http4sVersion = "0.21.0"
   def ivyDeps = Agg(
@@ -118,6 +119,36 @@ trait JsModule extends Module with scalajslib.ScalaJSModule {
   def moduleKind = ModuleKind.CommonJSModule
 }
 
+trait NativeImageModule extends ScalaModule {
+  private def javaHome = T.input {
+    T.ctx().env.get("JAVA_HOME") match {
+      case Some(homePath) => Result.Success(os.Path(homePath))
+      case None => Result.Failure("JAVA_HOME env variable is undefined")
+    }
+  }
+
+  private def nativeImagePath = T.input {
+    val path = javaHome()/"bin"/"native-image"
+    if (os exists path) Result.Success(path)
+    else Result.Failure(
+      "native-image is not found in java home directory.\n" +
+        "Make sure JAVA_HOME points to GraalVM JDK and " +
+        "native-image is set up (https://www.graalvm.org/docs/reference-manual/native-image/)"
+    )
+  }
+
+  def nativeImage = T {
+    import ammonite.ops._
+    implicit val workingDirectory = T.ctx().dest
+    %%(
+      nativeImagePath(),
+      "-jar", assembly().path,
+      "--no-fallback",
+      "--initialize-at-build-time=scala",
+    )
+    finalMainClass()
+  }
+}
 
 object Versions {
   val monocle = "2.0.0"
