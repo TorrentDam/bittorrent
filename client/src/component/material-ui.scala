@@ -66,7 +66,8 @@ package core {
     case class Props(
       variant: String,
       color: String = "primary",
-      disabled: UndefOr[Boolean] = js.undefined
+      disabled: UndefOr[Boolean] = js.undefined,
+      `type`: UndefOr[String] = js.undefined
     )
     val component = imports.Button
   }
@@ -89,7 +90,8 @@ package core {
       edge: UndefOr[String] = js.undefined,
       color: String = "inherit",
       `aria-label`: String = "open drawer",
-      href: UndefOr[String] = js.undefined
+      href: UndefOr[String] = js.undefined,
+      `type`: UndefOr[String] = js.undefined
     )
     val component = imports.IconButton
   }
@@ -126,7 +128,8 @@ package core {
   @react
   object Paper extends ExternalComponent {
     case class Props(
-      className: UndefOr[String] = js.undefined
+      className: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined
     )
     val component = imports.Paper
   }
@@ -220,6 +223,10 @@ package icons {
     object PlayArrow extends js.Object
     @js.native @JSImport("@material-ui/icons/ArrowBack", JSImport.Default)
     object ArrowBack extends js.Object
+    @js.native @JSImport("@material-ui/icons/ArrowForward", JSImport.Default)
+    object ArrowForward extends js.Object
+    @js.native @JSImport("@material-ui/icons/Search", JSImport.Default)
+    object Search extends js.Object
   }
 
   object Home extends ExternalComponentNoProps {
@@ -236,6 +243,12 @@ package icons {
   }
   object ArrowBack extends ExternalComponentNoProps {
     val component = imports.ArrowBack
+  }
+  object ArrowForward extends ExternalComponentNoProps {
+    val component = imports.ArrowForward
+  }
+  object Search extends ExternalComponentNoProps {
+    val component = imports.Search
   }
 }
 

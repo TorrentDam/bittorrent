@@ -53,7 +53,7 @@ object App {
             case (true, _) =>
               props.router.when {
                 case Router.Route.Root =>
-                  DownloadPanel(props.router)
+                  Search(props.router)
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(
                     torrent =>
