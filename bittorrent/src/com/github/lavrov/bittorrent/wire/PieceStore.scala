@@ -13,7 +13,7 @@ trait PieceStore[F[_]] {
 
 object PieceStore {
 
-  val MaxSize = 10
+  val MaxSize = 5
 
   def apply[F[_]](request: Int => F[Unit])(implicit F: Concurrent[F]): F[PieceStore[F]] = {
     sealed trait Cell
