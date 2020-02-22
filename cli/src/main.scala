@@ -108,10 +108,10 @@ object Main extends IOApp {
   }
 
   def asynchronousSocketGroupResource: Resource[IO, UdpScoketGroup] =
-    Blocker[IO].flatMap(UdpScoketGroup(_))
+    Blocker[IO].flatMap(UdpScoketGroup[IO](_))
 
   def asynchronousChannelGroupResource: Resource[IO, TcpSocketGroup] =
-    Blocker[IO].flatMap(TcpSocketGroup(_))
+    Blocker[IO].flatMap(TcpSocketGroup[IO](_))
 
   def resources: Resource[IO, (UdpScoketGroup, TcpSocketGroup)] =
     for {
@@ -265,8 +265,8 @@ object Main extends IOApp {
     val selfId = NodeId.generate(rnd)
     for {
       client <- Stream.resource(DhtClient.start[IO](selfId, port = 6881))
-      peers <- Stream.eval(PeerDiscovery.start(infoHash, client))
-      peer <- peers
+      discovery <- Stream.resource(PeerDiscovery.make[IO](client))
+      peer <- discovery.discover(infoHash)
     } yield peer
   }
 

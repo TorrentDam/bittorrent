@@ -25,7 +25,7 @@ object bittorrent extends Module {
   object test extends TestModule
 }
 
-object cli extends Module with ReleaseModule {
+object cli extends Module with NativeImageModule with ReleaseModule {
   def moduleDeps = List(bittorrent)
   def ivyDeps = Agg(
     ivy"com.monovore::decline:1.0.0",
