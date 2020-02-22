@@ -99,8 +99,8 @@ object SocketSession {
     private def sendTorrentStats(infoHash: InfoHash, torrent: Torrent[IO]): IO[Unit] =
       Stream
         .repeatEval(
-          (timer.sleep(2.seconds) >> torrent.stats).flatMap { stats =>
-            send(Event.TorrentStats(infoHash, stats.connected))
+          (timer.sleep(5.seconds) >> torrent.stats).flatMap { stats =>
+            send(Event.TorrentStats(infoHash, stats.connected, stats.availability.toList))
           }
         )
         .compile

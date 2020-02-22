@@ -1,7 +1,9 @@
 package com.github.lavrov.bittorrent.app.protocol
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import upickle.default.{ReadWriter, macroRW}
+import upickle.default.{macroRW, ReadWriter}
+
+import scala.collection.immutable.BitSet
 
 sealed trait Command
 object Command {
@@ -21,7 +23,7 @@ object Event {
 
   case class TorrentError(message: String) extends Event
 
-  case class TorrentStats(infoHash: InfoHash, connected: Int) extends Event
+  case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Int]) extends Event
 
   implicit val fileRW: ReadWriter[File] = macroRW
   implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(

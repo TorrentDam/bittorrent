@@ -23,6 +23,7 @@ object RootModel {
 case class TorrentModel(
   infoHash: InfoHash,
   connected: Int,
+  availability: List[Int],
   metadata: Option[Either[String, Metadata]]
 ) {
   def withMetadata(metadata: Metadata): TorrentModel = copy(metadata = Some(Right(metadata)))

@@ -8,6 +8,8 @@ import com.github.lavrov.bittorrent.MetaInfo
 import logstage.LogIO
 import scodec.bits.ByteVector
 
+import scala.collection.immutable.BitSet
+
 trait Torrent[F[_]] {
   def getMetaInfo: MetaInfo
   def stats: F[Torrent.Stats]
@@ -38,7 +40,12 @@ object Torrent {
       val impl =
         new Torrent[F] {
           def getMetaInfo = metaInfo
-          def stats: F[Stats] = swarm.connected.count.map(Stats)
+          def stats: F[Stats] =
+            for {
+              connected <- swarm.connected.list
+              availability <- connected.traverse(_.availability.get)
+              availability <- availability.foldMap(identity).pure[F]
+            } yield Stats(connected.size, availability)
           def piece(index: Int): F[ByteVector] = pieceStore.get(index)
         }
       val close = downloadFiber.cancel >> addToStoreFiber.cancel
@@ -47,7 +54,8 @@ object Torrent {
   }
 
   case class Stats(
-    connected: Int
+    connected: Int,
+    availability: BitSet
   )
 
   sealed trait Error extends Exception

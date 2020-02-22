@@ -67,6 +67,7 @@ object Swarm {
       extends Swarm[F] {
     val connected: Connected[F] = new Connected[F] {
       def count: F[Int] = stateRef.get.map(_.size)
+      def list: F[List[Connection[F]]] = stateRef.get.map(_.values.toList)
       def stream: Stream[F, Connection[F]] =
         Stream.evalSeq(stateRef.get.map(_.values.toList)) ++ lastConnected.discrete.tail
     }
@@ -143,6 +144,7 @@ object Swarm {
 
   trait Connected[F[_]] {
     def count: F[Int]
+    def list: F[List[Connection[F]]]
     def stream: Stream[F, Connection[F]]
   }
 

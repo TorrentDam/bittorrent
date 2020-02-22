@@ -18,7 +18,7 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
           event match {
             case Event.RequestAccepted(infoHash) =>
               Some(
-                value.copy(torrent = Some(TorrentModel(infoHash, 0, None)))
+                value.copy(torrent = Some(TorrentModel(infoHash, 0, Nil, None)))
               )
             case Event.TorrentMetadataReceived(infoHash, files) =>
               value.torrent.filter(_.infoHash == infoHash).map { torrent =>
@@ -36,10 +36,11 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
               Some(
                 value.copy(torrent = value.torrent.map(_.withError(message)))
               )
-            case Event.TorrentStats(_, connected) =>
+            case Event.TorrentStats(infoHash, connected, availability)
+                if value.torrent.exists(_.infoHash == infoHash) =>
               Some(
                 value.copy(
-                  torrent = value.torrent.map(_.copy(connected = connected))
+                  torrent = value.torrent.map(_.copy(connected = connected, availability = availability))
                 )
               )
             case _ =>
@@ -62,7 +63,7 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
       send(Command.GetTorrent(infoHash))
       Some(
         model.copy(
-          torrent = Some(TorrentModel(infoHash, 0, None))
+          torrent = Some(TorrentModel(infoHash, 0, Nil, None))
         )
       )
     }
