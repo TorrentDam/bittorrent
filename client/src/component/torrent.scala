@@ -18,6 +18,7 @@ import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
 import slinky.web.html._
 import squants.experimental.formatter.Formatters.InformationMetricFormatter
+import squants.Percent
 
 import scala.scalajs.js
 
@@ -29,12 +30,13 @@ object Torrent {
     def videoStreamUrl(index: Int) = environment.httpUrl(s"/torrent/${props.model.infoHash.toString}/data/$index")
     def handlePlayClick(index: Int): js.Function0[Unit] =
       () => props.router.navigate(Router.Route.File(index, Router.Route.Torrent(props.model.infoHash)))
-    renderList(videoStreamUrl, props.metadata, handlePlayClick)
+    renderList(videoStreamUrl, props.metadata, props.model.availability, handlePlayClick)
   }
 
   private def renderList(
     videoSrc: Int => String,
     metadata: Metadata,
+    availability: List[Double],
     handleClick: Int => () => Unit
   ): ReactElement =
     div(
@@ -46,13 +48,17 @@ object Torrent {
               onClick := handleClick(index),
               ListItemText(
                 primary = file.path.last,
-                secondary = InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString()
+                secondary =
+                  InformationMetricFormatter.inBestUnit(file.size).rounded(1).toString() +
+                  availability
+                    .lift(index)
+                    .map { p =>
+                      val percent = Percent(p * 100).rounded(1, BigDecimal.RoundingMode.FLOOR).toString()
+                      s" | $percent"
+                    }
+                    .getOrElse("")
               ),
               ListItemSecondaryAction(
-                IconButton(edge = "end", `aria-label` = "play")(
-                  onClick := handleClick(index),
-                  icons.PlayArrow()
-                ),
                 IconButton(edge = "end", `aria-label` = "download", href = videoSrc(index))(
                   target := "_blank",
                   icons.GetApp()

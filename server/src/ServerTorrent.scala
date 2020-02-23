@@ -21,7 +21,7 @@ object ServerTorrent {
           } yield Stats(
             connected = stats.connected,
             availability = files.value.map { span =>
-              val range = span.beginIndex.toInt to span.endOffset.toInt
+              val range = span.beginIndex.toInt to span.endIndex.toInt
               val available = range.count(stats.availability.contains)
               available.toDouble / range.size
             }
