@@ -23,7 +23,7 @@ object Event {
 
   case class TorrentError(message: String) extends Event
 
-  case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Int]) extends Event
+  case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
   implicit val fileRW: ReadWriter[File] = macroRW
   implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(

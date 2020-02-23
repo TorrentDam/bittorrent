@@ -16,7 +16,7 @@ import scala.util.Try
 
 object SocketSession {
   def apply(
-    makeTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]]
+    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent]]
   )(
     implicit F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -59,7 +59,7 @@ object SocketSession {
 
   class CommandHandler(
     send: Event => IO[Unit],
-    getTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]],
+    getTorrent: InfoHash => Resource[IO, IO[ServerTorrent]],
     closed: IO[Unit]
   )(
     implicit
@@ -83,7 +83,7 @@ object SocketSession {
             getTorrent.attempt
               .flatMap {
                 case Right(torrent) =>
-                  val files = torrent.getMetaInfo.parsed.files.map(f => Event.File(f.path, f.length))
+                  val files = torrent.metadata.parsed.files.map(f => Event.File(f.path, f.length))
                   send(Event.TorrentMetadataReceived(infoHash, files)) >>
                   sendTorrentStats(infoHash, torrent) >>
                   IO.never
@@ -96,11 +96,11 @@ object SocketSession {
           .void
       }
 
-    private def sendTorrentStats(infoHash: InfoHash, torrent: Torrent[IO]): IO[Unit] =
+    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Unit] =
       Stream
         .repeatEval(
           (timer.sleep(5.seconds) >> torrent.stats).flatMap { stats =>
-            send(Event.TorrentStats(infoHash, stats.connected, stats.availability.toList))
+            send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
           }
         )
         .compile
@@ -110,7 +110,7 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrent: InfoHash => Resource[IO, IO[Torrent[IO]]]
+      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent]]
     )(
       implicit
       F: Concurrent[IO],

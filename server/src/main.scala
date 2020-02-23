@@ -63,7 +63,7 @@ object Main extends IOApp {
       handleGetTorrent = (infoHash: InfoHash) =>
         torrentRegistry.tryGet(infoHash).use {
           case Some(torrent) =>
-            val metadata = torrent.getMetaInfo
+            val metadata = torrent.metadata
             val torrentFile = TorrentFile(metadata, None)
             val bcode =
               TorrentFile.TorrentFileFormat
@@ -84,10 +84,10 @@ object Main extends IOApp {
       handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
         torrentRegistry.tryGet(infoHash).use {
           case Some(torrent) =>
-            if (fileIndex < torrent.getMetaInfo.parsed.files.size) {
-              val file = torrent.getMetaInfo.parsed.files(fileIndex)
+            if (torrent.files.value.lift(3).isDefined) {
+              val file = torrent.metadata.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
-              val fileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
+              val fileMapping = torrent.files
               def dataStream(span: FileMapping.Span) =
                 Stream.resource(torrentRegistry.tryGet(infoHash)).flatMap {
                   case Some(torrent) =>

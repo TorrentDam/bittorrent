@@ -8,8 +8,8 @@ import logstage.LogIO
 import scala.concurrent.duration._
 
 trait TorrentRegistry {
-  def get(infoHash: InfoHash): Resource[IO, IO[Torrent[IO]]]
-  def tryGet(infoHash: InfoHash): Resource[IO, Option[Torrent[IO]]]
+  def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]]
+  def tryGet(infoHash: InfoHash): Resource[IO, Option[ServerTorrent]]
 }
 
 object TorrentRegistry {
@@ -22,8 +22,8 @@ object TorrentRegistry {
     } yield new Impl(ref, makeSwarm)
 
   case class UsageCountingCell(
-    get: IO[Torrent[IO]],
-    resolved: Option[Torrent[IO]],
+    get: IO[ServerTorrent],
+    resolved: Option[ServerTorrent],
     close: IO[Unit],
     count: Int,
     usedCount: Int
@@ -37,7 +37,7 @@ object TorrentRegistry {
     timer: Timer[IO],
     logger: LogIO[IO]
   ) extends TorrentRegistry {
-    def get(infoHash: InfoHash): Resource[IO, IO[Torrent[IO]]] = Resource {
+    def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]] = Resource {
       ref
         .modify { registry =>
           registry.get(infoHash) match {
@@ -46,7 +46,7 @@ object TorrentRegistry {
               val updatedRegistry = registry.updated(infoHash, updatedCell)
               (updatedRegistry, Right(updatedCell.get))
             case None =>
-              val completeDeferred = Deferred.unsafe[IO, Either[Throwable, Torrent[IO]]]
+              val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent]]
               val closeDeferred = Deferred.unsafe[IO, Unit]
               val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
               val closeTorrent = closeDeferred.complete(())
@@ -65,7 +65,7 @@ object TorrentRegistry {
         }
     }
 
-    def tryGet(infoHash: InfoHash): Resource[IO, Option[Torrent[IO]]] = Resource {
+    def tryGet(infoHash: InfoHash): Resource[IO, Option[ServerTorrent]] = Resource {
       ref
         .modify { registry =>
           registry.get(infoHash) match {
@@ -89,7 +89,7 @@ object TorrentRegistry {
 
     private def make(
       infoHash: InfoHash,
-      complete: Either[Throwable, Torrent[IO]] => IO[Unit],
+      complete: Either[Throwable, ServerTorrent] => IO[Unit],
       waitCancel: IO[Unit]
     ): IO[Unit] = {
       val makeTorrent =
@@ -101,6 +101,7 @@ object TorrentRegistry {
               .tupleLeft(swarm)
           }
           torrent <- Torrent.make(metadata, swarm)
+          torrent <- ServerTorrent.make(torrent)
         } yield torrent
       makeTorrent
         .use { torrent =>
