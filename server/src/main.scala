@@ -84,7 +84,7 @@ object Main extends IOApp {
       handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
         torrentRegistry.tryGet(infoHash).use {
           case Some(torrent) =>
-            if (torrent.files.value.lift(3).isDefined) {
+            if (torrent.files.value.lift(fileIndex).isDefined) {
               val file = torrent.metadata.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = torrent.files
