@@ -88,13 +88,15 @@ object Main extends IOApp {
               val file = torrent.metadata.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = torrent.files
+              val maxPrefetchBytes = 20 * 1000 * 1000
+              val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 1).toInt
               def dataStream(span: FileMapping.Span) =
                 Stream.resource(torrentRegistry.tryGet(infoHash)).flatMap {
                   case Some(torrent) =>
                     Stream
                       .emits(span.beginIndex to span.endIndex)
                       .covary[IO]
-                      .parEvalMap(3)(index => torrent.piece(index.toInt) tupleLeft index)
+                      .parEvalMap(parallelPieces)(index => torrent.piece(index.toInt) tupleLeft index)
                       .map {
                         case (span.beginIndex, bytes) =>
                           bytes.drop(span.beginOffset).toArray
