@@ -6,7 +6,7 @@ import cats.data.Chain
 import cats.implicits._
 import cats.effect.implicits._
 import cats.effect.{Concurrent, Timer}
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.SwarmTasks.Error
@@ -18,7 +18,7 @@ import scodec.bits.ByteVector
 import scala.collection.BitSet
 
 trait PiecePicker[F[_]] {
-  def download(index: Int): F[Unit]
+  def download(index: Int): F[ByteVector]
   def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]]
   def unpick(request: Message.Request): F[Unit]
   def complete(request: Message.Request, bytes: ByteVector): F[Unit]
@@ -27,15 +27,15 @@ trait PiecePicker[F[_]] {
 }
 object PiecePicker {
   def apply[F[_]](
-    metadata: TorrentMetadata,
-    onComplete: CompletePiece => F[Unit]
+    metadata: TorrentMetadata
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[PiecePicker[F]] =
     for {
       stateRef <- Ref.of(State(Map.empty, Map.empty))
+      completions <- Ref.of(Map.empty[Int, ByteVector => F[Unit]])
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
       incompletePieces = buildQueue(metadata).toList
-    } yield new Impl(stateRef, pickMutex, notifyRef, incompletePieces, onComplete)
+    } yield new Impl(stateRef, completions, pickMutex, notifyRef, incompletePieces)
 
   case class State(
     incomplete: Map[Int, IncompletePiece],
@@ -44,24 +44,32 @@ object PiecePicker {
 
   private class Impl[F[_]](
     stateRef: Ref[F, State],
+    completions: Ref[F, Map[Int, ByteVector => F[Unit]]],
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
-    incompletePieces: List[IncompletePiece],
-    onComplete: CompletePiece => F[Unit]
+    incompletePieces: List[IncompletePiece]
   )(implicit F: Concurrent[F], logger: LogIO[F])
       extends PiecePicker[F] {
 
-    def download(index: Int): F[Unit] =
-      mutex.withPermit {
-        F.uncancelable {
-          stateRef.update { state =>
-            state.copy(
-              incomplete = state.incomplete.updated(index, incompletePieces(index))
-            )
-          } >>
-          notifyRef.set(())
+    def download(index: Int): F[ByteVector] =
+      mutex
+        .withPermit {
+          F.uncancelable {
+            for {
+              deferred <- Deferred[F, ByteVector]
+              _ <- completions.update { completions =>
+                completions.updated(index, deferred.complete)
+              }
+              _ <- stateRef.update { state =>
+                state.copy(
+                  incomplete = state.incomplete.updated(index, incompletePieces(index))
+                )
+              }
+              _ <- notifyRef.set(())
+            } yield deferred
+          }
         }
-      }
+        .flatMap(_.get)
 
     def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]] =
       mutex.withPermit {
@@ -112,9 +120,13 @@ object PiecePicker {
               (updatedState, updatedPiece)
             }
             _ <- F.whenA(piece.isComplete) {
-              F.fromOption(piece.verified, Error.InvalidChecksum())
-                .map(CompletePiece(piece.index, _))
-                .flatMap(onComplete)
+              for {
+                bytes <- F.fromOption(piece.verified, Error.InvalidChecksum())
+                complete <- completions.modify { completions =>
+                  (completions - piece.index.toInt, completions(piece.index.toInt))
+                }
+                _ <- complete(bytes)
+              } yield ()
             }
           } yield ()
         }

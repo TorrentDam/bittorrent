@@ -20,21 +20,11 @@ object Torrent {
 
   def make[F[_]](
     metaInfo: MetaInfo,
-    swarm: Swarm[F]
+    swarm: Swarm[F],
+    pieceStore: PieceStore[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] = Resource {
     for {
-      completePieceVar <- MVar.empty[F, PiecePicker.CompletePiece]
-      piecePicker <- PiecePicker(metaInfo.parsed, completePieceVar.put)
-      pieceStore <- PieceStore(
-        index => logger.info(s"RequestPiece $index") >> piecePicker.download(index)
-      )
-      addToStoreFiber <- completePieceVar.take
-        .flatMap { p =>
-          logger.info(s"CompletePiece ${p.index}") >>
-          pieceStore.put(p.index.toInt, p.bytes)
-        }
-        .foreverM[Unit]
-        .start
+      piecePicker <- PiecePicker(metaInfo.parsed)
       downloadFiber <- SwarmTasks.download(swarm, piecePicker).start
     } yield {
       val impl =
@@ -46,9 +36,13 @@ object Torrent {
               availability <- connected.traverse(_.availability.get)
               availability <- availability.foldMap(identity).pure[F]
             } yield Stats(connected.size, availability)
-          def piece(index: Int): F[ByteVector] = pieceStore.get(index)
+          def piece(index: Int): F[ByteVector] =
+            pieceStore.get(index).flatMap {
+              case Some(bytes) => bytes.pure[F]
+              case None => piecePicker.download(index).flatTap(pieceStore.put(index, _))
+            }
         }
-      val close = downloadFiber.cancel >> addToStoreFiber.cancel
+      val close = downloadFiber.cancel
       (impl, close)
     }
   }

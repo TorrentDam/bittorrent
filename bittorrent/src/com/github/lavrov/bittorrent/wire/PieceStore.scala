@@ -1,56 +1,59 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.Concurrent
+import java.nio.file.{Files, Path, Paths}
+
+import cats.effect.concurrent.Ref
 import cats.implicits._
-import cats.effect.implicits._
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.{Resource, Sync}
 import scodec.bits.ByteVector
 
-import scala.ref.WeakReference
+import scala.collection.immutable.BitSet
 
 trait PieceStore[F[_]] {
-  def get(index: Int): F[ByteVector]
+  def get(index: Int): F[Option[ByteVector]]
   def put(index: Int, bytes: ByteVector): F[Unit]
 }
 
 object PieceStore {
+  def disk[F[_]](directory: Path)(implicit F: Sync[F]): Resource[F, PieceStore[F]] = {
 
-  def apply[F[_]](request: Int => F[Unit])(implicit F: Concurrent[F]): F[PieceStore[F]] = {
-    sealed trait Cell
-    case class Requested(deferred: Deferred[F, ByteVector]) extends Cell
-    case class Complete(bytes: WeakReference[ByteVector]) extends Cell
-    case class State(cells: Map[Int, Cell], complete: List[Int])
-    for {
-      pieces <- Ref.of(State(Map.empty, List.empty))
-    } yield new PieceStore[F] {
-      def get(index: Int): F[ByteVector] =
-        pieces.modify { pieces =>
-          pieces.cells.get(index) match {
-            case Some(Complete(WeakReference(bytes))) => (pieces, bytes.pure[F])
-            case Some(Requested(deferred)) => (pieces, deferred.get)
-            case _ =>
-              val deferred = Deferred.unsafe[F, ByteVector]
-              val cells = pieces.cells.updated(index, Requested(deferred))
-              (pieces.copy(cells = cells), request(index) >> deferred.get)
-          }
-        }.flatten
+    val createDirectory = F.delay {
+      Files.createDirectory(directory)
+    }
 
-      def put(index: Int, bytes: ByteVector): F[Unit] =
-        pieces
-          .modify { pieces =>
-            pieces.cells.get(index) match {
-              case Some(Requested(deferred)) =>
-                val cells = pieces.cells.updated(index, Complete(WeakReference(bytes)))
-                val complete = index :: pieces.complete
-                (pieces.copy(cells = cells, complete = complete), (deferred, complete).some)
-              case _ => (pieces, none)
-            }
-          }
-          .flatMap {
-            case Some((deferred, complete)) =>
-              deferred.complete(bytes)
-            case _ => F.unit
-          }
+    val deleteDirectory = F.delay {
+      Files.delete(directory)
+    }
+
+    Resource.make(createDirectory)(_ => deleteDirectory).evalMap { directory =>
+      for {
+        availability <- Ref.of(BitSet.empty)
+      } yield new Impl(directory, availability)
+    }
+  }
+
+  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(implicit F: Sync[F]) extends PieceStore[F] {
+
+    def get(index: Int): F[Option[ByteVector]] =
+      for {
+        availability <- availability.get
+        available = availability(index)
+        result <- if (available) readFile(pieceFile(index)).map(_.some) else none[ByteVector].pure[F]
+      } yield result
+
+    def put(index: Int, bytes: ByteVector): F[Unit] =
+      for {
+        _ <- F.delay {
+          Files.write(pieceFile(index), bytes.toArray)
+        }
+        _ <- availability.update(_ + index)
+      } yield ()
+
+    private def pieceFile(index: Int) = directory.resolve(index.toString)
+
+    private def readFile(file: Path) = F.delay {
+      val byteArray = Files.readAllBytes(file)
+      ByteVector(byteArray)
     }
   }
 }

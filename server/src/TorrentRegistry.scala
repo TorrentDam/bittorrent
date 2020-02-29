@@ -1,8 +1,10 @@
+import java.nio.file.Paths
+
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import com.github.lavrov.bittorrent.wire.{Swarm, Torrent, UtMetadata}
+import com.github.lavrov.bittorrent.wire.{PieceStore, Swarm, Torrent, UtMetadata}
 import logstage.LogIO
 
 import scala.concurrent.duration._
@@ -100,7 +102,8 @@ object TorrentRegistry {
               .timeout(1.minute)
               .tupleLeft(swarm)
           }
-          torrent <- Torrent.make(metadata, swarm)
+          pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", "bittorrent", infoHash.toString))
+          torrent <- Torrent.make(metadata, swarm, pieceStore)
           torrent <- ServerTorrent.make(torrent)
         } yield torrent
       makeTorrent
