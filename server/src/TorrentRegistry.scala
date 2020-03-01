@@ -117,6 +117,7 @@ object TorrentRegistry {
           waitCancel
         }
         .handleErrorWith { e =>
+          logger.error(s"Could not create torrent $e") >>
           complete(e.asLeft)
         }
         .start
