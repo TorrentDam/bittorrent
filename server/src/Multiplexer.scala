@@ -11,21 +11,26 @@ trait Multiplexer[F[_]] {
 object Multiplexer {
 
   def apply[F[_]](request: Int => F[ByteVector])(implicit F: Concurrent[F]): F[Multiplexer[F]] = {
-    case class State(cells: Map[Int, Deferred[F, ByteVector]])
     for {
-      pieces <- Ref.of(State(Map.empty))
+      pieces <- Ref.of(Map.empty[Int, Deferred[F, ByteVector]])
     } yield new Multiplexer[F] {
       def get(index: Int): F[ByteVector] =
-        pieces.modify { pieces =>
-          pieces.cells.get(index) match {
-            case Some(deferred) => (pieces, deferred.get)
-            case _ =>
-              val deferred = Deferred.unsafe[F, ByteVector]
-              val cells = pieces.cells.updated(index, deferred)
-              val effect = request(index).flatMap(deferred.complete).start >> deferred.get
-              (pieces.copy(cells = cells), effect)
+        for {
+          effect <- pieces.modify { pieces =>
+            pieces.get(index) match {
+              case Some(deferred) => (pieces, deferred.get)
+              case _ =>
+                val deferred = Deferred.unsafe[F, ByteVector]
+                val updated = pieces.updated(index, deferred)
+                val effect = request(index).flatMap(deferred.complete).start >> deferred.get
+                (updated, effect)
+            }
           }
-        }.flatten
+          result <- effect
+          _ <- pieces.update { pieces =>
+            pieces.removed(index)
+          }
+        } yield result
     }
   }
 }
