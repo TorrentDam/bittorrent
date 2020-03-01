@@ -18,7 +18,7 @@ object PieceStore {
   def disk[F[_]](directory: Path)(implicit F: Sync[F]): Resource[F, PieceStore[F]] = {
 
     val createDirectory = F.delay {
-      Files.createDirectory(directory)
+      Files.createDirectories(directory)
     }
 
     val deleteDirectory = F.delay {

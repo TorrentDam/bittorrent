@@ -102,7 +102,7 @@ object TorrentRegistry {
               .timeout(1.minute)
               .tupleLeft(swarm)
           }
-          pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", "bittorrent", infoHash.toString))
+          pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}"))
           torrent <- Torrent.make(metadata, swarm, pieceStore)
           torrent <- ServerTorrent.make(torrent)
         } yield torrent
