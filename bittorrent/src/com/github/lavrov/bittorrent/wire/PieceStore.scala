@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.wire
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 
 import cats.effect.concurrent.Ref
 import cats.implicits._
@@ -8,6 +8,7 @@ import cats.effect.{Resource, Sync}
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
+import scala.jdk.StreamConverters._
 
 trait PieceStore[F[_]] {
   def get(index: Int): F[Option[ByteVector]]
@@ -22,6 +23,9 @@ object PieceStore {
     }
 
     val deleteDirectory = F.delay {
+      Files.list(directory).toScala(List).foreach { path =>
+        Files.delete(path)
+      }
       Files.delete(directory)
     }
 
