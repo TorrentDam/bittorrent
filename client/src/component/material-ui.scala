@@ -10,6 +10,8 @@ import scala.scalajs.js.annotation.JSImport
 
 package core {
   import slinky.core.facade.ReactElement
+
+  import scala.scalajs.js.|
   private object imports {
     @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
     object AppBar extends js.Object
@@ -23,6 +25,8 @@ package core {
     object Toolbar extends js.Object
     @js.native @JSImport("@material-ui/core/IconButton", JSImport.Default)
     object IconButton extends js.Object
+    @js.native @JSImport("@material-ui/core/Box", JSImport.Default)
+    object Box extends js.Object
     @js.native @JSImport("@material-ui/core/Typography", JSImport.Default)
     object Typography extends js.Object
     @js.native @JSImport("@material-ui/core/Container", JSImport.Default)
@@ -31,6 +35,10 @@ package core {
     object TextField extends js.Object
     @js.native @JSImport("@material-ui/core/Paper", JSImport.Default)
     object Paper extends js.Object
+    @js.native @JSImport("@material-ui/core/Card", JSImport.Default)
+    object Card extends js.Object
+    @js.native @JSImport("@material-ui/core/Grid", JSImport.Default)
+    object Grid extends js.Object
     @js.native @JSImport("@material-ui/core/InputBase", JSImport.Default)
     object InputBase extends js.Object
     @js.native @JSImport("@material-ui/core/Link", JSImport.Default)
@@ -53,6 +61,14 @@ package core {
     object Divider extends js.Object
     @js.native @JSImport("@material-ui/core/CssBaseline", JSImport.Default)
     object CssBaseline extends js.Object
+    @js.native @JSImport("@material-ui/core/Table", JSImport.Default)
+    object Table extends js.Object
+    @js.native @JSImport("@material-ui/core/TableBody", JSImport.Default)
+    object TableBody extends js.Object
+    @js.native @JSImport("@material-ui/core/TableRow", JSImport.Default)
+    object TableRow extends js.Object
+    @js.native @JSImport("@material-ui/core/TableCell", JSImport.Default)
+    object TableCell extends js.Object
   }
 
   @react
@@ -64,10 +80,12 @@ package core {
   @react
   object Button extends ExternalComponent {
     case class Props(
-      variant: String,
+      variant: String = "text",
       color: String = "primary",
       disabled: UndefOr[Boolean] = js.undefined,
-      `type`: UndefOr[String] = js.undefined
+      `type`: UndefOr[String] = js.undefined,
+      startIcon: UndefOr[ReactElement] = js.undefined,
+      href: UndefOr[String] = js.undefined
     )
     val component = imports.Button
   }
@@ -89,7 +107,7 @@ package core {
     case class Props(
       edge: UndefOr[String] = js.undefined,
       color: String = "inherit",
-      `aria-label`: String = "open drawer",
+      `aria-label`: UndefOr[String] = js.undefined,
       href: UndefOr[String] = js.undefined,
       `type`: UndefOr[String] = js.undefined
     )
@@ -97,11 +115,23 @@ package core {
   }
 
   @react
+  object Box extends ExternalComponent {
+    case class Props(
+      mb: UndefOr[Double] = js.undefined
+    )
+    val component = imports.Box
+  }
+
+  @react
   object Typography extends ExternalComponent {
     case class Props(
       variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined,
-      color: String = "inherit"
+      color: UndefOr[String] = js.undefined,
+      fontWeight: UndefOr[String] = js.undefined,
+      noWrap: UndefOr[Boolean] = js.undefined,
+      display: UndefOr[String] = js.undefined,
+      align: UndefOr[String] = js.undefined
     )
     val component = imports.Typography
   }
@@ -129,9 +159,34 @@ package core {
   object Paper extends ExternalComponent {
     case class Props(
       className: UndefOr[String] = js.undefined,
-      component: UndefOr[String] = js.undefined
+      component: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      elevation: UndefOr[Int] = js.undefined
     )
     val component = imports.Paper
+  }
+
+  @react
+  object Card extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined
+    )
+    val component = imports.Card
+  }
+
+  @react
+  object Grid extends ExternalComponent {
+    case class Props(
+      container: UndefOr[Boolean] = js.undefined,
+      item: UndefOr[Boolean] = js.undefined,
+      xs: UndefOr[Int | Boolean] = js.undefined,
+      direction: UndefOr[String] = js.undefined,
+      spacing: UndefOr[Int] = js.undefined,
+      zeroMinWidth: UndefOr[Boolean] = js.undefined
+    )
+    val component = imports.Grid
   }
 
   @react
@@ -148,7 +203,11 @@ package core {
 
   @react
   object Link extends ExternalComponent {
-    case class Props(href: UndefOr[String] = js.undefined, onClick: UndefOr[js.Function0[Unit]] = js.undefined)
+    case class Props(
+      href: UndefOr[String] = js.undefined,
+      onClick: UndefOr[js.Function0[Unit]] = js.undefined,
+      color: UndefOr[String] = js.undefined
+    )
     val component = imports.Link
   }
 
@@ -187,8 +246,8 @@ package core {
   @react
   object ListItemText extends ExternalComponent {
     case class Props(
-      primary: String,
-      secondary: UndefOr[String] = js.undefined
+      primary: UndefOr[String | ReactElement],
+      secondary: UndefOr[String | ReactElement] = js.undefined
     )
     val component = imports.ListItemText
   }
@@ -200,13 +259,56 @@ package core {
   @react
   object Divider extends ExternalComponent {
     case class Props(
-      className: UndefOr[String] = js.undefined
+      className: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined
     )
     val component = imports.Divider
   }
 
   object CssBaseline extends ExternalComponentNoProps {
     val component = imports.CssBaseline
+  }
+
+  @react
+  object Table extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined
+    )
+    val component = imports.Table
+  }
+
+  @react
+  object TableBody extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined
+    )
+    val component = imports.TableBody
+  }
+
+  @react
+  object TableRow extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined,
+      hover: UndefOr[Boolean] = js.undefined
+    )
+    val component = imports.TableRow
+  }
+
+  @react
+  object TableCell extends ExternalComponent {
+    case class Props(
+      className: UndefOr[String] = js.undefined,
+      variant: UndefOr[String] = js.undefined,
+      component: UndefOr[String] = js.undefined
+    )
+    val component = imports.TableCell
   }
 
 }

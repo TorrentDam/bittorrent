@@ -1,10 +1,9 @@
 package component
 
+import component.material_ui.core._
+import component.material_ui.styles.makeStyles
 import frp.Observable
 import logic.{Dispatcher, Metadata, RootModel, TorrentModel}
-import material_ui.core._
-import material_ui.icons
-import material_ui.styles.makeStyles
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
@@ -40,10 +39,9 @@ object App {
       AppBar(position = "fixed")(
         Container(maxWidth = "md")(
           Toolbar(disableGutters = true)(
-            IconButton(edge = "start", href = "#")(
-              icons.Home()
-            ),
-            Typography(variant = "h6")("BitTorrent")
+            Link(href = "#", color = "inherit")(
+              Typography(variant = "h6")("BitTorrent")
+            )
           )
         )
       ),
@@ -56,28 +54,11 @@ object App {
                   Search(props.router)
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(
-                    torrent =>
-                      metadata =>
-                        div(
-                          Breadcrumbs(className = classes.breadcrumb.toString)(
-                            Typography(color = "textPrimary")("Files")
-                          ),
-                          Divider(),
-                          Torrent(props.router, torrent, metadata)
-                        )
+                    torrent => metadata => Torrent(props.router, torrent, metadata)
                   )
                 case Router.Route.File(index, torrentRoute) =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(
-                    torrent =>
-                      metadata =>
-                        div(
-                          Breadcrumbs(className = classes.breadcrumb.toString)(
-                            Link(href = "#" + Router.Route.toString(torrentRoute))("Files"),
-                            Typography(color = "textPrimary")(metadata.files(index).path.last)
-                          ),
-                          Divider(),
-                          VideoPlayer(props.router, torrent.infoHash, index)
-                        )
+                    torrent => metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                   )
 
               }
