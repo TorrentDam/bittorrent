@@ -23,7 +23,8 @@ object Search {
         root = Dynamic.literal(
           padding = theme.spacing(1),
           display = "flex",
-          alignItems = "center"
+          alignItems = "center",
+          marginTop = theme.spacing(4)
         ),
         input = Dynamic.literal(
           marginLeft = theme.spacing(1),

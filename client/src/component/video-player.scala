@@ -36,9 +36,9 @@ object VideoPlayer {
         )
       ),
       Grid(container = true)(
-        Grid(item = true, xs = true, direction = "column")(
+        Grid(item = true, xs = true)(
           Toolbar(disableGutters = true)(
-            Typography(variant = "subtitle1")(props.file.path.last)
+            Typography(variant = "subtitle1", noWrap = true)(props.file.path.last)
           )
         ),
         Grid(item = true)(

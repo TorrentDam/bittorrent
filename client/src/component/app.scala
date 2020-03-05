@@ -19,10 +19,6 @@ object App {
     theme =>
       Dynamic.literal(
         appBarSpacer = theme.mixins.toolbar,
-        container = Dynamic.literal(
-          paddingTop = theme.spacing(4),
-          paddingBottom = theme.spacing(4)
-        ),
         breadcrumb = Dynamic.literal(
           paddingBottom = theme.spacing(2)
         ),
@@ -46,7 +42,7 @@ object App {
         )
       ),
       main(
-        Container(maxWidth = "md", className = classes.container.toString)(
+        Container(maxWidth = "md")(
           Connect(props.model.zoomTo(_.connected), props.dispatcher) {
             case (true, _) =>
               props.router.when {
