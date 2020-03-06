@@ -1,6 +1,6 @@
 package object environment {
 
-  private val backendAddress = "bittorrent-server.herokuapp.com"
+  private val backendAddress = "25e5f366-a664-487a-8bb2-33f106743c8a.pub.cloud.scaleway.com"
 
   def wsUrl(path: String): String = s"wss://$backendAddress$path"
   def httpUrl(path: String): String = s"https://$backendAddress$path"
