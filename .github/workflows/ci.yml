@@ -24,12 +24,11 @@ jobs:
 
     - name: Deploy server
       run: |
-        curl https://cli-assets.heroku.com/install.sh | sh
-        heroku container:login
-        heroku container:push --app bittorrent-server web
-        heroku container:release --app bittorrent-server web
+        docker build . -t rg.nl-ams.scw.cloud/default/bittorrent-server
+        docker login rg.nl-ams.scw.cloud/default -u nologin -p $SCW_SECRET_TOKEN
+        docker push rg.nl-ams.scw.cloud/default/bittorrent-server
       env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        SCW_SECRET_TOKEN: ${{ secrets.SCW_SECRET_TOKEN }}
 
   client:
     runs-on: ubuntu-latest
