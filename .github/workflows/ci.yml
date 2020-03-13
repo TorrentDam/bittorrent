@@ -24,11 +24,11 @@ jobs:
 
     - name: Deploy server
       run: |
-        docker build . -t rg.nl-ams.scw.cloud/default/bittorrent-server
-        docker login rg.nl-ams.scw.cloud/default -u nologin -p $SCW_SECRET_TOKEN
-        docker push rg.nl-ams.scw.cloud/default/bittorrent-server
+        docker build . -t lavrov/bittorrent-server
+        docker login -u lavrov -p $DOCKERHUB_TOKEN
+        docker push lavrov/bittorrent-server
       env:
-        SCW_SECRET_TOKEN: ${{ secrets.SCW_SECRET_TOKEN }}
+        DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   client:
     runs-on: ubuntu-latest
