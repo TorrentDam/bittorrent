@@ -24,9 +24,11 @@ jobs:
 
     - name: Deploy server
       run: |
-        docker build . -t lavrov/bittorrent-server
         docker login -u lavrov -p $DOCKERHUB_TOKEN
-        docker push lavrov/bittorrent-server
+        export VERSION=$(echo $GITHUB_SHA | head -c 8)
+        export IMAGE=lavrov/bittorrent-server:$VERSION
+        docker build . -t $IMAGE
+        docker push $IMAGE
       env:
         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
