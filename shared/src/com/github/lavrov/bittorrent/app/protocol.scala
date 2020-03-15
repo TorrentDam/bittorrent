@@ -21,7 +21,7 @@ object Event {
   case class TorrentMetadataReceived(infoHash: InfoHash, files: List[File]) extends Event
   case class File(path: List[String], size: Long)
 
-  case class TorrentError(message: String) extends Event
+  case class TorrentError(infoHash: InfoHash, message: String) extends Event
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 

@@ -88,7 +88,7 @@ object SocketSession {
                   sendTorrentStats(infoHash, torrent) >>
                   IO.never
                 case Left(_) =>
-                  send(Event.TorrentError("Could not fetch metadata"))
+                  send(Event.TorrentError(infoHash, "Could not fetch metadata"))
               }
           }
           .start

@@ -32,9 +32,13 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
                 val withMetadata = torrent.withMetadata(metadata)
                 value.copy(torrent = Some(withMetadata))
               }
-            case Event.TorrentError(message) =>
+            case Event.TorrentError(infoHash, message) =>
               Some(
-                value.copy(torrent = value.torrent.map(_.withError(message)))
+                value.copy(
+                  torrent = value.torrent
+                    .filter(_.infoHash == infoHash)
+                    .map(_.withError(message))
+                )
               )
             case Event.TorrentStats(infoHash, connected, availability)
                 if value.torrent.exists(_.infoHash == infoHash) =>
