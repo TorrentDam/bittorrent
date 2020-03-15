@@ -29,8 +29,15 @@ jobs:
         export IMAGE=lavrov/bittorrent-server:$VERSION
         docker build . -t $IMAGE
         docker push $IMAGE
+        curl -L -o nomad.gz https://releases.hashicorp.com/nomad/0.10.4/nomad_0.10.4_linux_amd64.zip
+        gunzip nomad.gz
+        chmod +x nomad
+        ./nomad -h
+        envsubst < bittorrent.nomad.template | ./nomad run -
       env:
         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
+        NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
 
   client:
     runs-on: ubuntu-latest
