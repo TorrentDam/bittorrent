@@ -2,18 +2,14 @@ import org.scalajs.dom.raw.WebSocket
 import org.scalajs.dom.console
 import cats.effect.{ContextShift, IO}
 import cats.syntax.all._
-import fs2.concurrent.Topic
-import fs2.Pipe
 import cats.effect.Timer
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.{Deferred, MVar}
 
 import scala.concurrent.duration._
-import fs2.concurrent.Queue
-import fs2.Stream
 
 case class Socket(
   send: String => IO[Unit],
-  receive: Stream[IO, String],
+  receive: IO[String],
   closed: IO[Option[Socket.ConnectionInterrupted]]
 )
 object Socket {
@@ -33,20 +29,19 @@ object Socket {
         }
       }
       onClose <- Deferred[IO, Option[ConnectionInterrupted]]
-      queue <- Queue.noneTerminated[IO, String]
+      channel <- MVar.empty[IO, String]
       _ <- IO.delay {
         websocket.onerror = { _ =>
           console.info(s"Disconnected from $url")
           onClose.complete(ConnectionInterrupted().some).unsafeRunSync()
-          queue.enqueue1(none)
         }
         websocket.onmessage = { msg =>
-          queue.enqueue1(msg.data.toString().some).unsafeRunSync()
+          channel.put(msg.data.toString()).unsafeRunSync()
         }
       }
     } yield Socket(
       send = data => IO { websocket.send(data) },
-      receive = queue.dequeue,
+      receive = channel.take,
       closed = onClose.get
     )
 
@@ -55,32 +50,32 @@ object Socket {
 }
 
 case class ReconnectingSocket(
-  status: Topic[IO, Boolean]
+  send: String => IO[Unit]
 )
 
 object ReconnectingSocket {
 
   def create(
     url: String,
-    service: Pipe[IO, String, String]
-  )(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingSocket] =
+    service: String => IO[Unit],
+    onStatusChanged: Boolean => IO[Unit]
+  )(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[ReconnectingSocket] = {
     for {
-      statusTopic <- Topic[IO, Boolean](false)
-      continuallyConnect = connectWithRetries(url).flatMap { socket =>
+      out <- MVar.empty[IO, String]
+      doConnect = connectWithRetries(url).flatMap { socket =>
         for {
-          _ <- statusTopic.publish1(true)
-          _ <- service(socket.receive)
-            .evalTap { out =>
-              socket.send(out)
-            }
-            .interruptWhen[IO](socket.closed as Right(()))
-            .compile
-            .drain
-          _ <- statusTopic.publish1(false)
+          _ <- onStatusChanged(true)
+          r <- socket.receive.flatMap(service).foreverM.start
+          s <- out.take.flatMap(socket.send).foreverM.start
+          _ <- socket.closed
+          _ <- r.cancel *> s.cancel
+          _ <- onStatusChanged(false)
         } yield ()
-      }.foreverM
+      }
+      continuallyConnect = doConnect.foreverM
       _ <- continuallyConnect.start
-    } yield ReconnectingSocket(statusTopic)
+    } yield ReconnectingSocket(out.put)
+  }
 
   private def connectWithRetries(
     url: String

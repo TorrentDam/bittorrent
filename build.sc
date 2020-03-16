@@ -36,14 +36,14 @@ object cli extends Module with NativeImageModule with ReleaseModule {
 
 object shared extends Module {
   def ivyDeps = Agg(
-    ivy"com.lihaoyi::upickle:0.8.0",
-    ivy"org.scodec::scodec-core:1.11.4",
+    ivy"com.lihaoyi::upickle:${Versions.upickle}",
+    ivy"org.scodec::scodec-bits:${Versions.`scodec-bits`}",
   )
   object js extends JsModule {
     def sources = shared.sources
     def ivyDeps = Agg(
-      ivy"com.lihaoyi::upickle::0.8.0",
-      ivy"org.scodec::scodec-core::1.11.4",
+      ivy"com.lihaoyi::upickle::${Versions.upickle}",
+      ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
     )
   }
 }
@@ -62,9 +62,9 @@ object server extends Module with NativeImageModule {
 object client extends JsModule {
   def moduleDeps = List(shared.js)
   def ivyDeps = Agg(
-    ivy"me.shadaj::slinky-web::0.6.2",
-    ivy"co.fs2::fs2-core::2.2.2",
-    ivy"org.scodec::scodec-core::1.11.4",
+    ivy"me.shadaj::slinky-web::0.6.4",
+    ivy"org.typelevel::cats-effect::2.1.2",
+    ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
     ivy"org.typelevel::squants::1.6.0"
   )
 
@@ -153,5 +153,7 @@ trait NativeImageModule extends ScalaModule {
 object Versions {
   val monocle = "2.0.0"
   val logstage = "0.9.5"
+  val `scodec-bits` = "1.1.14"
+  val upickle = "1.0.0"
 }
 

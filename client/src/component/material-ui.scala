@@ -181,7 +181,7 @@ package core {
     case class Props(
       container: UndefOr[Boolean] = js.undefined,
       item: UndefOr[Boolean] = js.undefined,
-      xs: UndefOr[Int | Boolean] = js.undefined,
+      xs: UndefOr[Boolean | Int] = js.undefined,
       direction: UndefOr[String] = js.undefined,
       spacing: UndefOr[Int] = js.undefined,
       zeroMinWidth: UndefOr[Boolean] = js.undefined
