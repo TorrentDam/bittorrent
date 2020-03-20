@@ -21,7 +21,7 @@ job "bittorrent" {
         image = "$IMAGE"
       }
       resources {
-        cpu    = 1000
+        cpu    = 3000
         memory = 1000
         network {
           port  "http"  {
