@@ -17,11 +17,13 @@ object PeerDiscovery {
 
   def make[F[_]](
     client: Client[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] =
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] = {
+    val logger0 = logger
     for {
       bootstrapNode <- Resource.liftF { RoutingTableManager.bootstrap(client, logger) }
     } yield new PeerDiscovery[F] {
-      def discover(infoHash: InfoHash): Stream[F, PeerInfo] =
+      def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
+        val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
         Stream
           .eval {
             for {
@@ -64,7 +66,9 @@ object PeerDiscovery {
             case ExitCase.Error(e) => logger.error(s"Discovery failed with ${e.getMessage}")
             case _ => F.unit
           }
+      }
     }
+  }
 
   private case class State(
     nodesToTry: List[NodeInfo],

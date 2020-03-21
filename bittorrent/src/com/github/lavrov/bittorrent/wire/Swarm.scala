@@ -43,7 +43,7 @@ object Swarm {
             reconnects,
             peerInfo =>
               for {
-                _ <- logger.info(s"Connecting to ${peerInfo.address}")
+                _ <- logger.debug(s"Connecting to ${peerInfo.address}")
                 connection <- connect(peerInfo)
                   .timeoutTo(1.second, F raiseError Error.ConnectTimeout(1.second))
                 _ <- stateRef.update(_.updated(peerInfo, connection))
@@ -115,10 +115,10 @@ object Swarm {
   ): F[Unit] = {
     val maxAttempts = 5
     val gaveUp = lift {
-      logger.info(s"Gave up on ${peerInfo.address}")
+      logger.debug(s"Gave up on ${peerInfo.address}")
     }
     def logRetry(cause: String, attempt: Int, waitDuration: FiniteDuration) = lift {
-      logger.info(
+      logger.debug(
         s"Connection failed $attempt $cause. Retry connecting to ${peerInfo.address} in at least $waitDuration"
       )
     }
@@ -137,7 +137,7 @@ object Swarm {
     }
     for {
       _ <- connectWithRetry(1)
-      _ <- lift { logger.info(s"Disconnected from ${peerInfo.address}. Reconnect.") }
+      _ <- lift { logger.debug(s"Disconnected from ${peerInfo.address}. Reconnect.") }
       _ <- connectRoutine(peerInfo)(connect, coolDown)
     } yield ()
   }

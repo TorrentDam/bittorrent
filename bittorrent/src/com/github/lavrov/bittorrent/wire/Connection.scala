@@ -96,7 +96,7 @@ object Connection {
         def send(message: Message.Extended): F[Unit] = socket.send(message)
         def receive: F[Message.Extended] = extendedMessageQueue.dequeue1
       }
-      _ <- logger.info(s"Connected ${peerInfo.address}")
+      _ <- logger.debug(s"Connected ${peerInfo.address}")
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
       fiber <- Concurrent[F]
         .race[Nothing, Nothing](
@@ -118,7 +118,7 @@ object Connection {
         fiber.cancel >>
         requestRegistry.failAll(ConnectionClosed()) >>
         releaseConnection >>
-        logger.info(s"Disconnected ${peerInfo.address}") >>
+        logger.debug(s"Disconnected ${peerInfo.address}") >>
         closed.complete(reason)
       _ <- fiber.join.flatMap(doClose).start
     } yield {

@@ -47,7 +47,7 @@ object SocketSession {
     input.dequeue.evalMap {
       case WebSocketFrame.Text(Cmd(command), _) =>
         for {
-          _ <- logger.info(s"Received $command")
+          _ <- logger.debug(s"Received $command")
           _ <- commandHandler.handle(command)
         } yield ()
       case _ => IO.unit

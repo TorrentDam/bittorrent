@@ -56,11 +56,11 @@ object SwarmTasks {
                 request <- pieces.pick(a, connection.info.address)
                 wait <- request match {
                   case Some(request) =>
-                    logger.info(s"Picked $request") >>
+                    logger.debug(s"Picked $request") >>
                     incompleteRequests.update(_ + request) >>
                     requestQueue.enqueue1(request).as(false)
                   case None =>
-                    logger.info(s"No pieces dispatched for ${connection.info.address}").as(true)
+                    logger.debug(s"No pieces dispatched for ${connection.info.address}").as(true)
                 }
               } yield wait
             }
@@ -69,13 +69,13 @@ object SwarmTasks {
         } yield ()
       ).foreverM[Unit]
       sendRequest = { (request: Message.Request) =>
-        logger.info(s"Request $request") >>
+        logger.debug(s"Request $request") >>
         connection
           .request(request)
           .timeoutTo(5.seconds, F.raiseError(Error.TimeoutWaitingForPiece(5.seconds)))
           .flatMap { bytes =>
             F.uncancelable {
-              logger.info(s"Complete $request") >>
+              logger.debug(s"Complete $request") >>
               pieces.complete(request, bytes) >>
               incompleteRequests.update(_ - request) >>
               demand.release
@@ -89,9 +89,9 @@ object SwarmTasks {
       _ <- (fillQueue race drainQueue).void
         .handleErrorWith { e =>
           pickMutex.acquire >>
-          logger.info(s"Closing connection due to ${e.getMessage}") >>
+          logger.debug(s"Closing connection due to ${e.getMessage}") >>
           incompleteRequests.get.flatMap { requests =>
-            logger.info(s"Unpick $requests") >>
+            logger.debug(s"Unpick $requests") >>
             requests.toList.traverse_(pieces.unpick)
           } >>
           connection.close

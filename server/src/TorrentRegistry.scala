@@ -39,6 +39,9 @@ object TorrentRegistry {
     timer: Timer[IO],
     logger: LogIO[IO]
   ) extends TorrentRegistry {
+
+    private val logger0 = logger
+
     def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]] = Resource {
       ref
         .modify { registry =>
@@ -59,10 +62,11 @@ object TorrentRegistry {
         }
         .flatMap {
           case Right(get) =>
-            logger.info(s"Found existing torrent $infoHash") >>
+            logger.debug(s"Found existing torrent $infoHash") >>
             IO.pure((get, release(infoHash)))
           case Left((get, complete, cancel)) =>
-            logger.info(s"Make new torrent $infoHash") >>
+            implicit val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
+            logger.info(s"Make new torrent") >>
             make(infoHash, complete, cancel).as((get, release(infoHash)))
         }
     }
@@ -81,10 +85,10 @@ object TorrentRegistry {
         }
         .flatMap {
           case Some(torrent) =>
-            logger.info(s"Found existing torrent $infoHash") >>
+            logger.debug(s"Found existing torrent $infoHash") >>
             IO.pure((torrent.some, release(infoHash)))
           case None =>
-            logger.info(s"Torrent not found $infoHash") >>
+            logger.debug(s"Torrent not found $infoHash") >>
             IO.pure((none, IO.unit))
         }
     }
@@ -93,7 +97,7 @@ object TorrentRegistry {
       infoHash: InfoHash,
       complete: Either[Throwable, ServerTorrent] => IO[Unit],
       waitCancel: IO[Unit]
-    ): IO[Unit] = {
+    )(implicit logger: LogIO[IO]): IO[Unit] = {
       val makeTorrent =
         for {
           (swarm, metadata) <- makeSwarm(infoHash).evalMap { swarm =>
@@ -101,6 +105,9 @@ object TorrentRegistry {
               .download(swarm)
               .timeout(1.minute)
               .tupleLeft(swarm)
+              .flatTap { _ =>
+                logger.info(s"Metadata downloaded")
+              }
           }
           pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}"))
           torrent <- Torrent.make(metadata, swarm, pieceStore)
@@ -125,7 +132,7 @@ object TorrentRegistry {
     }
 
     private def release(infoHash: InfoHash): IO[Unit] =
-      logger.info(s"Release torrent $infoHash") >>
+      logger.debug(s"Release torrent $infoHash") >>
       ref
         .modify { registry =>
           val cell = registry(infoHash)
@@ -134,7 +141,7 @@ object TorrentRegistry {
         }
         .flatMap { cell =>
           if (cell.count == 0)
-            logger.info(s"Schedule torrent closure in 2 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
+            logger.debug(s"Schedule torrent closure in 2 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
             (
               timer.sleep(2.minutes) >>
               ref.modify { registry =>
@@ -146,12 +153,12 @@ object TorrentRegistry {
                 else
                   (
                     registry,
-                    logger.info(s"Keep this torrent running ${cell.count} $infoHash")
+                    logger.debug(s"Keep this torrent running ${cell.count} $infoHash")
                   )
               }.flatten
             ).start.void
           else
-            logger.info(s"Torrent is still in use ${cell.count} $infoHash")
+            logger.debug(s"Torrent is still in use ${cell.count} $infoHash")
         }
   }
 }

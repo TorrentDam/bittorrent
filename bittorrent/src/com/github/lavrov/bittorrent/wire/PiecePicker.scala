@@ -85,7 +85,7 @@ object PiecePicker {
                   State(state.incomplete.updated(i, updatedPiece), state.pending.updated(request, address))
                 stateRef.set(updatedState).as(request)
             }
-            _ <- logger.info(s"Picking $request")
+            _ <- logger.debug(s"Picking $request")
           } yield request
         }
       }
