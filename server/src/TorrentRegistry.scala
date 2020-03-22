@@ -40,9 +40,8 @@ object TorrentRegistry {
     logger: LogIO[IO]
   ) extends TorrentRegistry {
 
-    private val logger0 = logger
-
     def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]] = Resource {
+      implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
       ref
         .modify { registry =>
           registry.get(infoHash) match {
@@ -62,16 +61,16 @@ object TorrentRegistry {
         }
         .flatMap {
           case Right(get) =>
-            logger.debug(s"Found existing torrent $infoHash") >>
+            logger.debug(s"Found existing torrent") >>
             IO.pure((get, release(infoHash)))
           case Left((get, complete, cancel)) =>
-            implicit val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
             logger.info(s"Make new torrent") >>
             make(infoHash, complete, cancel).as((get, release(infoHash)))
         }
     }
 
     def tryGet(infoHash: InfoHash): Resource[IO, Option[ServerTorrent]] = Resource {
+      implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
       ref
         .modify { registry =>
           registry.get(infoHash) match {
@@ -85,10 +84,10 @@ object TorrentRegistry {
         }
         .flatMap {
           case Some(torrent) =>
-            logger.debug(s"Found existing torrent $infoHash") >>
+            logger.debug(s"Found existing torrent") >>
             IO.pure((torrent.some, release(infoHash)))
           case None =>
-            logger.debug(s"Torrent not found $infoHash") >>
+            logger.debug(s"Torrent not found") >>
             IO.pure((none, IO.unit))
         }
     }
@@ -131,8 +130,8 @@ object TorrentRegistry {
         .void
     }
 
-    private def release(infoHash: InfoHash): IO[Unit] =
-      logger.debug(s"Release torrent $infoHash") >>
+    private def release(infoHash: InfoHash)(implicit logger: LogIO[IO]): IO[Unit] =
+      logger.debug(s"Release torrent") >>
       ref
         .modify { registry =>
           val cell = registry(infoHash)
@@ -141,24 +140,42 @@ object TorrentRegistry {
         }
         .flatMap { cell =>
           if (cell.count == 0)
-            logger.debug(s"Schedule torrent closure in 2 minutes ${cell.count} ${cell.usedCount} $infoHash") >>
-            (
-              timer.sleep(2.minutes) >>
-              ref.modify { registry =>
-                if (registry.get(infoHash).exists(_.usedCount == cell.usedCount))
-                  (
-                    registry.removed(infoHash),
-                    cell.close >> logger.info(s"Closed torrent $infoHash")
-                  )
-                else
-                  (
-                    registry,
-                    logger.debug(s"Keep this torrent running ${cell.count} $infoHash")
-                  )
-              }.flatten
-            ).start.void
+            scheduleClose(infoHash, _.usedCount == cell.usedCount)
           else
-            logger.debug(s"Torrent is still in use ${cell.count} $infoHash")
+            logger.debug(s"Torrent is still in use ${cell.count}")
         }
+
+    private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(
+      implicit logger: LogIO[IO]
+    ): IO[Unit] = {
+      val idleTimeout = 5.minutes
+      val waitAndTry =
+        logger.debug(s"Schedule torrent closure in $idleTimeout") >>
+        timer.sleep(idleTimeout) >>
+        tryClose(infoHash, closeIf)
+      waitAndTry.start.void
+    }
+
+    private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(
+      implicit logger: LogIO[IO]
+    ): IO[Unit] = {
+      ref.modify { registry =>
+        registry.get(infoHash) match {
+          case Some(cell) if closeIf(cell) =>
+            (
+              registry.removed(infoHash),
+              cell.close >> logger.info(s"Closed torrent")
+            )
+          case _ =>
+            (
+              registry,
+              IO.unit
+            )
+        }
+      }.flatten
+    }
+
+    private def loggerWithContext(infoHash: InfoHash): LogIO[IO] =
+      logger.withCustomContext(("infoHash", infoHash.toString))
   }
 }
