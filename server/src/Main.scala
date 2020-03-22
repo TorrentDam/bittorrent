@@ -24,6 +24,7 @@ import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
 
 import scala.util.Random
+import scala.concurrent.duration._
 
 object Main extends IOApp {
 
@@ -97,7 +98,12 @@ object Main extends IOApp {
                     Stream
                       .emits(span.beginIndex to span.endIndex)
                       .covary[IO]
-                      .parEvalMap(parallelPieces)(index => torrent.piece(index.toInt) tupleLeft index)
+                      .parEvalMap(parallelPieces) { index =>
+                        torrent
+                          .piece(index.toInt)
+                          .timeout(1.minute)
+                          .tupleLeft(index)
+                      }
                       .map {
                         case (span.beginIndex, bytes) =>
                           bytes.drop(span.beginOffset).toArray
