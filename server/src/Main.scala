@@ -1,3 +1,4 @@
+import Routes.FileIndex
 import cats.data.Kleisli
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
@@ -149,7 +150,7 @@ object Main extends IOApp {
           case None => NotFound("Torrent not found")
         }
 
-    } yield httpApp(handleSocket, handleGetTorrent, handleGetData)
+    } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData)
   }
 
   def serve(bindPort: Int, app: HttpApp[IO]): IO[ExitCode] =
@@ -161,12 +162,17 @@ object Main extends IOApp {
       .compile
       .lastOrError
 
+}
+
+object Routes {
+  val dsl = org.http4s.dsl.io
+
   def httpApp(
     handleSocket: IO[Response[IO]],
     handleGetTorrent: InfoHash => IO[Response[IO]],
     handleGetData: (InfoHash, FileIndex, Option[Range]) => IO[Response[IO]]
   ): HttpApp[IO] = {
-    import org.http4s.dsl.io._
+    import dsl._
     Kleisli {
       case GET -> Root => Ok("Success")
       case GET -> Root / "ws" => handleSocket

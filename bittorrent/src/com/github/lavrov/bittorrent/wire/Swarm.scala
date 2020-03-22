@@ -32,8 +32,8 @@ object Swarm {
     for {
       stateRef <- Ref.of(Map.empty[PeerInfo, Connection[F]])
       lastConnected <- SignallingRef[F, Connection[F]](null)
-      peerBuffer <- Queue.bounded[F, PeerInfo](10)
-      reconnects <- Queue.unbounded[F, F[Unit]]
+      peerBuffer <- Queue.in[F].bounded[F, PeerInfo](10)
+      reconnects <- Queue.in[F].unbounded[F, F[Unit]]
       fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
       connectionFibers <- F
         .replicateA(

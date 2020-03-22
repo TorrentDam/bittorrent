@@ -50,11 +50,10 @@ object shared extends Module {
 
 object server extends Module with NativeImageModule {
   def moduleDeps = List(bittorrent, shared)
-  private val http4sVersion = "0.21.0"
   def ivyDeps = Agg(
-    ivy"org.http4s::http4s-core:$http4sVersion",
-    ivy"org.http4s::http4s-dsl:$http4sVersion",
-    ivy"org.http4s::http4s-blaze-server:$http4sVersion",
+    ivy"org.http4s::http4s-core:${Versions.http4s}",
+    ivy"org.http4s::http4s-dsl:${Versions.http4s}",
+    ivy"org.http4s::http4s-blaze-server:${Versions.http4s}",
     ivy"io.7mind.izumi::logstage-adapter-slf4j:${Versions.logstage}",
   )
 }
@@ -152,8 +151,9 @@ trait NativeImageModule extends ScalaModule {
 
 object Versions {
   val monocle = "2.0.0"
-  val logstage = "0.9.5"
+  val logstage = "0.10.2"
   val `scodec-bits` = "1.1.14"
   val upickle = "1.0.0"
+  val http4s = "0.21.1"
 }
 
