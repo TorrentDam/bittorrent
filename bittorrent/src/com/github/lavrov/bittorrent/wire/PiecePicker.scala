@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent.wire
 
 import java.net.InetSocketAddress
 
+import cats.Eval
 import cats.data.Chain
 import cats.implicits._
 import cats.effect.implicits._
@@ -38,7 +39,7 @@ object PiecePicker {
     } yield new Impl(stateRef, completions, pickMutex, notifyRef, incompletePieces)
 
   case class State(
-    incomplete: Map[Int, IncompletePiece],
+    downloading: Map[Int, InProgressPiece],
     pending: Map[Message.Request, InetSocketAddress]
   )
 
@@ -61,8 +62,15 @@ object PiecePicker {
                 completions.updated(index, deferred.complete)
               }
               _ <- stateRef.update { state =>
+                val incompletePiece = incompletePieces(index)
+                val inProgress = InProgressPiece(
+                  incompletePiece.index,
+                  incompletePiece.size,
+                  incompletePiece.checksum,
+                  incompletePiece.requests.value
+                )
                 state.copy(
-                  incomplete = state.incomplete.updated(index, incompletePieces(index))
+                  downloading = state.downloading.updated(index, inProgress)
                 )
               }
               _ <- notifyRef.set(())
@@ -76,13 +84,13 @@ object PiecePicker {
         F.uncancelable {
           for {
             state <- stateRef.get
-            result = state.incomplete.find { case (i, p) => availability(i) && p.requests.nonEmpty }
+            result = state.downloading.find { case (i, p) => availability(i) && p.requests.nonEmpty }
             request <- result.traverse {
               case (i, p) =>
                 val request = p.requests.head
                 val updatedPiece = p.copy(requests = p.requests.tail)
                 val updatedState =
-                  State(state.incomplete.updated(i, updatedPiece), state.pending.updated(request, address))
+                  State(state.downloading.updated(i, updatedPiece), state.pending.updated(request, address))
                 stateRef.set(updatedState).as(request)
             }
             _ <- logger.debug(s"Picking $request")
@@ -95,9 +103,9 @@ object PiecePicker {
         F.uncancelable {
           stateRef.update { state =>
             val index = request.index.toInt
-            val piece = state.incomplete(index)
+            val piece = state.downloading(index)
             val updatedPiece = piece.copy(requests = request :: piece.requests)
-            State(state.incomplete.updated(index, updatedPiece), state.pending - request)
+            State(state.downloading.updated(index, updatedPiece), state.pending - request)
           } >>
           notifyRef.set(())
         }
@@ -109,14 +117,14 @@ object PiecePicker {
           for {
             piece <- stateRef.modify { state =>
               val index = request.index.toInt
-              val piece = state.incomplete(index)
+              val piece = state.downloading(index)
               val updatedPiece = piece.add(request, bytes)
-              val updatedIncomplete =
+              val updatedDownloading =
                 if (updatedPiece.isComplete)
-                  state.incomplete.removed(index)
+                  state.downloading.removed(index)
                 else
-                  state.incomplete.updated(index, updatedPiece)
-              val updatedState = State(updatedIncomplete, state.pending - request)
+                  state.downloading.updated(index, updatedPiece)
+              val updatedState = State(updatedDownloading, state.pending - request)
               (updatedState, updatedPiece)
             }
             _ <- F.whenA(piece.isComplete) {
@@ -139,7 +147,7 @@ object PiecePicker {
 
   def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {
 
-    def downloadFile(
+    def genPieces(
       pieceLength: Long,
       totalLength: Long,
       pieces: ByteVector
@@ -149,14 +157,16 @@ object PiecePicker {
         val thisPieceLength =
           math.min(pieceLength, totalLength - index * pieceLength)
         if (thisPieceLength > 0) {
-          val list =
-            downloadPiece(index, thisPieceLength)
-          result = result append IncompletePiece(
+          result = result.append(
+            IncompletePiece(
               index,
               thisPieceLength,
               pieces.drop(index * 20).take(20),
-              list.toList
+              Eval.always {
+                genRequests(index, thisPieceLength).toList
+              }
             )
+          )
           loop(index + 1)
         }
       }
@@ -164,18 +174,20 @@ object PiecePicker {
       result
     }
 
-    def downloadPiece(pieceIndex: Long, length: Long): Chain[Message.Request] = {
+    def genRequests(pieceIndex: Long, length: Long): Chain[Message.Request] = {
       val chunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
         val thisChunkSize = math.min(chunkSize, length - index * chunkSize)
         if (thisChunkSize > 0) {
           val begin = index * chunkSize
-          result = result append Message.Request(
+          result = result.append(
+            Message.Request(
               pieceIndex,
               begin,
               thisChunkSize
             )
+          )
           loop(index + 1)
         }
       }
@@ -183,10 +195,16 @@ object PiecePicker {
       result
     }
 
-    downloadFile(metadata.pieceLength, metadata.files.map(_.length).sum, metadata.pieces)
+    genPieces(metadata.pieceLength, metadata.files.map(_.length).sum, metadata.pieces)
   }
 
   case class IncompletePiece(
+    index: Long,
+    size: Long,
+    checksum: ByteVector,
+    requests: Eval[List[Message.Request]]
+  )
+  case class InProgressPiece(
     index: Long,
     size: Long,
     checksum: ByteVector,
@@ -194,7 +212,7 @@ object PiecePicker {
     downloadedSize: Long = 0,
     downloaded: Map[Message.Request, ByteVector] = Map.empty
   ) {
-    def add(request: Message.Request, bytes: ByteVector): IncompletePiece =
+    def add(request: Message.Request, bytes: ByteVector): InProgressPiece =
       copy(
         downloadedSize = downloadedSize + request.length,
         downloaded = downloaded.updated(request, bytes)
@@ -205,7 +223,7 @@ object PiecePicker {
         downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
       if (joinedChunks.digest("SHA-1") == checksum) joinedChunks.some else none
     }
-    def reset: IncompletePiece =
+    def reset: InProgressPiece =
       copy(downloadedSize = 0, downloaded = Map.empty)
   }
 

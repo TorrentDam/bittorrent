@@ -19,7 +19,7 @@ object PiecePickerSpec extends BasicTestSuite {
           val fileSize = file.length
           val queue = PiecePicker.buildQueue(metadata)
           assert(queue.map(_.size).toList.sum == fileSize)
-          assert(queue.toList.flatMap(_.requests).map(_.length).sum == fileSize)
+          assert(queue.toList.flatMap(_.requests.value).map(_.length).sum == fileSize)
           true
       }
     )
