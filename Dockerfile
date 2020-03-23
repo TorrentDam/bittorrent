@@ -1,5 +1,5 @@
-FROM openjdk:14-slim
+FROM ubuntu
 
-COPY ./out/server/assembly/dest/out.jar /opt/server.jar
+COPY ./out/server/nativeImage/dest/out /opt/bittorrent-server
 
-ENTRYPOINT ["java", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseZGC", "-XX:ZAllocationSpikeTolerance=100", "-XX:ZUncommitDelay=0", "-Xmx800m", "-jar", "/opt/server.jar"]
+ENTRYPOINT ["/opt/bittorrent-server"]
