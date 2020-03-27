@@ -2,16 +2,22 @@ import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
 import cats.implicits._
-import cats.effect.IOApp
-import cats.effect.IO
-import cats.effect.ExitCode
+import cats.effect.{ContextShift, ExitCode, IO, IOApp, Timer}
 import cats.effect.concurrent.MVar
 import component.{App, Router}
 import logic.{Action, Circuit}
 
-class Main extends IOApp {
+import scala.concurrent.ExecutionContext
 
-  def run(args: List[String]): IO[ExitCode] = {
+object Main {
+
+  implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  @JSExportTopLevel("main")
+  def main(): Unit = mainIO.void.unsafeRunSync()
+
+  def mainIO: IO[ExitCode] = {
     for {
       out <- MVar.empty[IO, String]
       circuit <- IO { Circuit(out.put(_).unsafeRunSync()) }
@@ -43,9 +49,4 @@ class Main extends IOApp {
     } yield ExitCode.Success
   }
 
-}
-
-object Main {
-  @JSExportTopLevel("main")
-  def main() = (new Main).main(Array.empty)
 }

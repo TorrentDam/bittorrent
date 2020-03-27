@@ -113,7 +113,7 @@ trait Module extends ScalaModule with ScalafmtModule {
 }
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
-  def scalaJSVersion = "0.6.32"
+  def scalaJSVersion = "1.0.1"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
