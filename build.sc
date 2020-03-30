@@ -5,7 +5,7 @@ import $file.release, release.ReleaseModule
 object bencode extends Module {
   def ivyDeps = Agg(
     ivy"org.scodec::scodec-core:1.11.4", 
-    ivy"org.typelevel::cats-core:2.1.0",
+    ivy"org.typelevel::cats-core:2.1.1",
   )
   object test extends TestModule
 }
@@ -144,6 +144,7 @@ trait NativeImageModule extends ScalaModule {
       "-jar", assembly().path,
       "--no-fallback",
       "--initialize-at-build-time=scala",
+      "--enable-https",
     )
     finalMainClass()
   }

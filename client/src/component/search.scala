@@ -1,14 +1,14 @@
 package component
+
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.Router.Route
 import material_ui.core._
 import material_ui.icons
 import material_ui.styles.makeStyles
 import org.scalajs.dom.Event
-import scodec.bits.ByteVector
 import slinky.core.{FunctionalComponent, SyntheticEvent}
 import slinky.core.annotations.react
-import slinky.core.facade.Hooks
+import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
 
 import scala.scalajs.js.Dynamic
@@ -35,36 +35,90 @@ object Search {
   )
 
   val component = FunctionalComponent[Props] { props =>
-    val classes = useStyles()
-    val (value, setState) = Hooks.useState("")
-    val infoHashOpt = extractInfoHash(value)
-    def handleClick(e: SyntheticEvent[org.scalajs.dom.html.Form, Event]) = {
-      e.preventDefault()
-      infoHashOpt match {
-        case Some(infoHash) =>
-          props.router.navigate(Route.Torrent(infoHash))
-        case None =>
-          println(value)
-      }
-    }
-    Paper(className = classes.root.toString, component = "form")(
-      onSubmit := [form.tagType] (handleClick),
-      InputBase(
-        placeholder = "Info hash or magnet link",
-        value = value,
-        onChange = event => setState(event.target.value.asInstanceOf[String]),
-        className = classes.input.toString
-      ),
-      IconButton(`type` = "submit")(
-        icons.ArrowForward()
-      )
+    val (state, setState) = Hooks.useState(SearchResults(Nil))
+
+    div(
+      SearchBox(setState(_), props.router),
+      ResultList(state, props.router)
     )
+  }
+
+  @react
+  object SearchBox {
+
+    case class Props(callback: SearchResults => Unit, router: Router)
+
+    val component = FunctionalComponent[Props] { props =>
+      val classes = useStyles()
+      val (state, setState) = Hooks.useState("")
+
+      val infoHashOpt = extractInfoHash(state)
+
+      def handleSubmit(e: SyntheticEvent[org.scalajs.dom.html.Form, Event]) = {
+        e.preventDefault()
+        infoHashOpt match {
+          case Some(infoHash) =>
+            props.router.navigate(Route.Torrent(infoHash))
+          case None =>
+            val request = new org.scalajs.dom.XMLHttpRequest
+            request.open("GET", environment.httpUrl(s"/search?query=$state"))
+            request.send()
+            request.onloadend = { _ =>
+              if (request.status == 200) {
+                val results = SearchResults.fromJson(request.responseText)
+                props.callback(results)
+              }
+            }
+        }
+      }
+
+      div(
+        Paper(className = classes.root.toString, component = "form")(
+          onSubmit := [form.tagType] (handleSubmit),
+          InputBase(
+            placeholder = "Info hash or magnet link",
+            value = state,
+            onChange = event => setState(event.target.value.toString),
+            className = classes.input.toString
+          ),
+          IconButton(`type` = "submit")(
+            icons.ArrowForward()
+          )
+        )
+      )
+    }
+  }
+
+  @react
+  object ResultList {
+
+    case class Props(searchResults: SearchResults, router: Router)
+
+    val component = FunctionalComponent[Props] { props =>
+      def handleClick(infoHash: InfoHash) = () => {
+        props.router.navigate(Route.Torrent(infoHash))
+      }
+      List(
+        for {
+          (item, index) <- props.searchResults.results.zipWithIndex
+          infoHash <- extractInfoHash(item.magnet)
+        } yield {
+          ListItem(button = true)(
+            key := s"search-result-$index",
+            onClick := handleClick(infoHash),
+            ListItemText(
+              primary = Typography(noWrap = true)(item.title): ReactElement,
+              secondary = infoHash.toString
+            )
+          )
+        }
+      )
+    }
   }
 
   private val regex = """xt=urn:btih:(\w+)""".r
 
   private def extractInfoHash(value: String): Option[InfoHash] = {
-    def isInfoHash(str: String) = ByteVector.fromHex(str).exists(_.size == 20)
     InfoHash.fromString
       .lift(value)
       .orElse(
@@ -73,4 +127,19 @@ object Search {
         }
       )
   }
+
+  case class SearchResults(results: List[SearchResults.Item])
+
+  object SearchResults {
+
+    import upickle.default._
+
+    case class Item(title: String, magnet: String)
+
+    implicit val itemReader: ReadWriter[Item] = macroRW
+    implicit val resultsReader: ReadWriter[SearchResults] = macroRW
+
+    def fromJson(json: String): SearchResults = read[SearchResults](json)
+  }
+
 }
