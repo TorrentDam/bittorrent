@@ -44,7 +44,7 @@ object Main extends IOApp {
   def makeApp: Resource[IO, HttpApp[IO]] = {
     import org.http4s.dsl.io._
     for {
-      blocker <- Blocker[IO]
+      implicit0(blocker: Blocker) <- Blocker[IO]
       socketGroup <- SocketGroup[IO](blocker)
       udpSocketGroup <- UdpSocketGroup[IO](blocker)
       dhtClient <- {
@@ -104,12 +104,12 @@ object Main extends IOApp {
                           .timeout(1.minute)
                           .tupleLeft(index)
                       }
-                      .map {
+                      .flatMap {
                         case (span.beginIndex, bytes) =>
-                          bytes.drop(span.beginOffset).toArray
+                          bytes.drop(span.beginOffset)
                         case (span.endIndex, bytes) =>
-                          bytes.take(span.endOffset).toArray
-                        case (_, bytes) => bytes.toArray
+                          bytes.take(span.endOffset)
+                        case (_, bytes) => bytes
                       }
                   case _ =>
                     Stream.empty

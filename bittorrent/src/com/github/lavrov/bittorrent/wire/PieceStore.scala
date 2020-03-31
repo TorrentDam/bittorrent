@@ -4,19 +4,22 @@ import java.nio.file.{Files, Path}
 
 import cats.effect.concurrent.Ref
 import cats.implicits._
-import cats.effect.{Resource, Sync}
+import cats.effect.{Blocker, ContextShift, Resource, Sync}
 import scodec.bits.ByteVector
+import fs2.Stream
 
 import scala.collection.immutable.BitSet
 import scala.jdk.StreamConverters._
 
 trait PieceStore[F[_]] {
-  def get(index: Int): F[Option[ByteVector]]
-  def put(index: Int, bytes: ByteVector): F[Unit]
+  def get(index: Int): F[Option[Stream[F, Byte]]]
+  def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]]
 }
 
 object PieceStore {
-  def disk[F[_]](directory: Path)(implicit F: Sync[F]): Resource[F, PieceStore[F]] = {
+  def disk[F[_]](
+    directory: Path
+  )(implicit F: Sync[F], cs: ContextShift[F], blocker: Blocker): Resource[F, PieceStore[F]] = {
 
     val createDirectory = F.delay {
       Files.createDirectories(directory)
@@ -36,28 +39,32 @@ object PieceStore {
     }
   }
 
-  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(implicit F: Sync[F]) extends PieceStore[F] {
+  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(
+    implicit F: Sync[F],
+    contextShift: ContextShift[F],
+    blocker: Blocker
+  ) extends PieceStore[F] {
 
-    def get(index: Int): F[Option[ByteVector]] =
+    def get(index: Int): F[Option[fs2.Stream[F, Byte]]] =
       for {
         availability <- availability.get
         available = availability(index)
-        result <- if (available) readFile(pieceFile(index)).map(_.some) else none[ByteVector].pure[F]
-      } yield result
+      } yield if (available) readFile(pieceFile(index)).some else none
 
-    def put(index: Int, bytes: ByteVector): F[Unit] =
+    def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]] = {
+      val file = pieceFile(index)
       for {
         _ <- F.delay {
-          Files.write(pieceFile(index), bytes.toArray)
+          Files.write(file, bytes.toArray)
         }
         _ <- availability.update(_ + index)
-      } yield ()
+      } yield readFile(file)
+    }
 
     private def pieceFile(index: Int) = directory.resolve(index.toString)
 
-    private def readFile(file: Path) = F.delay {
-      val byteArray = Files.readAllBytes(file)
-      ByteVector(byteArray)
+    private def readFile(file: Path) = {
+      fs2.io.file.readAll(file, blocker, 1024)
     }
   }
 }

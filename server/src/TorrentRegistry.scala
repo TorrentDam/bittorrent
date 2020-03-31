@@ -18,7 +18,7 @@ object TorrentRegistry {
 
   def make(
     makeSwarm: InfoHash => Resource[IO, Swarm[IO]]
-  )(implicit cs: ContextShift[IO], timer: Timer[IO], logger: LogIO[IO]): IO[TorrentRegistry] =
+  )(implicit cs: ContextShift[IO], blocker: Blocker, timer: Timer[IO], logger: LogIO[IO]): IO[TorrentRegistry] =
     for {
       ref <- Ref.of[IO, Registry](emptyRegistry)
     } yield new Impl(ref, makeSwarm)
@@ -36,6 +36,7 @@ object TorrentRegistry {
 
   private class Impl(ref: Ref[IO, Registry], makeSwarm: InfoHash => Resource[IO, Swarm[IO]])(
     implicit cs: ContextShift[IO],
+    blocker: Blocker,
     timer: Timer[IO],
     logger: LogIO[IO]
   ) extends TorrentRegistry {
@@ -109,8 +110,8 @@ object TorrentRegistry {
               }
           }
           pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}"))
-          torrent <- Torrent.make(metadata, swarm, pieceStore)
-          torrent <- ServerTorrent.make(torrent)
+          torrent <- Torrent.make(metadata, swarm)
+          torrent <- ServerTorrent.make(torrent, pieceStore)
         } yield torrent
       makeTorrent
         .use { torrent =>

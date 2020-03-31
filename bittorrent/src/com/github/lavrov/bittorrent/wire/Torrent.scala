@@ -20,8 +20,7 @@ object Torrent {
 
   def make[F[_]](
     metaInfo: MetaInfo,
-    swarm: Swarm[F],
-    pieceStore: PieceStore[F]
+    swarm: Swarm[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] = Resource {
     for {
       piecePicker <- PiecePicker(metaInfo.parsed)
@@ -37,10 +36,7 @@ object Torrent {
               availability <- availability.foldMap(identity).pure[F]
             } yield Stats(connected.size, availability)
           def piece(index: Int): F[ByteVector] =
-            pieceStore.get(index).flatMap {
-              case Some(bytes) => bytes.pure[F]
-              case None => piecePicker.download(index).flatTap(pieceStore.put(index, _))
-            }
+            piecePicker.download(index)
         }
       val close = downloadFiber.cancel
       (impl, close)
