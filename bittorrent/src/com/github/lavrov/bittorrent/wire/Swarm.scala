@@ -9,7 +9,7 @@ import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
-import fs2.concurrent.{Queue, Signal, SignallingRef}
+import fs2.concurrent.{Queue, SignallingRef}
 import logstage.LogIO
 
 import scala.concurrent.duration._
@@ -30,7 +30,7 @@ object Swarm {
     logger: LogIO[F]
   ): Resource[F, Swarm[F]] = Resource {
     for {
-      stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
+      stateRef <- Ref.of(Map.empty[PeerInfo, Connection[F]])
       lastConnected <- SignallingRef[F, Connection[F]](null)
       peerBuffer <- Queue.in[F].bounded[F, PeerInfo](10)
       reconnects <- Queue.in[F].unbounded[F, F[Unit]]
@@ -61,12 +61,12 @@ object Swarm {
   }
 
   private class Impl[F[_]](
-    stateRef: SignallingRef[F, Map[PeerInfo, Connection[F]]],
+    stateRef: Ref[F, Map[PeerInfo, Connection[F]]],
     lastConnected: SignallingRef[F, Connection[F]]
   )(implicit F: Monad[F])
       extends Swarm[F] {
     val connected: Connected[F] = new Connected[F] {
-      def count: Signal[F, Int] = stateRef.map(_.size)
+      def count: F[Int] = stateRef.get.map(_.size)
       def list: F[List[Connection[F]]] = stateRef.get.map(_.values.toList)
       def stream: Stream[F, Connection[F]] =
         Stream.evalSeq(stateRef.get.map(_.values.toList)) ++ lastConnected.discrete.tail
@@ -143,7 +143,7 @@ object Swarm {
   }
 
   trait Connected[F[_]] {
-    def count: Signal[F, Int]
+    def count: F[Int]
     def list: F[List[Connection[F]]]
     def stream: Stream[F, Connection[F]]
   }
