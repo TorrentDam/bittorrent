@@ -18,7 +18,12 @@ object FetchingMetadata {
     val classes = useStyles()
     props.model.metadata match {
       case None =>
-        p(className := classes.centered.toString)("Fetching torrent metadata...")
+        p(className := classes.centered.toString)(
+          if (props.model.connected == 0)
+            "Discovering peers"
+          else
+            s"Fetching torrent metadata from ${props.model.connected} peers"
+        )
       case Some(Left(_)) =>
         p(className := classes.centered.toString)("Could not fetch metadata")
       case Some(Right(metadata)) =>
