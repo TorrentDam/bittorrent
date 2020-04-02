@@ -23,23 +23,28 @@ object Search {
         root = Dynamic.literal(
           padding = theme.spacing(1),
           display = "flex",
-          alignItems = "center",
+          textAlign = "center",
           marginTop = theme.spacing(4)
         ),
         input = Dynamic.literal(
           marginLeft = theme.spacing(1),
           marginRight = theme.spacing(1),
           flex = 1
+        ),
+        notFound = Dynamic.literal(
+          textAlign = "center",
+          marginTop = theme.spacing(4)
         )
       )
   )
 
   val component = FunctionalComponent[Props] { props =>
-    val (state, setState) = Hooks.useState(SearchResults(Nil))
+    val (state, setState) = Hooks.useState(Option.empty[SearchResults])
 
     div(
-      SearchBox(setState(_), props.router),
-      ResultList(state, props.router)
+      SearchBox(r => setState(Some(r)), props.router),
+      for (r <- state)
+        yield ResultList(r, props.router)
     )
   }
 
@@ -54,7 +59,7 @@ object Search {
 
       val infoHashOpt = extractInfoHash(state)
 
-      def handleSubmit(e: SyntheticEvent[org.scalajs.dom.html.Form, Event]) = {
+      def handleSubmit(e: Event) = {
         e.preventDefault()
         infoHashOpt match {
           case Some(infoHash) =>
@@ -73,8 +78,7 @@ object Search {
       }
 
       div(
-        Paper(className = classes.root.toString, component = "form")(
-          onSubmit := [form.tagType] (handleSubmit),
+        Paper(className = classes.root.toString, component = "form", onSubmit = handleSubmit _)(
           InputBase(
             placeholder = "Info hash or magnet link",
             value = state,
@@ -95,24 +99,29 @@ object Search {
     case class Props(searchResults: SearchResults, router: Router)
 
     val component = FunctionalComponent[Props] { props =>
+      val classes = useStyles()
+
       def handleClick(infoHash: InfoHash) = () => {
         props.router.navigate(Route.Torrent(infoHash))
       }
-      List(
-        for {
-          (item, index) <- props.searchResults.results.zipWithIndex
-          infoHash <- extractInfoHash(item.magnet)
-        } yield {
-          ListItem(button = true)(
-            key := s"search-result-$index",
-            onClick := handleClick(infoHash),
-            ListItemText(
-              primary = Typography(noWrap = true)(item.title): ReactElement,
-              secondary = infoHash.toString
+      if (props.searchResults.results.nonEmpty)
+        List(
+          for {
+            (item, index) <- props.searchResults.results.zipWithIndex
+            infoHash <- extractInfoHash(item.magnet)
+          } yield {
+            ListItem(button = true)(
+              key := s"search-result-$index",
+              onClick := handleClick(infoHash),
+              ListItemText(
+                primary = Typography(noWrap = true)(item.title): ReactElement,
+                secondary = infoHash.toString
+              )
             )
-          )
-        }
-      )
+          }
+        )
+      else
+        p(className := classes.notFound.toString)("Nothing found")
     }
   }
 

@@ -8,9 +8,13 @@ import scala.scalajs.js
 import scala.scalajs.js.UndefOr
 import scala.scalajs.js.annotation.JSImport
 
+import org.scalajs.dom
+
 package core {
+  import org.scalajs.dom.raw.EventInit
   import slinky.core.facade.ReactElement
 
+  import scala.scalajs.js.annotation.JSGlobal
   import scala.scalajs.js.|
   private object imports {
     @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
@@ -161,7 +165,8 @@ package core {
       className: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined,
       variant: UndefOr[String] = js.undefined,
-      elevation: UndefOr[Int] = js.undefined
+      elevation: UndefOr[Int] = js.undefined,
+      onSubmit: UndefOr[dom.Event => Unit] = js.undefined
     )
     val component = imports.Paper
   }
@@ -194,7 +199,7 @@ package core {
     case class Props(
       placeholder: String,
       value: String,
-      onChange: js.Dynamic => Unit,
+      onChange: SyntheticEvent[dom.html.Input, dom.Event] => Unit,
       className: UndefOr[String] = js.undefined,
       disabled: UndefOr[Boolean] = js.undefined
     )
