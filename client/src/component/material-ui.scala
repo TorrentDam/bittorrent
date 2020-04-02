@@ -316,6 +316,16 @@ package core {
     val component = imports.TableCell
   }
 
+  @react
+  object Fade extends ExternalComponent {
+    case class Props(in: Boolean)
+
+    val component = `import`
+
+    @js.native @JSImport("@material-ui/core/Fade", JSImport.Default)
+    private object `import` extends js.Object
+  }
+
 }
 
 package icons {

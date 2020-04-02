@@ -104,24 +104,27 @@ object Search {
       def handleClick(infoHash: InfoHash) = () => {
         props.router.navigate(Route.Torrent(infoHash))
       }
-      if (props.searchResults.results.nonEmpty)
-        List(
-          for {
-            (item, index) <- props.searchResults.results.zipWithIndex
-            infoHash <- extractInfoHash(item.magnet)
-          } yield {
-            ListItem(button = true)(
-              key := s"search-result-$index",
-              onClick := handleClick(infoHash),
-              ListItemText(
-                primary = Typography(noWrap = true)(item.title): ReactElement,
-                secondary = infoHash.toString
+
+      Fade(in = true)(
+        if (props.searchResults.results.nonEmpty)
+          List(
+            for {
+              (item, index) <- props.searchResults.results.zipWithIndex
+              infoHash <- extractInfoHash(item.magnet)
+            } yield {
+              ListItem(button = true)(
+                key := s"search-result-$index",
+                onClick := handleClick(infoHash),
+                ListItemText(
+                  primary = Typography(noWrap = true)(item.title): ReactElement,
+                  secondary = infoHash.toString
+                )
               )
-            )
-          }
-        )
-      else
-        p(className := classes.notFound.toString)("Nothing found")
+            }
+          )
+        else
+          p(className := classes.notFound.toString)("Nothing found")
+      )
     }
   }
 
