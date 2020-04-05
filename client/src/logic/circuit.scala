@@ -5,7 +5,9 @@ import component.Router.Route
 import frp.{Observable, Var}
 import squants.information
 
-class Circuit(send: Command => Unit, state: Var[RootModel]) {
+import scala.concurrent.ExecutionContext
+
+class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: ExecutionContext) {
   def actionHandler: (RootModel, Action) => Option[RootModel] =
     (value, action) =>
       action match {
@@ -13,6 +15,22 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
           Some(
             value.copy(connected = connected)
           )
+        case Action.Search(query) =>
+          value.search match {
+            case Some(RootModel.Search(`query`, _)) => None
+            case _ =>
+              val search = RootModel.Search(query, None)
+              SearchApi(query).foreach { results =>
+                dispatcher(Action.UpdateSearchResults(query, results))
+              }
+              val model = value.copy(search = Some(search))
+              Some(model)
+          }
+        case Action.UpdateSearchResults(query, results) =>
+          value.search.filter(_.query == query).map { search =>
+            val updated = search.copy(results = Some(results))
+            value.copy(search = Some(updated))
+          }
         case Action.ServerEvent(payload) =>
           val event = upickle.default.read[Event](payload)
           event match {
@@ -80,7 +98,7 @@ class Circuit(send: Command => Unit, state: Var[RootModel]) {
 }
 
 object Circuit {
-  def apply(send: String => Unit) = new Circuit(
+  def apply(send: String => Unit)(implicit ec: ExecutionContext) = new Circuit(
     command => send(upickle.default.write(command)),
     Var(RootModel.initial)
   )

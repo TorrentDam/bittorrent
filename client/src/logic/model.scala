@@ -1,11 +1,13 @@
 package logic
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
+import logic.SearchApi.SearchResults
 import squants.Quantity
 import squants.information.Information
 
 case class RootModel(
   connected: Boolean,
+  search: Option[RootModel.Search],
   torrent: Option[TorrentModel],
   logs: List[String]
 )
@@ -14,10 +16,15 @@ object RootModel {
   def initial: RootModel = {
     RootModel(
       connected = false,
+      search = None,
       torrent = None,
       logs = List.empty
     )
   }
+  case class Search(
+    query: String,
+    results: Option[SearchResults]
+  )
 }
 
 case class TorrentModel(

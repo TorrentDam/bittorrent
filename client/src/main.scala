@@ -11,7 +11,8 @@ import scala.concurrent.ExecutionContext
 
 object Main {
 
-  implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val executionContext: ExecutionContext = ExecutionContext.global
+  implicit val contextShift: ContextShift[IO] = IO.contextShift(executionContext)
   implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
   @JSExportTopLevel("main")

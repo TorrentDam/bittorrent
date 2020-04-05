@@ -43,11 +43,13 @@ object App {
       ),
       main(
         Container(maxWidth = "md")(
-          Connect(props.model.zoomTo(_.connected), props.dispatcher) {
-            case (true, _) =>
+          Connect(props.model.zoomTo(_.connected)) { connected =>
+            if (connected)
               props.router.when {
                 case Router.Route.Root =>
-                  Search(props.router)
+                  Connect(props.model.zoomTo(_.search))(
+                    model => Search(model, props.router, props.dispatcher)
+                  )
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(
                     torrent => metadata => Torrent(props.router, torrent, metadata)
@@ -58,7 +60,7 @@ object App {
                   )
 
               }
-            case _ =>
+            else
               p(className := classes.centered.toString)("Connecting to server...")
           }
         )
@@ -69,8 +71,8 @@ object App {
   private def withTorrent(route: Router.Route.Torrent, model: Observable[RootModel], dispatcher: Dispatcher)(
     component: TorrentModel => Metadata => ReactElement
   ): ReactElement = {
-    Connect(model.zoomTo(_.torrent), dispatcher) {
-      case (Some(torrent), _) =>
+    Connect(model.zoomTo(_.torrent)) {
+      case Some(torrent) =>
         FetchingMetadata(torrent, component(torrent))
       case _ =>
         div()

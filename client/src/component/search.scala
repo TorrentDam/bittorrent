@@ -2,6 +2,8 @@ package component
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.Router.Route
+import logic.{Action, Dispatcher, RootModel}
+import logic.SearchApi.SearchResults
 import material_ui.core._
 import material_ui.icons
 import material_ui.styles.makeStyles
@@ -10,12 +12,13 @@ import slinky.core.{FunctionalComponent, SyntheticEvent}
 import slinky.core.annotations.react
 import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
+import slinky.web.svg.in
 
 import scala.scalajs.js.Dynamic
 
 @react
 object Search {
-  case class Props(router: Router)
+  case class Props(model: Option[RootModel.Search], router: Router, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(
     theme =>
@@ -39,23 +42,21 @@ object Search {
   )
 
   val component = FunctionalComponent[Props] { props =>
-    val (state, setState) = Hooks.useState(Option.empty[SearchResults])
-
     div(
-      SearchBox(r => setState(Some(r)), props.router),
-      for (r <- state)
-        yield ResultList(r, props.router)
+      SearchBox(props.model.map(_.query).getOrElse(""), props.router, props.dispatcher),
+      for (search <- props.model; results <- search.results)
+        yield ResultList(results, props.router)
     )
   }
 
   @react
   object SearchBox {
 
-    case class Props(callback: SearchResults => Unit, router: Router)
+    case class Props(initialValue: String, router: Router, dispatcher: Dispatcher)
 
     val component = FunctionalComponent[Props] { props =>
       val classes = useStyles()
-      val (state, setState) = Hooks.useState("")
+      val (state, setState) = Hooks.useState(props.initialValue)
 
       val infoHashOpt = extractInfoHash(state)
 
@@ -65,15 +66,7 @@ object Search {
           case Some(infoHash) =>
             props.router.navigate(Route.Torrent(infoHash))
           case None =>
-            val request = new org.scalajs.dom.XMLHttpRequest
-            request.open("GET", environment.httpUrl(s"/search?query=$state"))
-            request.send()
-            request.onloadend = { _ =>
-              if (request.status == 200) {
-                val results = SearchResults.fromJson(request.responseText)
-                props.callback(results)
-              }
-            }
+            props.dispatcher(Action.Search(state))
         }
       }
 
@@ -138,20 +131,6 @@ object Search {
           case InfoHash.fromString(infoHash) => infoHash
         }
       )
-  }
-
-  case class SearchResults(results: List[SearchResults.Item])
-
-  object SearchResults {
-
-    import upickle.default._
-
-    case class Item(title: String, magnet: String)
-
-    implicit val itemReader: ReadWriter[Item] = macroRW
-    implicit val resultsReader: ReadWriter[SearchResults] = macroRW
-
-    def fromJson(json: String): SearchResults = read[SearchResults](json)
   }
 
 }
