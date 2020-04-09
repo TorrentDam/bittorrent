@@ -1,6 +1,6 @@
 import cats.effect.{ContextShift, IO, Resource}
 
-import com.github.lavrov.bittorrent.wire.{PieceStore, Torrent}
+import com.github.lavrov.bittorrent.wire.Torrent
 import com.github.lavrov.bittorrent.{FileMapping, MetaInfo}
 import fs2.Stream
 

@@ -1,12 +1,10 @@
-package com.github.lavrov.bittorrent.wire
-
 import java.nio.file.{Files, Path}
 
 import cats.effect.concurrent.Ref
-import cats.implicits._
 import cats.effect.{Blocker, ContextShift, Resource, Sync}
-import scodec.bits.ByteVector
+import cats.implicits._
 import fs2.Stream
+import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
 import scala.jdk.StreamConverters._
@@ -45,7 +43,7 @@ object PieceStore {
     blocker: Blocker
   ) extends PieceStore[F] {
 
-    def get(index: Int): F[Option[fs2.Stream[F, Byte]]] =
+    def get(index: Int): F[Option[Stream[F, Byte]]] =
       for {
         availability <- availability.get
         available = availability(index)
@@ -64,7 +62,7 @@ object PieceStore {
     private def pieceFile(index: Int) = directory.resolve(index.toString)
 
     private def readFile(file: Path) = {
-      fs2.io.file.readAll(file, blocker, 1024)
+      fs2.io.file.readAll(file, blocker, 1024 * 1024)
     }
   }
 }
