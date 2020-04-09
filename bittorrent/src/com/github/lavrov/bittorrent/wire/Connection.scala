@@ -102,7 +102,7 @@ object Connection {
         .race[Nothing, Nothing](
           receiveLoop(
             requestRegistry,
-            bitfieldRef.set,
+            bitfieldRef.update,
             chokedStatusRef.set,
             updateLastMessageTime,
             socket,
@@ -167,7 +167,7 @@ object Connection {
 
   private def receiveLoop[F[_]: Monad](
     requestRegistry: RequestRegistry[F],
-    updateBitfield: BitSet => F[Unit],
+    updateBitfield: (BitSet => BitSet) => F[Unit],
     updateChokeStatus: Boolean => F[Unit],
     updateLastMessageAt: Long => F[Unit],
     socket: MessageSocket[F],
@@ -182,11 +182,13 @@ object Connection {
         case Message.Piece(index: Long, begin: Long, bytes: ByteVector) =>
           val request = Message.Request(index, begin, bytes.length)
           requestRegistry.complete(request, bytes)
+        case Message.Have(index) =>
+          updateBitfield(_ incl index.toInt)
         case Message.Bitfield(bytes) =>
           val indices = bytes.toBitVector.toIndexedSeq.zipWithIndex.collect {
             case (true, i) => i
           }
-          updateBitfield(BitSet(indices: _*))
+          updateBitfield(_ => BitSet(indices: _*))
         case m: Message.Extended =>
           extensionHandler(m)
         case _ =>
