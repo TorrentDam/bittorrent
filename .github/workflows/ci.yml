@@ -70,11 +70,11 @@ jobs:
         working-directory: ./client
 
       - name: Build client
-        run: ./mill client.dist
+        run: ./mill client.package
 
       - name: Deploy client
         uses: peaceiris/actions-gh-pages@v2
         env:
           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           PUBLISH_BRANCH: gh-pages
-          PUBLISH_DIR: ./out/client/dist/dest
+          PUBLISH_DIR: ./out/client/package/dest

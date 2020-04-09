@@ -1,11 +1,11 @@
+var HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
   mode: "production",
   entry: [
     'react-hot-loader',
     __dirname + '/src/index.js'
-  ]
-  ,
+  ],
   resolve: {
     modules: [
       __dirname + '/node_modules',
@@ -26,10 +26,16 @@ module.exports = {
     filename: 'bundle.js'
   },
   devServer: {
-    contentBase: './resources',
     hot: true,
     watchOptions: {
       poll: 200
     }
-  }
+  },
+  plugins: [
+    new HtmlWebpackPlugin({
+      templateParameters: {
+        serverUrl: '25e5f366-a664-487a-8bb2-33f106743c8a.pub.cloud.scaleway.com'
+      }
+    })
+  ]
 };

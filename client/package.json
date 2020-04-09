@@ -10,8 +10,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "react-hot-loader": "^4.12.15",
     "@hot-loader/react-dom": "^16.10.2",
+    "html-webpack-plugin": "^4.2.0",
+    "react-hot-loader": "^4.12.15",
     "webpack": "^4.34.0",
     "webpack-cli": "^3.3.4",
     "webpack-dev-server": "^3.7.2"

@@ -76,14 +76,6 @@ object client extends JsModule {
     PathRef(bundleFile)
   }
 
-  def dist: T[PathRef] = T {
-    val resourceFiles = resources().flatMap(pathRef => os.list(pathRef.path))
-    val distributionFiles = `package`().path +: resourceFiles
-    val desitnation = T.ctx().dest
-    distributionFiles.foreach { f => os.copy.into(f, desitnation) }
-    PathRef(desitnation)
-  }
-
   /** fastOpt deletes whole dest directory which breaks webpack hot reload */
   def compileJs: T[PathRef] = T {
     val fastOptFile = fastOpt()
