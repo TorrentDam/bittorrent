@@ -127,9 +127,8 @@ object PiecePicker {
               val updatedState = State(updatedDownloading, state.pending - request)
               (updatedState, updatedPiece)
             }
-            _ <- F.whenA(piece.isComplete) {
+            _ <- piece.bytes.traverse_ { bytes =>
               for {
-                bytes <- F.fromOption(piece.verified, Error.InvalidChecksum())
                 complete <- completions.modify { completions =>
                   (completions - piece.index.toInt, completions(piece.index.toInt))
                 }
@@ -212,17 +211,27 @@ object PiecePicker {
     downloadedSize: Long = 0,
     downloaded: Map[Message.Request, ByteVector] = Map.empty
   ) {
+
     def add(request: Message.Request, bytes: ByteVector): InProgressPiece =
       copy(
         downloadedSize = downloadedSize + request.length,
         downloaded = downloaded.updated(request, bytes)
       )
+
     def isComplete: Boolean = size == downloadedSize
-    def verified: Option[ByteVector] = {
-      val joinedChunks: ByteVector =
-        downloaded.toList.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
-      if (joinedChunks.digest("SHA-1") == checksum) joinedChunks.some else none
+
+    def bytes: Option[ByteVector] = {
+      if (isComplete) {
+        val joined = downloaded.toSeq.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
+        Some(joined)
+      }
+      else None
     }
+
+    def verified: Option[ByteVector] = {
+      bytes.filter(_.digest("SHA-1") == checksum)
+    }
+
     def reset: InProgressPiece =
       copy(downloadedSize = 0, downloaded = Map.empty)
   }
