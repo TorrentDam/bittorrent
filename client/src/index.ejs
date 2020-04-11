@@ -9,9 +9,7 @@
   <body>
     <div id="root"></div>
     <script>
-      var config = {
-        serverUrl: '<%= serverUrl %>'
-      }
+      var config = <%= JSON.stringify(config) %>
     </script>
   </body>
 </html>
