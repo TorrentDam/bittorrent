@@ -1,5 +1,5 @@
 import Routes.FileIndex
-import cats.data.Kleisli
+import cats.data.{Kleisli, OptionT}
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
@@ -43,6 +43,7 @@ object Main extends IOApp {
 
   def makeApp: Resource[IO, HttpApp[IO]] = {
     import org.http4s.dsl.io._
+    import cats.effect.Sync.catsOptionTSync
     for {
       implicit0(blocker: Blocker) <- Blocker[IO]
       socketGroup <- SocketGroup[IO](blocker)
@@ -63,8 +64,9 @@ object Main extends IOApp {
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(makeSwarm) }
       handleSocket = SocketSession(torrentRegistry.get)
       handleGetTorrent = (infoHash: InfoHash) =>
-        torrentRegistry.tryGet(infoHash).use {
-          case Some(torrent) =>
+        torrentRegistry
+          .tryGet(infoHash)
+          .use { torrent =>
             val metadata = torrent.metadata
             val torrentFile = TorrentFile(metadata, None)
             val bcode =
@@ -77,43 +79,45 @@ object Main extends IOApp {
               case _ => infoHash.bytes.toHex
             }
             val bytes = com.github.lavrov.bencode.encode(bcode)
-            Ok(
-              bytes.toByteArray,
-              `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent"))
+            OptionT.liftF(
+              Ok(
+                bytes.toByteArray,
+                `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent"))
+              )
             )
-          case None => NotFound("Torrent not found")
-        }
+          }
+          .getOrElseF {
+            NotFound("Torrent not found")
+          }
       handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
-        torrentRegistry.tryGet(infoHash).use {
-          case Some(torrent) =>
+        torrentRegistry.tryGet(infoHash).allocated.value.flatMap {
+          case Some((torrent: ServerTorrent, release)) =>
             if (torrent.files.value.lift(fileIndex).isDefined) {
               val file = torrent.metadata.parsed.files(fileIndex)
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = torrent.files
               val maxPrefetchBytes = 20 * 1000 * 1000
               val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 1).toInt
-              def dataStream(span: FileMapping.Span) =
-                Stream.resource(torrentRegistry.tryGet(infoHash)).flatMap {
-                  case Some(torrent) =>
-                    Stream
-                      .emits(span.beginIndex to span.endIndex)
-                      .covary[IO]
-                      .parEvalMap(parallelPieces) { index =>
-                        torrent
-                          .piece(index.toInt)
-                          .timeout(1.minute)
-                          .tupleLeft(index)
-                      }
-                      .flatMap {
-                        case (span.beginIndex, bytes) =>
-                          bytes.drop(span.beginOffset)
-                        case (span.endIndex, bytes) =>
-                          bytes.take(span.endOffset)
-                        case (_, bytes) => bytes
-                      }
-                  case _ =>
-                    Stream.empty
-                }
+              def dataStream(span: FileMapping.Span) = {
+                Stream
+                  .emits(span.beginIndex to span.endIndex)
+                  .covary[IO]
+                  .buffer(3)
+                  .parEvalMap(parallelPieces) { index =>
+                    torrent
+                      .piece(index.toInt)
+                      .timeout(1.minute)
+                      .tupleLeft(index)
+                  }
+                  .flatMap {
+                    case (span.beginIndex, bytes) =>
+                      bytes.drop(span.beginOffset)
+                    case (span.endIndex, bytes) =>
+                      bytes.take(span.endOffset)
+                    case (_, bytes) => bytes
+                  }
+                  .onFinalize(release.value.void)
+              }
               val mediaType =
                 extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
               val span0 = fileMapping.value(fileIndex)

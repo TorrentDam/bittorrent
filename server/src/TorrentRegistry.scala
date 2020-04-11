@@ -1,5 +1,6 @@
 import java.nio.file.Paths
 
+import cats.data.OptionT
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
@@ -11,10 +12,12 @@ import scala.concurrent.duration._
 
 trait TorrentRegistry {
   def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]]
-  def tryGet(infoHash: InfoHash): Resource[IO, Option[ServerTorrent]]
+  def tryGet(infoHash: InfoHash): Resource[OptionT[IO, *], ServerTorrent]
 }
 
 object TorrentRegistry {
+
+  type Optional[A] = OptionT[IO, A]
 
   def make(
     makeSwarm: InfoHash => Resource[IO, Swarm[IO]]
@@ -70,27 +73,24 @@ object TorrentRegistry {
         }
     }
 
-    def tryGet(infoHash: InfoHash): Resource[IO, Option[ServerTorrent]] = Resource {
+    def tryGet(infoHash: InfoHash): Resource[Optional, ServerTorrent] = Resource {
       implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
-      ref
-        .modify { registry =>
-          registry.get(infoHash) match {
-            case Some(cell) if cell.resolved.isDefined =>
-              val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
-              val updatedRegistry = registry.updated(infoHash, updatedCell)
-              (updatedRegistry, cell.resolved)
-            case _ =>
-              (registry, none)
-          }
-        }
-        .flatMap {
-          case Some(torrent) =>
-            logger.debug(s"Found existing torrent") >>
-            IO.pure((torrent.some, release(infoHash)))
-          case None =>
-            logger.debug(s"Torrent not found") >>
-            IO.pure((none, IO.unit))
-        }
+      for {
+        torrent <- OptionT(
+          ref
+            .modify { registry =>
+              registry.get(infoHash) match {
+                case Some(cell) if cell.resolved.isDefined =>
+                  val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
+                  val updatedRegistry = registry.updated(infoHash, updatedCell)
+                  (updatedRegistry, cell.resolved)
+                case _ =>
+                  (registry, none)
+              }
+            }
+        )
+        _ <- logger.debug(s"Found existing torrent").to[Optional]
+      } yield (torrent, release(infoHash).to[Optional])
     }
 
     private def make(
