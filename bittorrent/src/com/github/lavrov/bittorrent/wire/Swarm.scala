@@ -6,6 +6,8 @@ import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 import cats.effect.{Concurrent, Resource, Timer}
 import cats.implicits._
+import cats.tagless._
+import cats.tagless.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
@@ -83,15 +85,11 @@ object Swarm {
         case Some(c) => c.pure[F]
         case None =>
           type Cont[A] = ContT[F, Unit, A]
-          implicit val liftF: F ~> Cont = λ[F ~> Cont] { fa =>
-            ContT { k =>
-              fa >>= k
-            }
-          }
+          implicit val logger1: RoutineLogger[Cont] = RoutineLogger(logger).mapK(ContT.liftK)
           F.race(discover, reconnects.dequeue1).map {
             _.leftMap { discovered =>
-              connectRoutine[Cont, F](discovered)(
-                connect = liftF {
+              connectRoutine[Cont](discovered)(
+                connect = ContT.liftF {
                   connect(discovered).attempt
                 },
                 coolDown = duration =>
@@ -106,40 +104,55 @@ object Swarm {
       _ <- continuation
     } yield ()
 
-  private def connectRoutine[F[_], F0[_]](
+  private def connectRoutine[F[_]](
     peerInfo: PeerInfo
   )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(
     implicit F: Monad[F],
-    logger: LogIO[F0],
-    lift: F0 ~> F
+    logger: RoutineLogger[F]
   ): F[Unit] = {
     val maxAttempts = 5
-    val gaveUp = lift {
-      logger.debug(s"Gave up on ${peerInfo.address}")
-    }
-    def logRetry(cause: String, attempt: Int, waitDuration: FiniteDuration) = lift {
-      logger.debug(
-        s"Connection failed $attempt $cause. Retry connecting to ${peerInfo.address} in at least $waitDuration"
-      )
-    }
     def connectWithRetry(attempt: Int): F[Unit] = {
       connect
         .flatMap {
           case Right(_) => F.unit
           case Left(e) =>
             val cause = e.getMessage
-            if (attempt == maxAttempts) gaveUp
+            if (attempt == maxAttempts) logger.gaveUp
             else {
               val duration = (10 * attempt).seconds
-              logRetry(cause, attempt, duration) >> coolDown(duration) >> connectWithRetry(attempt + 1)
+              logger.connectionFailed(attempt, cause, duration) >> coolDown(duration) >> connectWithRetry(attempt + 1)
             }
         }
     }
     for {
       _ <- connectWithRetry(1)
-      _ <- lift { logger.debug(s"Disconnected from ${peerInfo.address}. Reconnect.") }
+      _ <- logger.disconnected
       _ <- connectRoutine(peerInfo)(connect, coolDown)
     } yield ()
+  }
+
+  @autoFunctorK
+  trait RoutineLogger[F[_]] {
+
+    def gaveUp: F[Unit]
+
+    def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): F[Unit]
+
+    def disconnected: F[Unit]
+  }
+
+  object RoutineLogger {
+
+    def apply[F[_]](logger: LogIO[F]): RoutineLogger[F] = new RoutineLogger[F] {
+
+      def gaveUp: F[Unit] = logger.debug(s"Gave up")
+
+      def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): F[Unit] =
+        logger.debug(s"Connection failed $attempt $cause. Retry connecting in at least $waitDuration")
+
+      def disconnected: F[Unit] =
+        logger.debug(s"Disconnected. Trying to reconnect.")
+    }
   }
 
   trait Connected[F[_]] {

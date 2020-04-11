@@ -5,7 +5,7 @@ import $file.release, release.ReleaseModule
 object bencode extends Module {
   def ivyDeps = Agg(
     ivy"org.scodec::scodec-core:1.11.4", 
-    ivy"org.typelevel::cats-core:2.1.1",
+    ivy"org.typelevel::cats-core:${Versions.cats}",
   )
   object test extends TestModule
 }
@@ -13,6 +13,8 @@ object bencode extends Module {
 object bittorrent extends Module {
   def moduleDeps = List(bencode)
   def ivyDeps = Agg(
+    ivy"org.typelevel::cats-core:${Versions.cats}",
+    ivy"org.typelevel::cats-tagless-macros:0.11",
     ivy"org.typelevel::cats-effect::2.1.1",
     ivy"org.typelevel::cats-mtl-core:0.7.0",
     ivy"com.olegpy::meow-mtl-effects:0.4.0",
@@ -143,6 +145,7 @@ trait NativeImageModule extends ScalaModule {
 }
 
 object Versions {
+  val cats = "2.2.0-M1"
   val monocle = "2.0.0"
   val logstage = "0.10.2"
   val `scodec-bits` = "1.1.14"
