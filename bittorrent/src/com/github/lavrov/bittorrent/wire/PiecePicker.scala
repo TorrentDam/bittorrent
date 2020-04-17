@@ -17,6 +17,7 @@ import logstage.LogIO
 import scodec.bits.ByteVector
 
 import scala.collection.BitSet
+import scala.collection.immutable.TreeMap
 
 trait PiecePicker[F[_]] {
   def download(index: Int): F[ByteVector]
@@ -31,7 +32,7 @@ object PiecePicker {
     metadata: TorrentMetadata
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[PiecePicker[F]] =
     for {
-      stateRef <- Ref.of(State(Map.empty, Map.empty))
+      stateRef <- Ref.of(State())
       completions <- Ref.of(Map.empty[Int, ByteVector => F[Unit]])
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
@@ -39,8 +40,8 @@ object PiecePicker {
     } yield new Impl(stateRef, completions, pickMutex, notifyRef, incompletePieces)
 
   case class State(
-    downloading: Map[Int, InProgressPiece],
-    pending: Map[Message.Request, InetSocketAddress]
+    queue: TreeMap[Int, InProgressPiece] = TreeMap.empty,
+    pending: Map[Message.Request, InetSocketAddress] = Map.empty
   )
 
   private class Impl[F[_]](
@@ -52,91 +53,84 @@ object PiecePicker {
   )(implicit F: Concurrent[F], logger: LogIO[F])
       extends PiecePicker[F] {
 
+    private def synchronized[A](fa: F[A]): F[A] =
+      mutex.withPermit(F.uncancelable(fa))
+
     def download(index: Int): F[ByteVector] =
-      mutex
-        .withPermit {
-          F.uncancelable {
-            for {
-              deferred <- Deferred[F, ByteVector]
-              _ <- completions.update { completions =>
-                completions.updated(index, deferred.complete)
-              }
-              _ <- stateRef.update { state =>
-                val incompletePiece = incompletePieces(index)
-                val inProgress = InProgressPiece(
-                  incompletePiece.index,
-                  incompletePiece.size,
-                  incompletePiece.checksum,
-                  incompletePiece.requests.value
-                )
-                state.copy(
-                  downloading = state.downloading.updated(index, inProgress)
-                )
-              }
-              _ <- notifyRef.set(())
-            } yield deferred
+      synchronized {
+        for {
+          deferred <- Deferred[F, ByteVector]
+          _ <- completions.update { completions =>
+            completions.updated(index, deferred.complete)
           }
-        }
-        .flatMap(_.get)
+          _ <- stateRef.update { state =>
+            val incompletePiece = incompletePieces(index)
+            val inProgress = InProgressPiece(
+              incompletePiece.index,
+              incompletePiece.size,
+              incompletePiece.checksum,
+              incompletePiece.requests.value
+            )
+            state.copy(
+              queue = state.queue.updated(index, inProgress)
+            )
+          }
+          _ <- notifyRef.set(())
+        } yield deferred.get
+      }.flatten
 
     def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]] =
-      mutex.withPermit {
-        F.uncancelable {
-          for {
-            state <- stateRef.get
-            result = state.downloading.find { case (i, p) => availability(i) && p.requests.nonEmpty }
-            request <- result.traverse {
-              case (i, p) =>
-                val request = p.requests.head
-                val updatedPiece = p.copy(requests = p.requests.tail)
-                val updatedState =
-                  State(state.downloading.updated(i, updatedPiece), state.pending.updated(request, address))
-                stateRef.set(updatedState).as(request)
-            }
-            _ <- logger.debug(s"Picking $request")
-          } yield request
-        }
+      synchronized {
+        for {
+          state <- stateRef.get
+          result = state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }
+          request <- result.traverse {
+            case (i, p) =>
+              val request = p.requests.head
+              val updatedPiece = p.copy(requests = p.requests.tail)
+              val updatedState =
+                State(state.queue.updated(i, updatedPiece), state.pending.updated(request, address))
+              stateRef.set(updatedState).as(request)
+          }
+          _ <- logger.debug(s"Picking $request")
+        } yield request
       }
 
     def unpick(request: Message.Request): F[Unit] =
-      mutex.withPermit {
-        F.uncancelable {
-          stateRef.update { state =>
-            val index = request.index.toInt
-            val piece = state.downloading(index)
-            val updatedPiece = piece.copy(requests = request :: piece.requests)
-            State(state.downloading.updated(index, updatedPiece), state.pending - request)
-          } >>
-          notifyRef.set(())
-        }
+      synchronized {
+        stateRef.update { state =>
+          val index = request.index.toInt
+          val piece = state.queue(index)
+          val updatedPiece = piece.copy(requests = request :: piece.requests)
+          State(state.queue.updated(index, updatedPiece), state.pending - request)
+        } >>
+        notifyRef.set(())
       }
 
     def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
-      mutex.withPermit {
-        F.uncancelable {
-          for {
-            piece <- stateRef.modify { state =>
-              val index = request.index.toInt
-              val piece = state.downloading(index)
-              val updatedPiece = piece.add(request, bytes)
-              val updatedDownloading =
-                if (updatedPiece.isComplete)
-                  state.downloading.removed(index)
-                else
-                  state.downloading.updated(index, updatedPiece)
-              val updatedState = State(updatedDownloading, state.pending - request)
-              (updatedState, updatedPiece)
-            }
-            _ <- piece.bytes.traverse_ { bytes =>
-              for {
-                complete <- completions.modify { completions =>
-                  (completions - piece.index.toInt, completions(piece.index.toInt))
-                }
-                _ <- complete(bytes)
-              } yield ()
-            }
-          } yield ()
-        }
+      synchronized {
+        for {
+          piece <- stateRef.modify { state =>
+            val index = request.index.toInt
+            val piece = state.queue(index)
+            val updatedPiece = piece.add(request, bytes)
+            val updatedQueue =
+              if (updatedPiece.isComplete)
+                state.queue.removed(index)
+              else
+                state.queue.updated(index, updatedPiece)
+            val updatedState = State(updatedQueue, state.pending - request)
+            (updatedState, updatedPiece)
+          }
+          _ <- piece.bytes.traverse_ { bytes =>
+            for {
+              complete <- completions.modify { completions =>
+                (completions - piece.index.toInt, completions(piece.index.toInt))
+              }
+              _ <- complete(bytes)
+            } yield ()
+          }
+        } yield ()
       }
 
     def updates: Stream[F, Unit] = notifyRef.discrete

@@ -102,7 +102,6 @@ object Main extends IOApp {
                 Stream
                   .emits(span.beginIndex to span.endIndex)
                   .covary[IO]
-                  .buffer(3)
                   .parEvalMap(parallelPieces) { index =>
                     torrent
                       .piece(index.toInt)
