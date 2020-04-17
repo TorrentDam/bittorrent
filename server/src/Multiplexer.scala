@@ -32,6 +32,8 @@ object Multiplexer {
                   request(index).attempt
                     .flatTap(deferred.complete)
                     .guarantee(cleanup)
+                    .start
+                    .flatMap(_ => deferred.get)
                 (updated, effect)
             }
           }
