@@ -57,7 +57,7 @@ class MessageSocket[F[_]](
         maybeChunk.filter(_.size == numBytes),
         new Exception("Connection was interrupted by peer")
       )
-    } yield ByteVector(chunk.toArray)
+    } yield chunk.toByteVector
 
 }
 
@@ -110,10 +110,9 @@ object MessageSocket {
         maybeBytes.filter(_.size == handshakeMessageSize),
         Error("Unsuccessful handshake: connection prematurely closed")
       )
-      bv = ByteVector(bytes.toArray)
       response <- F.fromEither(
         Handshake.HandshakeCodec
-          .decodeValue(bv.toBitVector)
+          .decodeValue(bytes.toBitVector)
           .toEither
           .leftMap { _ =>
             Error("Unable to decode handhshake reponse")

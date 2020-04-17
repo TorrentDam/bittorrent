@@ -22,7 +22,7 @@ class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(
     for {
       packet <- socket.read()
       bc <- F.fromEither(
-        decode(BitVector(packet.bytes.toArray)).leftMap(Error.BecodeSerialization)
+        decode(packet.bytes.toBitVector).leftMap(Error.BecodeSerialization)
       )
       message <- F.fromEither(
         Message.MessageFormat
