@@ -38,8 +38,8 @@ class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: Executi
               Some(
                 value.copy(torrent = Some(TorrentModel(infoHash, 0, Nil, None)))
               )
-            case Event.TorrentMetadataReceived(infoHash, files) =>
-              value.torrent.filter(_.infoHash == infoHash).map { torrent =>
+            case Event.TorrentMetadataReceived(infoHash, files) if value.torrent.exists(_.infoHash == infoHash) =>
+              value.torrent.map { torrent =>
                 val metadataFiles = files.map { f =>
                   Metadata.File(
                     f.path,
@@ -50,12 +50,10 @@ class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: Executi
                 val withMetadata = torrent.withMetadata(metadata)
                 value.copy(torrent = Some(withMetadata))
               }
-            case Event.TorrentError(infoHash, message) =>
+            case Event.TorrentError(infoHash, message) if value.torrent.exists(_.infoHash == infoHash) =>
               Some(
                 value.copy(
-                  torrent = value.torrent
-                    .filter(_.infoHash == infoHash)
-                    .map(_.withError(message))
+                  torrent = value.torrent.map(_.withError(message))
                 )
               )
             case Event.TorrentStats(infoHash, connected, availability)
