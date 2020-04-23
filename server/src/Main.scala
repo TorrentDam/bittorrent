@@ -97,7 +97,7 @@ object Main extends IOApp {
               val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
               val fileMapping = torrent.files
               val maxPrefetchBytes = 20 * 1000 * 1000
-              val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 1).toInt
+              val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 2).toInt
               def dataStream(span: FileMapping.Span) = {
                 Stream
                   .emits(span.beginIndex to span.endIndex)
