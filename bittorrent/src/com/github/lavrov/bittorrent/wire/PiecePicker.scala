@@ -6,7 +6,7 @@ import cats.Eval
 import cats.data.Chain
 import cats.implicits._
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Timer}
+import cats.effect.{Concurrent, Sync, Timer}
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
@@ -32,21 +32,20 @@ object PiecePicker {
     metadata: TorrentMetadata
   )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[PiecePicker[F]] =
     for {
-      stateRef <- Ref.of(State())
-      completions <- Ref.of(Map.empty[Int, ByteVector => F[Unit]])
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
       incompletePieces = buildQueue(metadata).toList
-    } yield new Impl(stateRef, completions, pickMutex, notifyRef, incompletePieces)
+    } yield new Impl(State[F](), pickMutex, notifyRef, incompletePieces)
 
-  case class State(
-    queue: TreeMap[Int, InProgressPiece] = TreeMap.empty,
-    pending: Map[Message.Request, InetSocketAddress] = Map.empty
+  private case class State[F[_]](
+    queue: collection.mutable.TreeMap[Int, InProgressPiece] = collection.mutable.TreeMap.empty,
+    pending: collection.mutable.Map[Message.Request, InetSocketAddress] = collection.mutable.Map.empty,
+    completions: collection.mutable.Map[Int, ByteVector => F[Unit]] =
+      collection.mutable.Map.empty[Int, ByteVector => F[Unit]]
   )
 
   private class Impl[F[_]](
-    stateRef: Ref[F, State],
-    completions: Ref[F, Map[Int, ByteVector => F[Unit]]],
+    state: State[F],
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
     incompletePieces: List[IncompletePiece]
@@ -60,20 +59,16 @@ object PiecePicker {
       synchronized {
         for {
           deferred <- Deferred[F, ByteVector]
-          _ <- completions.update { completions =>
-            completions.updated(index, deferred.complete)
-          }
-          _ <- stateRef.update { state =>
+          _ <- Sync[F].delay {
+            state.completions.update(index, deferred.complete)
             val incompletePiece = incompletePieces(index)
-            val inProgress = InProgressPiece(
+            val inProgress = new InProgressPiece(
               incompletePiece.index,
               incompletePiece.size,
               incompletePiece.checksum,
               incompletePiece.requests.value
             )
-            state.copy(
-              queue = state.queue.updated(index, inProgress)
-            )
+            state.queue.update(index, inProgress)
           }
           _ <- notifyRef.set(())
         } yield deferred.get
@@ -81,16 +76,16 @@ object PiecePicker {
 
     def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]] =
       synchronized {
+        val result = state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }
         for {
-          state <- stateRef.get
-          result = state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }
           request <- result.traverse {
             case (i, p) =>
-              val request = p.requests.head
-              val updatedPiece = p.copy(requests = p.requests.tail)
-              val updatedState =
-                State(state.queue.updated(i, updatedPiece), state.pending.updated(request, address))
-              stateRef.set(updatedState).as(request)
+              Sync[F].delay {
+                val request = p.requests.head
+                p.requests = p.requests.tail
+                state.pending.update(request, address)
+                request
+              }
           }
           _ <- logger.debug(s"Picking $request")
         } yield request
@@ -98,11 +93,11 @@ object PiecePicker {
 
     def unpick(request: Message.Request): F[Unit] =
       synchronized {
-        stateRef.update { state =>
+        Sync[F].delay {
           val index = request.index.toInt
           val piece = state.queue(index)
-          val updatedPiece = piece.copy(requests = request :: piece.requests)
-          State(state.queue.updated(index, updatedPiece), state.pending - request)
+          piece.requests = request :: piece.requests
+          state.pending.remove(request)
         } >>
         notifyRef.set(())
       }
@@ -110,24 +105,22 @@ object PiecePicker {
     def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
       synchronized {
         for {
-          piece <- stateRef.modify { state =>
+          piece <- Sync[F].delay {
             val index = request.index.toInt
             val piece = state.queue(index)
-            val updatedPiece = piece.add(request, bytes)
-            val updatedQueue =
-              if (updatedPiece.isComplete)
-                state.queue.removed(index)
-              else
-                state.queue.updated(index, updatedPiece)
-            val updatedState = State(updatedQueue, state.pending - request)
-            (updatedState, updatedPiece)
+            piece.add(request, bytes)
+            if (piece.isComplete) {
+              state.queue.remove(index)
+            }
+            state.pending.remove(request)
+            piece
           }
           _ <- piece.bytes.traverse_ { bytes =>
             for {
-              complete <- completions.modify { completions =>
-                (completions - piece.index.toInt, completions(piece.index.toInt))
+              complete <- Sync[F].delay {
+                state.completions.remove(piece.index.toInt)
               }
-              _ <- complete(bytes)
+              _ <- complete.traverse_(_(bytes))
             } yield ()
           }
         } yield ()
@@ -135,7 +128,9 @@ object PiecePicker {
 
     def updates: Stream[F, Unit] = notifyRef.discrete
 
-    def pending: F[Map[Message.Request, InetSocketAddress]] = stateRef.get.map(_.pending)
+    def pending: F[Map[Message.Request, InetSocketAddress]] = synchronized {
+      state.pending.toMap.pure[F]
+    }
   }
 
   def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {
@@ -197,26 +192,25 @@ object PiecePicker {
     checksum: ByteVector,
     requests: Eval[List[Message.Request]]
   )
-  case class InProgressPiece(
-    index: Long,
+  private class InProgressPiece(
+    val index: Long,
     size: Long,
     checksum: ByteVector,
-    requests: List[Message.Request],
-    downloadedSize: Long = 0,
-    downloaded: Map[Message.Request, ByteVector] = Map.empty
+    var requests: List[Message.Request],
+    var downloadedSize: Long = 0,
+    downloaded: collection.mutable.Map[Int, ByteVector] = collection.mutable.TreeMap.empty
   ) {
 
-    def add(request: Message.Request, bytes: ByteVector): InProgressPiece =
-      copy(
-        downloadedSize = downloadedSize + request.length,
-        downloaded = downloaded.updated(request, bytes)
-      )
+    def add(request: Message.Request, bytes: ByteVector): Unit = {
+      downloadedSize = downloadedSize + request.length
+      downloaded.update(request.begin.toInt, bytes)
+    }
 
     def isComplete: Boolean = size == downloadedSize
 
     def bytes: Option[ByteVector] = {
       if (isComplete) {
-        val joined = downloaded.toSeq.sortBy(_._1.begin).map(_._2).reduce(_ ++ _)
+        val joined = downloaded.values.reduce(_ ++ _)
         Some(joined)
       }
       else None
@@ -226,8 +220,10 @@ object PiecePicker {
       bytes.filter(_.digest("SHA-1") == checksum)
     }
 
-    def reset: InProgressPiece =
-      copy(downloadedSize = 0, downloaded = Map.empty)
+    def reset(): Unit = {
+      downloadedSize = 0
+      downloaded.clear()
+    }
   }
 
   case class CompletePiece(index: Long, bytes: ByteVector)
