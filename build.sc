@@ -88,7 +88,7 @@ object client extends JsModule {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.1"
+  def scalaVersion = "2.13.2"
   def scalacOptions = List(
     "-language:higherKinds",
     "-Ymacro-annotations",
