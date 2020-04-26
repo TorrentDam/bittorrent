@@ -135,7 +135,13 @@ object Connection {
           } yield ()
 
         def request(request: Message.Request): F[ByteVector] =
-          socket.send(request) >> requestRegistry.register(request)
+          socket.send(request) >>
+          requestRegistry.register(request).flatMap { bytes =>
+            if (bytes.length == request.length)
+              bytes.pure[F]
+            else
+              InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
+          }
 
         def chokedStatus: Signal[F, Boolean] = chokedStatusRef
 
@@ -223,4 +229,5 @@ object Connection {
       .foreverM
 
   case class Error(message: String) extends Exception(message)
+  case class InvalidBlockLength(request: Message.Request, responseLength: Long) extends Exception
 }
