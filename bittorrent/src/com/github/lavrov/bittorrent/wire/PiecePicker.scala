@@ -5,12 +5,10 @@ import java.net.InetSocketAddress
 import cats.Eval
 import cats.data.Chain
 import cats.implicits._
-import cats.effect.implicits._
 import cats.effect.{Concurrent, Sync, Timer}
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
-import com.github.lavrov.bittorrent.wire.SwarmTasks.Error
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import logstage.LogIO
@@ -63,9 +61,7 @@ object PiecePicker {
             state.completions.update(index, deferred.complete)
             val incompletePiece = incompletePieces(index)
             val inProgress = new InProgressPiece(
-              incompletePiece.index,
-              incompletePiece.size,
-              incompletePiece.checksum,
+              incompletePiece,
               incompletePiece.requests.value
             )
             state.queue.update(index, inProgress)
@@ -116,12 +112,18 @@ object PiecePicker {
             piece
           }
           _ <- piece.bytes.traverse_ { bytes =>
-            for {
-              complete <- Sync[F].delay {
-                state.completions.remove(piece.index.toInt)
+            val verified = piece.verify(bytes)
+            if (verified)
+              for {
+                complete <- Sync[F].delay {
+                  state.completions.remove(piece.piece.index.toInt)
+                }
+                _ <- complete.traverse_(_(bytes))
+              } yield ()
+            else
+              Sync[F].delay {
+                piece.reset()
               }
-              _ <- complete.traverse_(_(bytes))
-            } yield ()
           }
         } yield ()
       }
@@ -193,20 +195,18 @@ object PiecePicker {
     requests: Eval[List[Message.Request]]
   )
   private class InProgressPiece(
-    val index: Long,
-    size: Long,
-    checksum: ByteVector,
+    val piece: IncompletePiece,
     var requests: List[Message.Request],
     var downloadedSize: Long = 0,
-    downloaded: collection.mutable.Map[Int, ByteVector] = collection.mutable.TreeMap.empty
+    var downloaded: TreeMap[Int, ByteVector] = TreeMap.empty
   ) {
 
     def add(request: Message.Request, bytes: ByteVector): Unit = {
       downloadedSize = downloadedSize + request.length
-      downloaded.update(request.begin.toInt, bytes)
+      downloaded = downloaded.updated(request.begin.toInt, bytes)
     }
 
-    def isComplete: Boolean = size == downloadedSize
+    def isComplete: Boolean = piece.size == downloadedSize
 
     def bytes: Option[ByteVector] = {
       if (isComplete) {
@@ -216,15 +216,15 @@ object PiecePicker {
       else None
     }
 
-    def verified: Option[ByteVector] = {
-      bytes.filter(_.digest("SHA-1") == checksum)
+    def verify(bytes: ByteVector): Boolean = {
+      bytes.digest("SHA-1") == piece.checksum
     }
 
     def reset(): Unit = {
+      requests = piece.requests.value
       downloadedSize = 0
-      downloaded.clear()
+      downloaded = downloaded.empty
     }
   }
 
-  case class CompletePiece(index: Long, bytes: ByteVector)
 }
