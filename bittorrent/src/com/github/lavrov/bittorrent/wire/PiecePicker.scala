@@ -106,9 +106,6 @@ object PiecePicker {
             val index = request.index.toInt
             val piece = state.queue(index)
             piece.add(request, bytes)
-            if (piece.isComplete) {
-              state.queue.remove(index)
-            }
             state.pending.remove(request)
             piece
           }
@@ -117,7 +114,9 @@ object PiecePicker {
             if (verified)
               for {
                 complete <- Sync[F].delay {
-                  state.completions.remove(piece.piece.index.toInt)
+                  val index = piece.piece.index.toInt
+                  state.queue.remove(index)
+                  state.completions.remove(index)
                 }
                 _ <- complete.traverse_(_(bytes))
               } yield ()
