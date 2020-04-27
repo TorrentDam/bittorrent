@@ -6,7 +6,7 @@ import cats.Eval
 import cats.data.Chain
 import cats.implicits._
 import cats.effect.{Concurrent, Sync, Timer}
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, Semaphore}
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
@@ -72,16 +72,17 @@ object PiecePicker {
 
     def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]] =
       synchronized {
-        val result = state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }
         for {
-          request <- result.traverse {
-            case (i, p) =>
-              Sync[F].delay {
-                val request = p.requests.head
-                p.requests = p.requests.tail
-                state.pending.update(request, address)
-                request
-              }
+          piece <- Sync[F].delay {
+            state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }.map(_._2)
+          }
+          request <- piece.traverse { piece =>
+            Sync[F].delay {
+              val request = piece.requests.head
+              piece.requests = piece.requests.tail
+              state.pending.update(request, address)
+              request
+            }
           }
           _ <- logger.debug(s"Picking $request")
         } yield request

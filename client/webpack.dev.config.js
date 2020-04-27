@@ -35,8 +35,10 @@ module.exports = {
     new HtmlWebpackPlugin({
       templateParameters: {
         config: {
-          serverUrl: '25e5f366-a664-487a-8bb2-33f106743c8a.pub.cloud.scaleway.com',
-          useEncryption: true
+//          serverUrl: '25e5f366-a664-487a-8bb2-33f106743c8a.pub.cloud.scaleway.com',
+//          useEncryption: true
+          serverUrl: 'localhost:9999',
+          useEncryption: false
         }
       }
     })
