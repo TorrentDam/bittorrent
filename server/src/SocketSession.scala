@@ -1,5 +1,6 @@
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
+import cats.effect.implicits._
 import cats.implicits._
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
@@ -16,7 +17,7 @@ import scala.util.Try
 
 object SocketSession {
   def apply(
-    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent]]
+    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
   )(
     implicit F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -59,7 +60,7 @@ object SocketSession {
 
   class CommandHandler(
     send: Event => IO[Unit],
-    getTorrent: InfoHash => Resource[IO, IO[ServerTorrent]],
+    getTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
     closed: IO[Unit]
   )(
     implicit
@@ -80,16 +81,34 @@ object SocketSession {
       F.uncancelable {
         getTorrent(infoHash)
           .use { getTorrent =>
-            getTorrent.attempt
-              .flatMap {
-                case Right(torrent) =>
-                  val files = torrent.metadata.parsed.files.map(f => Event.File(f.path, f.length))
-                  send(Event.TorrentMetadataReceived(infoHash, files)) >>
-                  sendTorrentStats(infoHash, torrent) >>
-                  IO.never
-                case Left(_) =>
-                  send(Event.TorrentError(infoHash, "Could not fetch metadata"))
+            getTorrent
+              .flatMap { phase =>
+                phase.done
               }
+              .flatMap { phase =>
+                phase.fromPeers.discrete
+                  .evalTap { count =>
+                    send(Event.TorrentPeersDiscovered(infoHash, count))
+                  }
+                  .interruptWhen(phase.done.void.attempt)
+                  .compile
+                  .drain >>
+                phase.done
+              }
+              .flatMap { phase =>
+                val metadata = phase.serverTorrent.metadata.parsed
+                val files = metadata.files.map(f => Event.File(f.path, f.length))
+                send(Event.TorrentMetadataReceived(infoHash, files)) >>
+                phase.serverTorrent.pure[IO]
+              }
+              .timeout(1.minute)
+              .flatMap { torrent =>
+                sendTorrentStats(infoHash, torrent) >>
+                IO.never
+              }
+          }
+          .orElse {
+            send(Event.TorrentError(infoHash, "Could not fetch metadata"))
           }
           .start
           .flatMap(fiber => (closed >> fiber.cancel).start)
@@ -110,7 +129,7 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent]]
+      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
     )(
       implicit
       F: Concurrent[IO],

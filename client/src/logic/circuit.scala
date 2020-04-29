@@ -38,6 +38,12 @@ class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: Executi
               Some(
                 value.copy(torrent = Some(TorrentModel(infoHash, 0, Nil, None)))
               )
+            case Event.TorrentPeersDiscovered(infoHash, count) if value.torrent.exists(_.infoHash == infoHash) =>
+              Some(
+                value.copy(
+                  torrent = value.torrent.map(_.copy(connected = count))
+                )
+              )
             case Event.TorrentMetadataReceived(infoHash, files) if value.torrent.exists(_.infoHash == infoHash) =>
               value.torrent.map { torrent =>
                 val metadataFiles = files.map { f =>

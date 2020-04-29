@@ -11,7 +11,7 @@ import logstage.LogIO
 import scala.concurrent.duration._
 
 trait TorrentRegistry {
-  def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]]
+  def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
   def tryGet(infoHash: InfoHash): Resource[OptionT[IO, *], ServerTorrent]
 }
 
@@ -20,14 +20,14 @@ object TorrentRegistry {
   type Optional[A] = OptionT[IO, A]
 
   def make(
-    makeSwarm: InfoHash => Resource[IO, Swarm[IO]]
+    createTorrent: ServerTorrent.Create
   )(implicit cs: ContextShift[IO], blocker: Blocker, timer: Timer[IO], logger: LogIO[IO]): IO[TorrentRegistry] =
     for {
       ref <- Ref.of[IO, Registry](emptyRegistry)
-    } yield new Impl(ref, makeSwarm)
+    } yield new Impl(ref, createTorrent)
 
   case class UsageCountingCell(
-    get: IO[ServerTorrent],
+    get: IO[ServerTorrent.Phase.PeerDiscovery],
     resolved: Option[ServerTorrent],
     close: IO[Unit],
     count: Int,
@@ -37,14 +37,14 @@ object TorrentRegistry {
   private type Registry = Map[InfoHash, UsageCountingCell]
   private val emptyRegistry: Registry = Map.empty
 
-  private class Impl(ref: Ref[IO, Registry], makeSwarm: InfoHash => Resource[IO, Swarm[IO]])(
+  private class Impl(ref: Ref[IO, Registry], createTorrent: ServerTorrent.Create)(
     implicit cs: ContextShift[IO],
     blocker: Blocker,
     timer: Timer[IO],
     logger: LogIO[IO]
   ) extends TorrentRegistry {
 
-    def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent]] = Resource {
+    def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]] = Resource {
       implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
       ref
         .modify { registry =>
@@ -54,7 +54,7 @@ object TorrentRegistry {
               val updatedRegistry = registry.updated(infoHash, updatedCell)
               (updatedRegistry, Right(updatedCell.get))
             case None =>
-              val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent]]
+              val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent.Phase.PeerDiscovery]]
               val closeDeferred = Deferred.unsafe[IO, Unit]
               val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
               val closeTorrent = closeDeferred.complete(())
@@ -95,32 +95,13 @@ object TorrentRegistry {
 
     private def make(
       infoHash: InfoHash,
-      complete: Either[Throwable, ServerTorrent] => IO[Unit],
+      complete: Either[Throwable, ServerTorrent.Phase.PeerDiscovery] => IO[Unit],
       waitCancel: IO[Unit]
     )(implicit logger: LogIO[IO]): IO[Unit] = {
-      val makeTorrent =
-        for {
-          (swarm, metadata) <- makeSwarm(infoHash).evalMap { swarm =>
-            UtMetadata
-              .download(swarm)
-              .timeout(1.minute)
-              .tupleLeft(swarm)
-              .flatTap { _ =>
-                logger.info(s"Metadata downloaded")
-              }
-          }
-          pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}"))
-          torrent <- Torrent.make(metadata, swarm)
-          torrent <- ServerTorrent.make(torrent, pieceStore)
-        } yield torrent
-      makeTorrent
-        .use { torrent =>
-          ref.update { registry =>
-            val cell = registry(infoHash)
-            val updatedCell = cell.copy(get = IO.pure(torrent), resolved = torrent.some)
-            registry.updated(infoHash, updatedCell)
-          } >>
-          complete(torrent.asRight) >>
+      createTorrent(infoHash)
+        .use { phase =>
+          complete(phase.asRight) >>
+          cacheWhenDone(phase).start >>
           waitCancel
         }
         .handleErrorWith { e =>
@@ -129,6 +110,18 @@ object TorrentRegistry {
         }
         .start
         .void
+    }
+
+    private def cacheWhenDone(peerDiscovery: ServerTorrent.Phase.PeerDiscovery): IO[Unit] = {
+      for {
+        fetchingMetadata <- peerDiscovery.done
+        ready <- fetchingMetadata.done
+        _ <- ref.update { registry =>
+          val cell = registry(ready.infoHash)
+          val updatedCell = cell.copy(resolved = ready.serverTorrent.some)
+          registry.updated(ready.infoHash, updatedCell)
+        }
+      } yield ()
     }
 
     private def release(infoHash: InfoHash)(implicit logger: LogIO[IO]): IO[Unit] =

@@ -53,7 +53,7 @@ object Main extends IOApp {
         Client.start[IO](selfNodeId, 9596)
       }
       peerDiscovery <- PeerDiscovery.make[IO](dhtClient)
-      makeSwarm = (infoHash: InfoHash) => {
+      createSwarm = (infoHash: InfoHash) => {
         implicit val ev0 = socketGroup
         Swarm[IO](
           peerDiscovery.discover(BTInfoHash(infoHash.bytes)),
@@ -61,7 +61,8 @@ object Main extends IOApp {
           30
         )
       }
-      torrentRegistry <- Resource.liftF { TorrentRegistry.make(makeSwarm) }
+      createServerTorrent = new ServerTorrent.Create(createSwarm)
+      torrentRegistry <- Resource.liftF { TorrentRegistry.make(createServerTorrent) }
       handleSocket = SocketSession(torrentRegistry.get)
       handleGetTorrent = (infoHash: InfoHash) =>
         torrentRegistry
