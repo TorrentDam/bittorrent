@@ -30,7 +30,7 @@ jobs:
     - name: Deploy server
       run: |
         docker login -u lavrov -p $DOCKERHUB_TOKEN
-        export VERSION=$(echo $GITHUB_SHA | head -c 8)
+        export VERSION=$(echo $GITHUB_SHA | head -c 7)
         export IMAGE=lavrov/bittorrent-server:$VERSION
         docker build . -t $IMAGE
         docker push $IMAGE
