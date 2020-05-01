@@ -24,6 +24,10 @@ object SwarmTasks {
       }
       .compile
       .drain
+      .attempt
+      .flatMap { result =>
+        logger.error(s"Download process exited with $result")
+      }
 
   private def download[F[_]](
     connection: Connection[F],
