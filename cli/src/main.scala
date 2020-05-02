@@ -247,7 +247,7 @@ object Main extends IOApp {
         )
       for {
         _ <- swarmR.use { swarm =>
-          swarm.connected.count
+          swarm.connected.count.get
             .flatMap { n =>
               logger.info(s"$n open connections")
             }
