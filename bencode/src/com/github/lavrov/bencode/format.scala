@@ -113,10 +113,11 @@ package object format {
     )
 
     implicit val BencodeFormatInvariant: Invariant[BencodeFormat] = new Invariant[BencodeFormat] {
-      def imap[A, B](fa: BencodeFormat[A])(f: A => B)(g: B => A): BencodeFormat[B] = BencodeFormat(
-        fa.read.map(f),
-        fa.write.contramap(g)
-      )
+      def imap[A, B](fa: BencodeFormat[A])(f: A => B)(g: B => A): BencodeFormat[B] =
+        BencodeFormat(
+          fa.read.map(f),
+          fa.write.contramap(g)
+        )
     }
 
     implicit val BencodeFormatSemigroupal: Semigroupal[BencodeFormat] =
@@ -143,25 +144,26 @@ package object format {
 
   def consume[A, B](
     format: BencodeFormat[A]
-  )(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] = BencodeFormat(
-    ReaderT { bv: Bencode =>
-      format.read(bv).flatMap(f(_).read(bv))
-    },
-    ReaderT { b: B =>
-      val a = g(b)
-      val bFromat = f(a)
-      for {
-        aa <- format.write(a).flatMap {
-          case Bencode.BDictionary(values) => Right(values)
-          case other => Left(BencodeFormatException("Dictionary expected"))
-        }
-        bb <- bFromat.write(b).flatMap {
-          case Bencode.BDictionary(values) => Right(values)
-          case other => Left(BencodeFormatException("Dictionary expected"))
-        }
-      } yield Bencode.BDictionary(aa ++ bb)
-    }
-  )
+  )(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
+    BencodeFormat(
+      ReaderT { bv: Bencode =>
+        format.read(bv).flatMap(f(_).read(bv))
+      },
+      ReaderT { b: B =>
+        val a = g(b)
+        val bFromat = f(a)
+        for {
+          aa <- format.write(a).flatMap {
+            case Bencode.BDictionary(values) => Right(values)
+            case other => Left(BencodeFormatException("Dictionary expected"))
+          }
+          bb <- bFromat.write(b).flatMap {
+            case Bencode.BDictionary(values) => Right(values)
+            case other => Left(BencodeFormatException("Dictionary expected"))
+          }
+        } yield Bencode.BDictionary(aa ++ bb)
+      }
+    )
 
   def upcast[A, B >: A](x: BencodeFormat[A])(implicit ta: Typeable[A]): BencodeFormat[B] =
     BencodeFormat(
@@ -176,14 +178,15 @@ package object format {
 
   def and[A, B](x: BencodeFormat[A], y: BencodeFormat[B]): BencodeFormat[(A, B)] = (x, y).tupled
 
-  def or[A](x: BencodeFormat[A], y: BencodeFormat[A]): BencodeFormat[A] = BencodeFormat(
-    ReaderT { bencodeValue: Bencode =>
-      x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
-    },
-    ReaderT { a: A =>
-      x.write(a).left.flatMap(_ => y.write(a))
-    }
-  )
+  def or[A](x: BencodeFormat[A], y: BencodeFormat[A]): BencodeFormat[A] =
+    BencodeFormat(
+      ReaderT { bencodeValue: Bencode =>
+        x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
+      },
+      ReaderT { a: A =>
+        x.write(a).left.flatMap(_ => y.write(a))
+      }
+    )
 
   def field[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[A] =
     BencodeFormat(
@@ -222,24 +225,25 @@ package object format {
       }
     )
 
-  def encodedString[A](codec: Codec[A]): BencodeFormat[A] = BencodeFormat(
-    BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
-      codec
-        .decodeValue(bv.toBitVector)
-        .toEither
-        .left
-        .map(err => BencodeFormatException(err.messageWithContext))
-    },
-    ReaderT { v: A =>
-      codec
-        .encode(v)
-        .toEither
-        .bimap(
-          err => BencodeFormatException(err.messageWithContext),
-          bv => Bencode.BString(bv.toByteVector)
-        )
-    }
-  )
+  def encodedString[A](codec: Codec[A]): BencodeFormat[A] =
+    BencodeFormat(
+      BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
+        codec
+          .decodeValue(bv.toBitVector)
+          .toEither
+          .left
+          .map(err => BencodeFormatException(err.messageWithContext))
+      },
+      ReaderT { v: A =>
+        codec
+          .encode(v)
+          .toEither
+          .bimap(
+            err => BencodeFormatException(err.messageWithContext),
+            bv => Bencode.BString(bv.toByteVector)
+          )
+      }
+    )
 
 }
 

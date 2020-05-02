@@ -45,13 +45,12 @@ object BencodeCodec {
 
     val stringCodec: Codec[Bencode.BString] =
       (positiveNumber <~ constant(':'))
-        .consume(
-          number =>
-            bytes(number.toInt).xmap[Bencode.BString](
-              bv => Bencode.BString(bv),
-              bs => bs.value
-            )
-        )(
+        .consume { number =>
+          bytes(number.toInt).xmap[Bencode.BString](
+            bv => Bencode.BString(bv),
+            bs => bs.value
+          )
+        }(
           _.value.size.toInt
         )
 
@@ -96,13 +95,14 @@ object BencodeCodec {
     *
     * @param codec codec to encode/decode a single element of the sequence
     */
-  private def listSuccessful[A](codec: Codec[A]): Codec[List[A]] = new Codec[List[A]] {
-    def sizeBound: SizeBound = SizeBound.unknown
-    def decode(bits: BitVector): Attempt[DecodeResult[List[A]]] =
-      decodeCollectSuccessful[List, A](codec, None)(bits)
-    def encode(value: List[A]): Attempt[BitVector] =
-      Encoder.encodeSeq(codec)(value)
-  }
+  private def listSuccessful[A](codec: Codec[A]): Codec[List[A]] =
+    new Codec[List[A]] {
+      def sizeBound: SizeBound = SizeBound.unknown
+      def decode(bits: BitVector): Attempt[DecodeResult[List[A]]] =
+        decodeCollectSuccessful[List, A](codec, None)(bits)
+      def encode(value: List[A]): Attempt[BitVector] =
+        Encoder.encodeSeq(codec)(value)
+    }
 
   private def decodeCollectSuccessful[F[_], A](dec: Decoder[A], limit: Option[Int])(
     buffer: BitVector
