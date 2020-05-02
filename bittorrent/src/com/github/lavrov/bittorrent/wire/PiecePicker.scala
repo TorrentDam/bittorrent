@@ -121,9 +121,11 @@ object PiecePicker {
                 _ <- complete.traverse_(_(bytes))
               } yield ()
             else
+              logger.info(s"Piece ${piece.piece.index} data is valid") >>
               Sync[F].delay {
                 piece.reset()
-              }
+              } >>
+              notifyRef.set(())
           }
         } yield ()
       }

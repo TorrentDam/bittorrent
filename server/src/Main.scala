@@ -33,6 +33,7 @@ object Main extends IOApp {
   val rnd = new Random
   val selfId: PeerId = PeerId.generate(rnd)
   val selfNodeId: NodeId = NodeId.generate(rnd)
+  val downloadPieceTimeout: FiniteDuration = 3.minutes
 
   def run(args: List[String]): IO[ExitCode] = {
     makeApp.use { it =>
@@ -106,7 +107,10 @@ object Main extends IOApp {
                   .parEvalMap(parallelPieces) { index =>
                     torrent
                       .piece(index.toInt)
-                      .timeout(1.minute)
+                      .timeoutTo(
+                        downloadPieceTimeout,
+                        IO.raiseError(PieceDownloadTimeout(index))
+                      )
                       .tupleLeft(index)
                   }
                   .flatMap {
@@ -171,6 +175,8 @@ object Main extends IOApp {
       .serve
       .compile
       .lastOrError
+
+  case class PieceDownloadTimeout(index: Long) extends Throwable(s"Timeout downloading piece $index")
 
 }
 
