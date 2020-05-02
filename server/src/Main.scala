@@ -22,6 +22,7 @@ import org.http4s.headers.{
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, HttpRoutes, MediaType, Response}
 import scodec.Codec
+import sun.misc.Signal
 
 import scala.util.Random
 import scala.concurrent.duration._
@@ -36,10 +37,15 @@ object Main extends IOApp {
   val downloadPieceTimeout: FiniteDuration = 3.minutes
 
   def run(args: List[String]): IO[ExitCode] = {
+    registerSignalHandler >>
     makeApp.use { it =>
       val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
       serve(bindPort, it) <* logger.info(s"Started http server at 0.0.0.0:$bindPort")
     }
+  }
+
+  def registerSignalHandler: IO[Unit] = IO {
+    Signal.handle(new Signal("INT"), _ => System.exit(0))
   }
 
   def makeApp: Resource[IO, HttpApp[IO]] = {
