@@ -29,13 +29,14 @@ object Main {
           IO { circuit.dispatcher(Action.ServerEvent(msg)) },
         connected => IO { circuit.dispatcher(Action.UpdateConnectionStatus(connected)) }
       )
-      _ <- out.take
-        .flatMap { msg =>
-          IO { org.scalajs.dom.console.info(s"WS >> $msg") } >>
-          socket.send(msg)
-        }
-        .foreverM
-        .start
+      _ <-
+        out.take
+          .flatMap { msg =>
+            IO { org.scalajs.dom.console.info(s"WS >> $msg") } >>
+            socket.send(msg)
+          }
+          .foreverM
+          .start
       router <- IO { Router() }
       _ <- IO {
         circuit.dispatcher(Action.Navigate(router.current))

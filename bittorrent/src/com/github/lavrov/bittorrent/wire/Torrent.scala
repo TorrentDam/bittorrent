@@ -21,27 +21,28 @@ object Torrent {
   def make[F[_]](
     metaInfo: MetaInfo,
     swarm: Swarm[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] = Resource {
-    for {
-      piecePicker <- PiecePicker(metaInfo.parsed)
-      downloadFiber <- SwarmTasks.download(swarm, piecePicker).start
-    } yield {
-      val impl =
-        new Torrent[F] {
-          def getMetaInfo = metaInfo
-          def stats: F[Stats] =
-            for {
-              connected <- swarm.connected.list
-              availability <- connected.traverse(_.availability.get)
-              availability <- availability.foldMap(identity).pure[F]
-            } yield Stats(connected.size, availability)
-          def piece(index: Int): F[ByteVector] =
-            piecePicker.download(index)
-        }
-      val close = downloadFiber.cancel
-      (impl, close)
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] =
+    Resource {
+      for {
+        piecePicker <- PiecePicker(metaInfo.parsed)
+        downloadFiber <- Download.download(swarm, piecePicker).start
+      } yield {
+        val impl =
+          new Torrent[F] {
+            def getMetaInfo = metaInfo
+            def stats: F[Stats] =
+              for {
+                connected <- swarm.connected.list
+                availability <- connected.traverse(_.availability.get)
+                availability <- availability.foldMap(identity).pure[F]
+              } yield Stats(connected.size, availability)
+            def piece(index: Int): F[ByteVector] =
+              piecePicker.download(index)
+          }
+        val close = downloadFiber.cancel
+        (impl, close)
+      }
     }
-  }
 
   case class Stats(
     connected: Int,

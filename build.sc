@@ -15,7 +15,7 @@ object bittorrent extends Module {
   def ivyDeps = Agg(
     ivy"org.typelevel::cats-core:${Versions.cats}",
     ivy"org.typelevel::cats-tagless-macros:0.11",
-    ivy"org.typelevel::cats-effect::2.1.1",
+    ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
     ivy"org.typelevel::cats-mtl-core:0.7.0",
     ivy"com.olegpy::meow-mtl-effects:0.4.0",
     ivy"io.github.timwspence::cats-stm:0.5.0",
@@ -64,7 +64,7 @@ object client extends JsModule {
   def moduleDeps = List(shared.js)
   def ivyDeps = Agg(
     ivy"me.shadaj::slinky-web::0.6.4",
-    ivy"org.typelevel::cats-effect::2.1.2",
+    ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
     ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
     ivy"org.typelevel::squants::1.6.0"
   )
@@ -146,6 +146,7 @@ trait NativeImageModule extends ScalaModule {
 
 object Versions {
   val cats = "2.2.0-M1"
+  val `cats-effect` = "2.1.3"
   val monocle = "2.0.0"
   val logstage = "0.10.2"
   val `scodec-bits` = "1.1.14"

@@ -30,23 +30,24 @@ object RoutingTableManager {
     bootstrapNodeInfo: NodeInfo,
     receive: F[(InetSocketAddress, Message.QueryMessage)],
     sendOut: (InetSocketAddress, Message) => F[Unit]
-  ): Resource[F, Ref[F, State]] = Resource {
-    for {
-      ref <- Ref.of(State(table = List(bootstrapNodeInfo)))
-      b = ref.runState { implicit S =>
-        new Behaviour(selfId, sendOut)
+  ): Resource[F, Ref[F, State]] =
+    Resource {
+      for {
+        ref <- Ref.of(State(table = List(bootstrapNodeInfo)))
+        b = ref.runState { implicit S =>
+          new Behaviour(selfId, sendOut)
+        }
+        fiber <- Concurrent[F].start(receive >>= (b.onQuery _).tupled)
+      } yield {
+        (ref, fiber.cancel)
       }
-      fiber <- Concurrent[F].start(receive >>= (b.onQuery _).tupled)
-    } yield {
-      (ref, fiber.cancel)
     }
-  }
 
   private class Behaviour[F[_]](
     selfId: NodeId,
     sendOut: (InetSocketAddress, Message) => F[Unit]
-  )(
-    implicit F: Monad[F],
+  )(implicit
+    F: Monad[F],
     S: MonadState[F, State]
   ) {
 
@@ -79,8 +80,8 @@ object RoutingTableManager {
   def bootstrap[F[_]](
     client: Client[F],
     logger: LogIO[F]
-  )(
-    implicit F: MonadError[F, Throwable],
+  )(implicit
+    F: MonadError[F, Throwable],
     timer: Timer[F]
   ): F[NodeInfo] = {
     def loop: F[NodeInfo] =

@@ -20,25 +20,24 @@ import scala.scalajs.js.Dynamic
 object Search {
   case class Props(model: Option[RootModel.Search], router: Router, dispatcher: Dispatcher)
 
-  private val useStyles = makeStyles(
-    theme =>
-      Dynamic.literal(
-        root = Dynamic.literal(
-          padding = theme.spacing(1),
-          display = "flex",
-          textAlign = "center",
-          marginTop = theme.spacing(4)
-        ),
-        input = Dynamic.literal(
-          marginLeft = theme.spacing(1),
-          marginRight = theme.spacing(1),
-          flex = 1
-        ),
-        notFound = Dynamic.literal(
-          textAlign = "center",
-          marginTop = theme.spacing(4)
-        )
+  private val useStyles = makeStyles(theme =>
+    Dynamic.literal(
+      root = Dynamic.literal(
+        padding = theme.spacing(1),
+        display = "flex",
+        textAlign = "center",
+        marginTop = theme.spacing(4)
+      ),
+      input = Dynamic.literal(
+        marginLeft = theme.spacing(1),
+        marginRight = theme.spacing(1),
+        flex = 1
+      ),
+      notFound = Dynamic.literal(
+        textAlign = "center",
+        marginTop = theme.spacing(4)
       )
+    )
   )
 
   val component = FunctionalComponent[Props] { props =>
@@ -94,9 +93,10 @@ object Search {
     val component = FunctionalComponent[Props] { props =>
       val classes = useStyles()
 
-      def handleClick(infoHash: InfoHash) = () => {
-        props.router.navigate(Route.Torrent(infoHash))
-      }
+      def handleClick(infoHash: InfoHash) =
+        () => {
+          props.router.navigate(Route.Torrent(infoHash))
+        }
 
       Fade(in = true)(
         if (props.searchResults.results.nonEmpty)

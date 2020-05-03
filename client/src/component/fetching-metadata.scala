@@ -31,12 +31,11 @@ object FetchingMetadata {
     }
   }
 
-  private val useStyles = makeStyles(
-    _ =>
-      literal(
-        centered = literal(
-          textAlign = "center"
-        )
+  private val useStyles = makeStyles(_ =>
+    literal(
+      centered = literal(
+        textAlign = "center"
       )
+    )
   )
 }

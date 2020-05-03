@@ -102,8 +102,9 @@ class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: Executi
 }
 
 object Circuit {
-  def apply(send: String => Unit)(implicit ec: ExecutionContext) = new Circuit(
-    command => send(upickle.default.write(command)),
-    Var(RootModel.initial)
-  )
+  def apply(send: String => Unit)(implicit ec: ExecutionContext) =
+    new Circuit(
+      command => send(upickle.default.write(command)),
+      Var(RootModel.initial)
+    )
 }

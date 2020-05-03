@@ -22,7 +22,7 @@ trait Connection[F[_]] {
   def extensionProtocol: Boolean
   def interested: F[Unit]
   def request(request: Message.Request): F[ByteVector]
-  def chokedStatus: Signal[F, Boolean]
+  def choked: Signal[F, Boolean]
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
   def close: F[Unit]
@@ -77,8 +77,8 @@ object Connection {
       }
   }
 
-  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
-    implicit F: Concurrent[F],
+  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
+    F: Concurrent[F],
     cs: ContextShift[F],
     timer: Timer[F],
     socketGroup: SocketGroup,
@@ -98,28 +98,30 @@ object Connection {
       }
       _ <- logger.debug(s"Connected ${peerInfo.address}")
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
-      fiber <- Concurrent[F]
-        .race[Nothing, Nothing](
-          receiveLoop(
-            requestRegistry,
-            bitfieldRef.update,
-            chokedStatusRef.set,
-            updateLastMessageTime,
-            socket,
-            extendedMessageQueue.enqueue1
-          ),
-          backgroundLoop(stateRef, timer, socket)
-        )
-        .void
-        .attempt
-        .start
+      fiber <-
+        Concurrent[F]
+          .race[Nothing, Nothing](
+            receiveLoop(
+              requestRegistry,
+              bitfieldRef.update,
+              chokedStatusRef.set,
+              updateLastMessageTime,
+              socket,
+              extendedMessageQueue.enqueue1
+            ),
+            backgroundLoop(stateRef, timer, socket)
+          )
+          .void
+          .attempt
+          .start
       closed <- Deferred[F, Either[Throwable, Unit]]
-      doClose = (reason: Either[Throwable, Unit]) =>
-        fiber.cancel >>
-        requestRegistry.failAll(ConnectionClosed()) >>
-        releaseConnection >>
-        logger.debug(s"Disconnected ${peerInfo.address}") >>
-        closed.complete(reason)
+      doClose =
+        (reason: Either[Throwable, Unit]) =>
+          fiber.cancel >>
+          requestRegistry.failAll(ConnectionClosed()) >>
+          releaseConnection >>
+          logger.debug(s"Disconnected ${peerInfo.address}") >>
+          closed.complete(reason).attempt.void
       _ <- fiber.join.flatMap(doClose).start
     } yield {
       new Connection[F] {
@@ -128,9 +130,7 @@ object Connection {
 
         def interested: F[Unit] =
           for {
-            interested <- stateRef.modify(
-              s => (State.interested.set(true)(s), s.interested)
-            )
+            interested <- stateRef.modify(s => (State.interested.set(true)(s), s.interested))
             _ <- F.whenA(!interested)(socket.send(Message.Interested))
           } yield ()
 
@@ -143,7 +143,7 @@ object Connection {
               InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
           }
 
-        def chokedStatus: Signal[F, Boolean] = chokedStatusRef
+        def choked: Signal[F, Boolean] = chokedStatusRef
 
         def availability: Signal[F, BitSet] = bitfieldRef
 
@@ -154,15 +154,16 @@ object Connection {
         def downloadMetadata: F[Option[ByteVector]] =
           for {
             handshake <- ExtensionHandshaker(extendedMessageSocket)
-            metadata <- (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled
-              .traverse {
-                case (messageId, size) =>
-                  UtMetadata
-                    .download(messageId, size, extendedMessageSocket)
-                    .ensure(InvalidMetadata()) { metadata =>
-                      metadata.digest("SHA-1") == infoHash.bytes
-                    }
-              }
+            metadata <-
+              (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled
+                .traverse {
+                  case (messageId, size) =>
+                    UtMetadata
+                      .download(messageId, size, extendedMessageSocket)
+                      .ensure(InvalidMetadata()) { metadata =>
+                        metadata.digest("SHA-1") == infoHash.bytes
+                      }
+                }
           } yield metadata
       }
     }
@@ -217,9 +218,7 @@ object Connection {
       .flatMap { _ =>
         for {
           currentTime <- timer.clock.monotonic(MILLISECONDS)
-          timedOut <- stateRef.get.map(
-            s => (currentTime - s.lastMessageAt).millis > 1.minute
-          )
+          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt).millis > 1.minute)
           _ <- F.whenA(timedOut) {
             F.raiseError(Error("Connection timed out"))
           }

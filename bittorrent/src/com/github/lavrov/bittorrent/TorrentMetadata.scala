@@ -28,8 +28,8 @@ object TorrentMetadata {
       field[Long]("piece length"),
       field[ByteVector]("pieces"),
       field[Long]("length")
-    ).imapN(
-      (name, pieceLength, pieces, length) => TorrentMetadata(pieceLength, pieces, List(File(length, List(name))))
+    ).imapN((name, pieceLength, pieces, length) =>
+      TorrentMetadata(pieceLength, pieces, List(File(length, List(name))))
     )(v => ???)
 
   implicit val FileFormat: BencodeFormat[File] =

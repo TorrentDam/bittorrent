@@ -34,8 +34,8 @@ object Extensions {
         .toByteVector
     )
 
-  def processHandshake[F[_]](payload: BitVector, logger: LogIO[F])(
-    implicit F: MonadError[F, Throwable]
+  def processHandshake[F[_]](payload: BitVector, logger: LogIO[F])(implicit
+    F: MonadError[F, Throwable]
   ): F[ExtensionHandshake] =
     for {
       bc <- F.fromEither(

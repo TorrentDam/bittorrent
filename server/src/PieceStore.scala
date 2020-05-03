@@ -37,8 +37,8 @@ object PieceStore {
     }
   }
 
-  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(
-    implicit F: Sync[F],
+  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(implicit
+    F: Sync[F],
     contextShift: ContextShift[F],
     blocker: Blocker
   ) extends PieceStore[F] {

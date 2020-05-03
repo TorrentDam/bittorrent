@@ -41,7 +41,8 @@ object Message {
         case "ping" => PingQueryFormat.upcast
         case "find_node" => FindNodeQueryFormat.upcast
         case "get_peers" => GetPeersQueryFormat.upcast
-      }, {
+      },
+      {
         case _: Query.Ping => "ping"
         case _: Query.FindNode => "find_node"
         case _: Query.GetPeers => "get_peers"
@@ -109,10 +110,8 @@ object Message {
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
     fieldOptional[ByteVector]("t"),
     field[Bencode]("e")
-  ).imapN(
-    (tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details)
-  )(
-    v => (v.transactionId.some, v.details)
+  ).imapN((tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details))(v =>
+    (v.transactionId.some, v.details)
   )
 
   implicit val MessageFormat: BencodeFormat[Message] =
@@ -121,7 +120,8 @@ object Message {
         case "q" => QueryMessageFormat.upcast
         case "r" => ResponseMessageFormat.upcast
         case "e" => ErrorMessageFormat.upcast
-      }, {
+      },
+      {
         case _: Message.QueryMessage => "q"
         case _: Message.ResponseMessage => "r"
         case _: Message.ErrorMessage => "e"

@@ -29,8 +29,8 @@ object Client {
   def start[F[_]](
     selfId: NodeId,
     port: Int
-  )(
-    implicit F: Concurrent[F],
+  )(implicit
+    F: Concurrent[F],
     timer: Timer[F],
     cs: ContextShift[F],
     socketGroup: SocketGroup,
@@ -43,17 +43,18 @@ object Client {
           .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
       queryies <- Resource.liftF { Queue.unbounded[F, (InetSocketAddress, Message)] }
-      _ <- Resource
-        .make(
-          messageSocket.readMessage
-            .flatMap {
-              case (a, m: Message.QueryMessage) => queryies.enqueue1((a, m))
-              case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
-              case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
-            }
-            .foreverM
-            .start
-        )(_.cancel)
+      _ <-
+        Resource
+          .make(
+            messageSocket.readMessage
+              .flatMap {
+                case (a, m: Message.QueryMessage) => queryies.enqueue1((a, m))
+                case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
+                case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
+              }
+              .foreverM
+              .start
+          )(_.cancel)
       requestResponse <- RequestResponse.make(
         generateTransactionId,
         messageSocket.writeMessage,

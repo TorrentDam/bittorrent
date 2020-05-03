@@ -32,22 +32,23 @@ class MessageSocket[F[_]](
           )
         )
       }
-      _ <- logger.debug(s">>> ${peerInfo.address} $message")
+      _ <- logger.trace(s">>> ${peerInfo.address} $message")
     } yield ()
 
   def receive: F[Message] =
     for {
       bytes <- readExactlyN(4)
-      size <- F fromTry Message.MessageSizeCodec
-        .decodeValue(bytes.toBitVector)
-        .toTry
+      size <-
+        F fromTry Message.MessageSizeCodec
+          .decodeValue(bytes.toBitVector)
+          .toTry
       bytes <- readExactlyN(size.toInt)
       message <- F.fromTry(
         Message.MessageBodyCodec
           .decodeValue(bytes.toBitVector)
           .toTry
       )
-      _ <- logger.debug(s"<<< ${peerInfo.address} $message")
+      _ <- logger.trace(s"<<< ${peerInfo.address} $message")
     } yield message
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
@@ -64,8 +65,7 @@ class MessageSocket[F[_]](
 object MessageSocket {
   import fs2.io.tcp.SocketGroup
 
-  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
-    implicit
+  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
     F: Concurrent[F],
     cs: ContextShift[F],
     socketGroup: SocketGroup,
@@ -74,13 +74,13 @@ object MessageSocket {
     for {
       socket <- socketGroup.client(to = peerInfo.address)
       socket <- Resource.make(socket.pure[F])(
-        _.close *> logger.debug(s"Closed socket $peerInfo")
+        _.close *> logger.trace(s"Closed socket $peerInfo")
       )
-      _ <- Resource.liftF(logger.debug(s"Opened socket $peerInfo"))
+      _ <- Resource.liftF(logger.trace(s"Opened socket $peerInfo"))
       handshakeResponse <- Resource.liftF(
-        logger.debug(s"Initiate handshake with ${peerInfo.address}") *>
+        logger.trace(s"Initiate handshake with ${peerInfo.address}") *>
         handshake(selfId, infoHash, socket) <*
-        logger.debug(s"Successful handshake with ${peerInfo.address}")
+        logger.trace(s"Successful handshake with ${peerInfo.address}")
       )
       writeMutex <- Resource.liftF(Semaphore(1))
     } yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
@@ -100,12 +100,13 @@ object MessageSocket {
         timeout = Some(5.seconds)
       )
       handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
-      maybeBytes <- socket
-        .readN(handshakeMessageSize, timeout = Some(5.seconds))
-        .adaptError {
-          case e: InterruptedByTimeoutException =>
-            Error("Timeout waiting for handshake", e)
-        }
+      maybeBytes <-
+        socket
+          .readN(handshakeMessageSize, timeout = Some(5.seconds))
+          .adaptError {
+            case e: InterruptedByTimeoutException =>
+              Error("Timeout waiting for handshake", e)
+          }
       bytes <- F.fromOption(
         maybeBytes.filter(_.size == handshakeMessageSize),
         Error("Unsuccessful handshake: connection prematurely closed")

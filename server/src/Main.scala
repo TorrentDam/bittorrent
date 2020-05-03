@@ -34,6 +34,7 @@ object Main extends IOApp {
   val selfId: PeerId = PeerId.generate(rnd)
   val selfNodeId: NodeId = NodeId.generate(rnd)
   val downloadPieceTimeout: FiniteDuration = 3.minutes
+  val maxPrefetchBytes = 50 * 1000 * 1000
 
   def run(args: List[String]): IO[ExitCode] = {
     registerSignalHandler >>
@@ -43,9 +44,10 @@ object Main extends IOApp {
     }
   }
 
-  def registerSignalHandler: IO[Unit] = IO {
-    Signal.handle(new Signal("INT"), _ => System.exit(0))
-  }
+  def registerSignalHandler: IO[Unit] =
+    IO {
+      Signal.handle(new Signal("INT"), _ => System.exit(0))
+    }
 
   def makeApp: Resource[IO, HttpApp[IO]] = {
     import org.http4s.dsl.io._
@@ -70,104 +72,105 @@ object Main extends IOApp {
       createServerTorrent = new ServerTorrent.Create(createSwarm)
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(createServerTorrent) }
       handleSocket = SocketSession(torrentRegistry.get)
-      handleGetTorrent = (infoHash: InfoHash) =>
-        torrentRegistry
-          .tryGet(infoHash)
-          .use { torrent =>
-            val metadata = torrent.metadata
-            val torrentFile = TorrentFile(metadata, None)
-            val bcode =
-              TorrentFile.TorrentFileFormat
-                .write(torrentFile)
-                .toOption
-                .get
-            val filename = metadata.parsed.files match {
-              case file :: Nil if file.path.nonEmpty => file.path.last
-              case _ => infoHash.bytes.toHex
-            }
-            val bytes = com.github.lavrov.bencode.encode(bcode)
-            OptionT.liftF(
-              Ok(
-                bytes.toByteArray,
-                `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent"))
+      handleGetTorrent =
+        (infoHash: InfoHash) =>
+          torrentRegistry
+            .tryGet(infoHash)
+            .use { torrent =>
+              val metadata = torrent.metadata
+              val torrentFile = TorrentFile(metadata, None)
+              val bcode =
+                TorrentFile.TorrentFileFormat
+                  .write(torrentFile)
+                  .toOption
+                  .get
+              val filename = metadata.parsed.files match {
+                case file :: Nil if file.path.nonEmpty => file.path.last
+                case _ => infoHash.bytes.toHex
+              }
+              val bytes = com.github.lavrov.bencode.encode(bcode)
+              OptionT.liftF(
+                Ok(
+                  bytes.toByteArray,
+                  `Content-Disposition`("inline", Map("filename" -> s"$filename.torrent"))
+                )
               )
-            )
-          }
-          .getOrElseF {
-            NotFound("Torrent not found")
-          }
-      handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
-        torrentRegistry.tryGet(infoHash).allocated.value.flatMap {
-          case Some((torrent: ServerTorrent, release)) =>
-            if (torrent.files.value.lift(fileIndex).isDefined) {
-              val file = torrent.metadata.parsed.files(fileIndex)
-              val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
-              val fileMapping = torrent.files
-              val maxPrefetchBytes = 20 * 1000 * 1000
-              val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 2).toInt
-              def dataStream(span: FileMapping.Span) = {
-                Stream
-                  .emits(span.beginIndex to span.endIndex)
-                  .covary[IO]
-                  .parEvalMap(parallelPieces) { index =>
-                    torrent
-                      .piece(index.toInt)
-                      .timeoutTo(
-                        downloadPieceTimeout,
-                        IO.raiseError(PieceDownloadTimeout(index))
-                      )
-                      .tupleLeft(index)
-                  }
-                  .flatMap {
-                    case (span.beginIndex, bytes) =>
-                      bytes.drop(span.beginOffset)
-                    case (span.endIndex, bytes) =>
-                      bytes.take(span.endOffset)
-                    case (_, bytes) => bytes
-                  }
-                  .onFinalize(release.value.void)
-              }
-              val mediaType =
-                extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
-              val span0 = fileMapping.value(fileIndex)
-              rangeOpt match {
-                case Some(range) =>
-                  val first = range.ranges.head.first
-                  val second = range.ranges.head.second
-                  val advanced = span0.advance(first)
-                  val span = second.fold(advanced) { second =>
-                    advanced.take(second - first)
-                  }
-                  val subRange = rangeOpt match {
-                    case Some(range) =>
-                      val first = range.ranges.head.first
-                      val second = range.ranges.head.second.getOrElse(file.length - 1)
-                      Range.SubRange(first, second)
-                    case None =>
-                      Range.SubRange(0L, file.length - 1)
-                  }
-                  PartialContent(
-                    dataStream(span),
-                    `Content-Type`(mediaType),
-                    `Accept-Ranges`.bytes,
-                    `Content-Range`(subRange, file.length.some)
-                  )
-                case None =>
-                  val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
-                  Ok(
-                    dataStream(span0),
-                    `Accept-Ranges`.bytes,
-                    `Content-Type`(mediaType),
-                    `Content-Disposition`("inline", Map("filename" -> filename)),
-                    `Content-Length`.unsafeFromLong(file.length)
-                  )
-              }
             }
-            else {
-              NotFound(s"Torrent does not contain file with index $fileIndex")
+            .getOrElseF {
+              NotFound("Torrent not found")
             }
-          case None => NotFound("Torrent not found")
-        }
+      handleGetData =
+        (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =>
+          torrentRegistry.tryGet(infoHash).allocated.value.flatMap {
+            case Some((torrent: ServerTorrent, release)) =>
+              if (torrent.files.value.lift(fileIndex).isDefined) {
+                val file = torrent.metadata.parsed.files(fileIndex)
+                val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
+                val fileMapping = torrent.files
+                val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 2).toInt
+                def dataStream(span: FileMapping.Span) = {
+                  Stream
+                    .emits(span.beginIndex to span.endIndex)
+                    .covary[IO]
+                    .parEvalMap(parallelPieces) { index =>
+                      torrent
+                        .piece(index.toInt)
+                        .timeoutTo(
+                          downloadPieceTimeout,
+                          IO.raiseError(PieceDownloadTimeout(index))
+                        )
+                        .tupleLeft(index)
+                    }
+                    .flatMap {
+                      case (span.beginIndex, bytes) =>
+                        bytes.drop(span.beginOffset)
+                      case (span.endIndex, bytes) =>
+                        bytes.take(span.endOffset)
+                      case (_, bytes) => bytes
+                    }
+                    .onFinalize(release.value.void)
+                }
+                val mediaType =
+                  extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
+                val span0 = fileMapping.value(fileIndex)
+                rangeOpt match {
+                  case Some(range) =>
+                    val first = range.ranges.head.first
+                    val second = range.ranges.head.second
+                    val advanced = span0.advance(first)
+                    val span = second.fold(advanced) { second =>
+                      advanced.take(second - first)
+                    }
+                    val subRange = rangeOpt match {
+                      case Some(range) =>
+                        val first = range.ranges.head.first
+                        val second = range.ranges.head.second.getOrElse(file.length - 1)
+                        Range.SubRange(first, second)
+                      case None =>
+                        Range.SubRange(0L, file.length - 1)
+                    }
+                    PartialContent(
+                      dataStream(span),
+                      `Content-Type`(mediaType),
+                      `Accept-Ranges`.bytes,
+                      `Content-Range`(subRange, file.length.some)
+                    )
+                  case None =>
+                    val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
+                    Ok(
+                      dataStream(span0),
+                      `Accept-Ranges`.bytes,
+                      `Content-Type`(mediaType),
+                      `Content-Disposition`("inline", Map("filename" -> filename)),
+                      `Content-Length`.unsafeFromLong(file.length)
+                    )
+                }
+              }
+              else {
+                NotFound(s"Torrent does not contain file with index $fileIndex")
+              }
+            case None => NotFound("Torrent not found")
+          }
 
     } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData)
   }

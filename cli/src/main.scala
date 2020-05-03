@@ -45,11 +45,10 @@ object Main extends IOApp {
 
     val infoHashOpt = Opts
       .option[String]("info-hash", "Info-hash of the torrent file")
-      .mapValidated(
-        string =>
-          Validated
-            .fromEither(ByteVector.fromHexDescriptive(string))
-            .toValidatedNel
+      .mapValidated(string =>
+        Validated
+          .fromEither(ByteVector.fromHexDescriptive(string))
+          .toValidatedNel
       )
       .validate("Must be 20 bytes long")(_.size == 20)
       .map(InfoHash)
@@ -234,30 +233,31 @@ object Main extends IOApp {
         } yield ()
       }
 
-  def connect(infoHash: InfoHash): IO[Unit] = resources.use {
-    case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
-      implicit val usg0: UdpScoketGroup = usg
-      implicit val tsg0: TcpSocketGroup = tsg
-      val peers = discoverPeers(infoHash)
-      val swarmR =
-        Swarm[IO](
-          peers,
-          Connection.connect(selfId, _, infoHash),
-          10
-        )
-      for {
-        _ <- swarmR.use { swarm =>
-          swarm.connected.count.get
-            .flatMap { n =>
-              logger.info(s"$n open connections")
-            }
-            .flatMap { _ =>
-              timer.sleep(5.seconds)
-            }
-            .foreverM
-        }
-      } yield ()
-  }
+  def connect(infoHash: InfoHash): IO[Unit] =
+    resources.use {
+      case (usg: UdpScoketGroup, tsg: TcpSocketGroup) =>
+        implicit val usg0: UdpScoketGroup = usg
+        implicit val tsg0: TcpSocketGroup = tsg
+        val peers = discoverPeers(infoHash)
+        val swarmR =
+          Swarm[IO](
+            peers,
+            Connection.connect(selfId, _, infoHash),
+            10
+          )
+        for {
+          _ <- swarmR.use { swarm =>
+            swarm.connected.count.get
+              .flatMap { n =>
+                logger.info(s"$n open connections")
+              }
+              .flatMap { _ =>
+                timer.sleep(5.seconds)
+              }
+              .foreverM
+          }
+        } yield ()
+    }
 
   private def discoverPeers(
     infoHash: InfoHash

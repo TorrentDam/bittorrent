@@ -38,8 +38,8 @@ object ExtensionHandshaker {
 }
 
 object UtMetadata {
-  def download[F[_]](messageId: Long, size: Long, socket: ExtendedMessageSocket[F])(
-    implicit F: Concurrent[F],
+  def download[F[_]](messageId: Long, size: Long, socket: ExtendedMessageSocket[F])(implicit
+    F: Concurrent[F],
     logger: LogIO[F]
   ): F[ByteVector] = {
     def receive: F[Message] =

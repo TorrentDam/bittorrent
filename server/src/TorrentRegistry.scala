@@ -37,61 +37,63 @@ object TorrentRegistry {
   private type Registry = Map[InfoHash, UsageCountingCell]
   private val emptyRegistry: Registry = Map.empty
 
-  private class Impl(ref: Ref[IO, Registry], createTorrent: ServerTorrent.Create)(
-    implicit cs: ContextShift[IO],
+  private class Impl(ref: Ref[IO, Registry], createTorrent: ServerTorrent.Create)(implicit
+    cs: ContextShift[IO],
     blocker: Blocker,
     timer: Timer[IO],
     logger: LogIO[IO]
   ) extends TorrentRegistry {
 
-    def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]] = Resource {
-      implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
-      ref
-        .modify { registry =>
-          registry.get(infoHash) match {
-            case Some(cell) =>
-              val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
-              val updatedRegistry = registry.updated(infoHash, updatedCell)
-              (updatedRegistry, Right(updatedCell.get))
-            case None =>
-              val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent.Phase.PeerDiscovery]]
-              val closeDeferred = Deferred.unsafe[IO, Unit]
-              val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
-              val closeTorrent = closeDeferred.complete(())
-              val createdCell = UsageCountingCell(getTorrent, none, closeTorrent, 1, 1)
-              val updatedRegistry = registry.updated(infoHash, createdCell)
-              (updatedRegistry, Left((createdCell.get, completeDeferred.complete _, closeDeferred.get)))
-          }
-        }
-        .flatMap {
-          case Right(get) =>
-            logger.debug(s"Found existing torrent") >>
-            IO.pure((get, release(infoHash)))
-          case Left((get, complete, cancel)) =>
-            logger.info(s"Make new torrent") >>
-            make(infoHash, complete, cancel).as((get, release(infoHash)))
-        }
-    }
-
-    def tryGet(infoHash: InfoHash): Resource[Optional, ServerTorrent] = Resource {
-      implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
-      for {
-        torrent <- OptionT(
-          ref
-            .modify { registry =>
-              registry.get(infoHash) match {
-                case Some(cell) if cell.resolved.isDefined =>
-                  val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
-                  val updatedRegistry = registry.updated(infoHash, updatedCell)
-                  (updatedRegistry, cell.resolved)
-                case _ =>
-                  (registry, none)
-              }
+    def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]] =
+      Resource {
+        implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
+        ref
+          .modify { registry =>
+            registry.get(infoHash) match {
+              case Some(cell) =>
+                val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
+                val updatedRegistry = registry.updated(infoHash, updatedCell)
+                (updatedRegistry, Right(updatedCell.get))
+              case None =>
+                val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent.Phase.PeerDiscovery]]
+                val closeDeferred = Deferred.unsafe[IO, Unit]
+                val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
+                val closeTorrent = closeDeferred.complete(())
+                val createdCell = UsageCountingCell(getTorrent, none, closeTorrent, 1, 1)
+                val updatedRegistry = registry.updated(infoHash, createdCell)
+                (updatedRegistry, Left((createdCell.get, completeDeferred.complete _, closeDeferred.get)))
             }
-        )
-        _ <- logger.debug(s"Found existing torrent").to[Optional]
-      } yield (torrent, release(infoHash).to[Optional])
-    }
+          }
+          .flatMap {
+            case Right(get) =>
+              logger.debug(s"Found existing torrent") >>
+              IO.pure((get, release(infoHash)))
+            case Left((get, complete, cancel)) =>
+              logger.info(s"Make new torrent") >>
+              make(infoHash, complete, cancel).as((get, release(infoHash)))
+          }
+      }
+
+    def tryGet(infoHash: InfoHash): Resource[Optional, ServerTorrent] =
+      Resource {
+        implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
+        for {
+          torrent <- OptionT(
+            ref
+              .modify { registry =>
+                registry.get(infoHash) match {
+                  case Some(cell) if cell.resolved.isDefined =>
+                    val updatedCell = cell.copy(count = cell.count + 1, usedCount = cell.usedCount + 1)
+                    val updatedRegistry = registry.updated(infoHash, updatedCell)
+                    (updatedRegistry, cell.resolved)
+                  case _ =>
+                    (registry, none)
+                }
+              }
+          )
+          _ <- logger.debug(s"Found existing torrent").to[Optional]
+        } yield (torrent, release(infoHash).to[Optional])
+      }
 
     private def make(
       infoHash: InfoHash,
@@ -139,8 +141,8 @@ object TorrentRegistry {
             logger.debug(s"Torrent is still in use ${cell.count}")
         }
 
-    private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(
-      implicit logger: LogIO[IO]
+    private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
+      logger: LogIO[IO]
     ): IO[Unit] = {
       val idleTimeout = 5.minutes
       val waitAndTry =
@@ -150,8 +152,8 @@ object TorrentRegistry {
       waitAndTry.start.void
     }
 
-    private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(
-      implicit logger: LogIO[IO]
+    private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
+      logger: LogIO[IO]
     ): IO[Unit] = {
       ref.modify { registry =>
         registry.get(infoHash) match {

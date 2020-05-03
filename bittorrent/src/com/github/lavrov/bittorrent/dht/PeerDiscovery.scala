@@ -90,7 +90,7 @@ object PeerDiscovery {
         case None => F.raiseError[NodeInfo](ExhaustedNodeList())
       })
       .parEvalMapUnordered(10) { nodeInfo =>
-        logger.debug(s"Get peers $nodeInfo") >> getPeers(nodeInfo, infoHash).attempt
+        logger.trace(s"Get peers $nodeInfo") >> getPeers(nodeInfo, infoHash).attempt
       }
       .flatMap {
         case Right(response) =>

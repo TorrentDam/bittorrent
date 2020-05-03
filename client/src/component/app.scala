@@ -15,17 +15,16 @@ import scala.scalajs.js.Dynamic
 object App {
   case class Props(router: Router, model: Observable[RootModel], dispatcher: Dispatcher)
 
-  private val useStyles = makeStyles(
-    theme =>
-      Dynamic.literal(
-        appBarSpacer = theme.mixins.toolbar,
-        breadcrumb = Dynamic.literal(
-          paddingBottom = theme.spacing(2)
-        ),
-        centered = Dynamic.literal(
-          textAlign = "center"
-        )
+  private val useStyles = makeStyles(theme =>
+    Dynamic.literal(
+      appBarSpacer = theme.mixins.toolbar,
+      breadcrumb = Dynamic.literal(
+        paddingBottom = theme.spacing(2)
+      ),
+      centered = Dynamic.literal(
+        textAlign = "center"
       )
+    )
   )
 
   val component = FunctionalComponent[Props] { props =>
@@ -47,16 +46,14 @@ object App {
             if (connected)
               props.router.when {
                 case Router.Route.Root =>
-                  Connect(props.model.zoomTo(_.search))(
-                    model => Search(model, props.router, props.dispatcher)
-                  )
+                  Connect(props.model.zoomTo(_.search))(model => Search(model, props.router, props.dispatcher))
                 case torrentRoute: Router.Route.Torrent =>
-                  withTorrent(torrentRoute, props.model, props.dispatcher)(
-                    torrent => metadata => Torrent(props.router, torrent, metadata)
+                  withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
+                    metadata => Torrent(props.router, torrent, metadata)
                   )
                 case Router.Route.File(index, torrentRoute) =>
-                  withTorrent(torrentRoute, props.model, props.dispatcher)(
-                    torrent => metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
+                  withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
+                    metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                   )
 
               }

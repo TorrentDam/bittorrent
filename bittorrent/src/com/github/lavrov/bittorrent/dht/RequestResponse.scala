@@ -26,18 +26,18 @@ object RequestResponse {
     receiveMessage: F[
       (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
     ]
-  )(
-    implicit
+  )(implicit
     F: Concurrent[F],
     timer: Timer[F]
-  ): Resource[F, RequestResponse[F]] = Resource {
-    for {
-      callbackRegistry <- CallbackRegistry.make[F]
-      fiber <- receiveLoop(receiveMessage, callbackRegistry.complete).start
-    } yield {
-      new Impl(generateTransactionId, sendMessage, callbackRegistry.add) -> fiber.cancel
+  ): Resource[F, RequestResponse[F]] =
+    Resource {
+      for {
+        callbackRegistry <- CallbackRegistry.make[F]
+        fiber <- receiveLoop(receiveMessage, callbackRegistry.complete).start
+      } yield {
+        new Impl(generateTransactionId, sendMessage, callbackRegistry.add) -> fiber.cancel
+      }
     }
-  }
 
   private class Impl[F[_]](
     generateTransactionId: F[ByteVector],
@@ -59,8 +59,7 @@ object RequestResponse {
       (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
     ],
     continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
-  )(
-    implicit
+  )(implicit
     F: Monad[F]
   ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
@@ -86,10 +85,11 @@ trait CallbackRegistry[F[_]] {
 object CallbackRegistry {
   def make[F[_]: Concurrent: Timer]: F[CallbackRegistry[F]] = {
     for {
-      ref <- Ref
-        .of[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]](
-          Map.empty
-        )
+      ref <-
+        Ref
+          .of[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]](
+            Map.empty
+          )
     } yield {
       new Impl(ref)
     }

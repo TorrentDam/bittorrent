@@ -10,7 +10,7 @@ import cats.effect.concurrent.{Deferred, Semaphore}
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import logstage.LogIO
 import scodec.bits.ByteVector
 
@@ -22,7 +22,7 @@ trait PiecePicker[F[_]] {
   def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]]
   def unpick(request: Message.Request): F[Unit]
   def complete(request: Message.Request, bytes: ByteVector): F[Unit]
-  def updates: Stream[F, Unit]
+  def updates: Signal[F, Unit]
   def pending: F[Map[Message.Request, InetSocketAddress]]
 }
 object PiecePicker {
@@ -84,7 +84,7 @@ object PiecePicker {
               request
             }
           }
-          _ <- logger.debug(s"Picking $request")
+          _ <- logger.trace(s"Picking $request")
         } yield request
       }
 
@@ -121,7 +121,7 @@ object PiecePicker {
                 _ <- complete.traverse_(_(bytes))
               } yield ()
             else
-              logger.info(s"Piece ${piece.piece.index} data is valid") >>
+              logger.info(s"Piece ${piece.piece.index} data is invalid") >>
               Sync[F].delay {
                 piece.reset()
               } >>
@@ -130,11 +130,12 @@ object PiecePicker {
         } yield ()
       }
 
-    def updates: Stream[F, Unit] = notifyRef.discrete
+    def updates: Signal[F, Unit] = notifyRef
 
-    def pending: F[Map[Message.Request, InetSocketAddress]] = synchronized {
-      state.pending.toMap.pure[F]
-    }
+    def pending: F[Map[Message.Request, InetSocketAddress]] =
+      synchronized {
+        state.pending.toMap.pure[F]
+      }
   }
 
   def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {

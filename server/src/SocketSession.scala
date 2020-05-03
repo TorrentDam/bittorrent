@@ -18,8 +18,8 @@ import scala.util.Try
 object SocketSession {
   def apply(
     makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
-  )(
-    implicit F: Concurrent[IO],
+  )(implicit
+    F: Concurrent[IO],
     cs: ContextShift[IO],
     timer: Timer[IO],
     logger: LogIO[IO]
@@ -62,20 +62,20 @@ object SocketSession {
     send: Event => IO[Unit],
     getTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
     closed: IO[Unit]
-  )(
-    implicit
+  )(implicit
     F: Concurrent[IO],
     cs: ContextShift[IO],
     timer: Timer[IO],
     logger: LogIO[IO]
   ) {
-    def handle(command: Command): IO[Unit] = command match {
-      case Command.GetTorrent(infoHash) =>
-        for {
-          _ <- send(Event.RequestAccepted(infoHash))
-          _ <- handleGetTorrent(infoHash)
-        } yield ()
-    }
+    def handle(command: Command): IO[Unit] =
+      command match {
+        case Command.GetTorrent(infoHash) =>
+          for {
+            _ <- send(Event.RequestAccepted(infoHash))
+            _ <- handleGetTorrent(infoHash)
+          } yield ()
+      }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
       F.uncancelable {
@@ -130,23 +130,23 @@ object SocketSession {
     def apply(
       send: Event => IO[Unit],
       makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
-    )(
-      implicit
+    )(implicit
       F: Concurrent[IO],
       cs: ContextShift[IO],
       timer: Timer[IO],
       logger: LogIO[IO]
-    ): Resource[IO, CommandHandler] = Resource {
-      for {
-        closed <- Deferred[IO, Unit]
-      } yield {
-        val impl = new CommandHandler(
-          send,
-          makeTorrent,
-          closed.get
-        )
-        (impl, closed.complete(()))
+    ): Resource[IO, CommandHandler] =
+      Resource {
+        for {
+          closed <- Deferred[IO, Unit]
+        } yield {
+          val impl = new CommandHandler(
+            send,
+            makeTorrent,
+            closed.get
+          )
+          (impl, closed.complete(()))
+        }
       }
-    }
   }
 }

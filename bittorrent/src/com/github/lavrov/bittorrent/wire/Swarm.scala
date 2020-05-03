@@ -26,26 +26,26 @@ object Swarm {
     dhtPeers: Stream[F, PeerInfo],
     connect: PeerInfo => F[Connection[F]],
     maxConnections: Int = 10
-  )(
-    implicit F: Concurrent[F],
+  )(implicit
+    F: Concurrent[F],
     timer: Timer[F],
     logger: LogIO[F]
-  ): Resource[F, Swarm[F]] = Resource {
-    for {
-      stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
-      lastConnected <- SignallingRef[F, Connection[F]](null)
-      peerBuffer <- Queue.in[F].bounded[F, PeerInfo](10)
-      reconnects <- Queue.in[F].unbounded[F, F[Unit]]
-      fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
-      connectionFibers <- F
-        .replicateA(
+  ): Resource[F, Swarm[F]] =
+    Resource {
+      for {
+        stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
+        lastConnected <- SignallingRef[F, Connection[F]](null)
+        peerBuffer <- Queue.in[F].bounded[F, PeerInfo](10)
+        reconnects <- Queue.in[F].unbounded[F, F[Unit]]
+        fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
+        connectionFibers <- F.replicateA(
           maxConnections,
           openConnections[F](
             peerBuffer.dequeue1,
             reconnects,
             peerInfo =>
               for {
-                _ <- logger.debug(s"Connecting to ${peerInfo.address}")
+                _ <- logger.trace(s"Connecting to ${peerInfo.address}")
                 connection <- connect(peerInfo)
                   .timeoutTo(1.second, F raiseError Error.ConnectTimeout(1.second))
                 _ <- stateRef.update(_.updated(peerInfo, connection))
@@ -55,12 +55,12 @@ object Swarm {
               } yield ()
           ).foreverM[Unit].start
         )
-    } yield {
-      val impl = new Impl(stateRef, lastConnected)
-      val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
-      (impl, close)
+      } yield {
+        val impl = new Impl(stateRef, lastConnected)
+        val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
+        (impl, close)
+      }
     }
-  }
 
   private class Impl[F[_]](
     stateRef: SignallingRef[F, Map[PeerInfo, Connection[F]]],
@@ -76,7 +76,8 @@ object Swarm {
   }
 
   private def openConnections[F[_]](discover: F[PeerInfo], reconnects: Queue[F, F[Unit]], connect: PeerInfo => F[Unit])(
-    implicit F: Concurrent[F],
+    implicit
+    F: Concurrent[F],
     timer: Timer[F],
     logger: LogIO[F]
   ): F[Unit] =
@@ -106,8 +107,8 @@ object Swarm {
 
   private def connectRoutine[F[_]](
     peerInfo: PeerInfo
-  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(
-    implicit F: Monad[F],
+  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(implicit
+    F: Monad[F],
     logger: RoutineLogger[F]
   ): F[Unit] = {
     val maxAttempts = 5
@@ -143,16 +144,17 @@ object Swarm {
 
   object RoutineLogger {
 
-    def apply[F[_]](logger: LogIO[F]): RoutineLogger[F] = new RoutineLogger[F] {
+    def apply[F[_]](logger: LogIO[F]): RoutineLogger[F] =
+      new RoutineLogger[F] {
 
-      def gaveUp: F[Unit] = logger.debug(s"Gave up")
+        def gaveUp: F[Unit] = logger.trace(s"Gave up")
 
-      def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): F[Unit] =
-        logger.debug(s"Connection failed $attempt $cause. Retry connecting in at least $waitDuration")
+        def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): F[Unit] =
+          logger.trace(s"Connection failed $attempt $cause. Retry connecting in at least $waitDuration")
 
-      def disconnected: F[Unit] =
-        logger.debug(s"Disconnected. Trying to reconnect.")
-    }
+        def disconnected: F[Unit] =
+          logger.trace(s"Disconnected. Trying to reconnect.")
+      }
   }
 
   trait Connected[F[_]] {
