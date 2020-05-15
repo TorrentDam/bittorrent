@@ -46,6 +46,8 @@ object App {
             if (connected)
               props.router.when {
                 case Router.Route.Root =>
+                  Search(None, props.router, props.dispatcher)
+                case Router.Route.Search(_) =>
                   Connect(props.model.zoomTo(_.search))(model => Search(model, props.router, props.dispatcher))
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>

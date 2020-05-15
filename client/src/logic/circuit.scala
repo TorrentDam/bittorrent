@@ -76,6 +76,8 @@ class Circuit(send: Command => Unit, state: Var[RootModel])(implicit ec: Executi
           route match {
             case Route.Root =>
               None
+            case Route.Search(query) =>
+              actionHandler(value, Action.Search(query))
             case Route.Torrent(infoHash) =>
               getTorrent(value, infoHash)
             case Route.File(_, Route.Torrent(infoHash)) =>

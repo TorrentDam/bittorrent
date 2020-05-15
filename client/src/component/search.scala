@@ -65,7 +65,7 @@ object Search {
           case Some(infoHash) =>
             props.router.navigate(Route.Torrent(infoHash))
           case None =>
-            props.dispatcher(Action.Search(state))
+            props.router.navigate(Route.Search(state))
         }
       }
 

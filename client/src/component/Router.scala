@@ -1,5 +1,7 @@
 package component
 
+import java.net.URLDecoder
+
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import frp.{Observable, Var}
 import slinky.core.facade.{Hooks, ReactElement}
@@ -49,12 +51,14 @@ object Router {
 
   object Route {
     case object Root extends Route
+    case class Search(query: String) extends Route
     case class Torrent(infoHash: InfoHash) extends Route
     case class File(index: Int, torrent: Torrent) extends Route
 
     def fromString(string: String): Option[Route] =
-      PartialFunction.condOpt(string) {
+      PartialFunction.condOpt(decode(string)) {
         case "" => Root
+        case s"search/$query" => Search(query)
         case s"torrent/${InfoHash.fromString(infoHash)}/file/${Number(index)}" => File(index, Torrent(infoHash))
         case s"torrent/${InfoHash.fromString(infoHash)}" => Torrent(infoHash)
       }
@@ -62,10 +66,13 @@ object Router {
     def toString(route: Route): String =
       route match {
         case Root => ""
+        case Search(query) => s"search/$query"
         case Torrent(infoHash) => s"torrent/$infoHash"
         case File(index, Torrent(infoHash)) => s"torrent/$infoHash/file/$index"
       }
 
     private val Number: PartialFunction[String, Int] = Function.unlift(_.toIntOption)
+
+    private def decode(value: String) = URLDecoder.decode(value, "UTF-8")
   }
 }
