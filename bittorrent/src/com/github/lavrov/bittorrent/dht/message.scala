@@ -19,7 +19,7 @@ object Message {
   final case class ErrorMessage(transactionId: ByteVector, details: Bencode) extends Message
 
   implicit val NodeIdFormat: BencodeFormat[NodeId] =
-    BencodeFormat.ByteVectorReader.imap(NodeId.apply)(_.bytes)
+    BencodeFormat.ByteVectorFormat.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
     field[NodeId]("a")(field[NodeId]("id"))
@@ -31,7 +31,7 @@ object Message {
     )
   ).imap(tpl => Query.FindNode.tupled(tpl))(v => (v.queryingNodeId, v.target))
 
-  implicit val InfoHashFormat = BencodeFormat.ByteVectorReader.imap(InfoHash)(_.bytes)
+  implicit val InfoHashFormat = BencodeFormat.ByteVectorFormat.imap(InfoHash)(_.bytes)
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
     field[(NodeId, InfoHash)]("a")(
@@ -97,7 +97,7 @@ object Message {
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
     field[NodeId]("id"),
-    field[List[PeerInfo]]("values")(BencodeFormat.listReader(encodedString(CompactPeerInfoCodec)))
+    field[List[PeerInfo]]("values")(BencodeFormat.listFormat(encodedString(CompactPeerInfoCodec)))
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
   val ResponseFormat: BencodeFormat[Response] =

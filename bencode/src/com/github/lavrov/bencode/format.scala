@@ -61,7 +61,7 @@ package object format {
         )
     }
 
-    implicit val LongReader: BencodeFormat[Long] = BencodeFormat(
+    implicit val LongFormat: BencodeFormat[Long] = BencodeFormat(
       BencodeReader {
         case Bencode.BInteger(l) => Right(l)
         case _ => Left(BencodeFormatException("Integer is expected"))
@@ -71,7 +71,7 @@ package object format {
       }
     )
 
-    implicit val StringReader: BencodeFormat[String] = BencodeFormat(
+    implicit val StringFormat: BencodeFormat[String] = BencodeFormat(
       BencodeReader {
         case Bencode.BString(v) =>
           v.decodeUtf8.left.map(BencodeFormatException("Unable to decode UTF8", _))
@@ -82,7 +82,7 @@ package object format {
       }
     )
 
-    implicit val ByteVectorReader: BencodeFormat[ByteVector] = BencodeFormat(
+    implicit val ByteVectorFormat: BencodeFormat[ByteVector] = BencodeFormat(
       BencodeReader {
         case Bencode.BString(v) => Right(v)
         case _ => Left(BencodeFormatException("String is expected"))
@@ -92,18 +92,18 @@ package object format {
       }
     )
 
-    implicit def listReader[A: BencodeFormat]: BencodeFormat[List[A]] = {
+    implicit def listFormat[A: BencodeFormat]: BencodeFormat[List[A]] = {
       import cats.syntax.traverse._, cats.instances.list._
-      val aReader: BencodeFormat[A] = implicitly
+      val aFormat: BencodeFormat[A] = implicitly
       BencodeFormat(
         BencodeReader {
           case Bencode.BList(values) =>
-            values.traverse(aReader.read.run)
+            values.traverse(aFormat.read.run)
           case _ =>
             Left(BencodeFormatException("List is expected"))
         },
         BencodeWriter { values: List[A] =>
-          values.traverse(aReader.write.run).map(Bencode.BList)
+          values.traverse(aFormat.write.run).map(Bencode.BList)
         }
       )
     }
@@ -120,14 +120,14 @@ package object format {
 
     implicit def mapFormat[A: BencodeFormat]: BencodeFormat[Map[String, A]] = {
       import cats.syntax.traverse._, cats.instances.list._
-      val aReader: BencodeFormat[A] = implicitly
+      val aFormat: BencodeFormat[A] = implicitly
       BencodeFormat(
         BencodeReader {
           case Bencode.BDictionary(values) =>
             values.toList
               .traverse {
                 case (key, value) =>
-                  aReader.read.run(value).tupleLeft(key)
+                  aFormat.read.run(value).tupleLeft(key)
               }
               .map(_.toMap)
           case _ =>
@@ -136,7 +136,7 @@ package object format {
         BencodeWriter { values: Map[String, A] =>
           values.toList
             .traverse {
-              case (key, value) => aReader.write.run(value).tupleLeft(key)
+              case (key, value) => aFormat.write.run(value).tupleLeft(key)
             }
             .map(v => Bencode.BDictionary(v: _*))
         }
@@ -182,7 +182,7 @@ package object format {
       }
   }
 
-  def field[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[A] =
+  def field[A](name: String)(implicit bFormat: BencodeFormat[A]): BencodeFormat[A] =
     BencodeFormat(
       BencodeReader {
         case Bencode.BDictionary(values) =>
@@ -191,7 +191,7 @@ package object format {
             .toRight(
               BencodeFormatException(s"Faield $name not found. Available fields: ${values.keys}")
             )
-            .flatMap(bReader.read.run)
+            .flatMap(bFormat.read.run)
             .leftMap { cause =>
               BencodeFormatException(s"Faield while reading '$name'", cause)
             }
@@ -199,21 +199,21 @@ package object format {
           Left(BencodeFormatException("Dictionary is expected"))
       },
       BencodeWriter { a: A =>
-        bReader.write.run(a).map(bb => Bencode.BDictionary(Map(name -> bb)))
+        bFormat.write.run(a).map(bb => Bencode.BDictionary(Map(name -> bb)))
       }
     )
 
-  def fieldOptional[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[Option[A]] =
+  def fieldOptional[A](name: String)(implicit bFormat: BencodeFormat[A]): BencodeFormat[Option[A]] =
     BencodeFormat(
       BencodeReader {
         case Bencode.BDictionary(values) =>
-          values.get(name).map(bReader.read.run).map(_.map(Some(_))).getOrElse(Right(None))
+          values.get(name).map(bFormat.read.run).map(_.map(Some(_))).getOrElse(Right(None))
         case _ =>
           Left(BencodeFormatException("Dictionary is expected"))
       },
       BencodeWriter {
         case Some(value) =>
-          bReader.write.run(value).map(bb => Bencode.BDictionary(Map(name -> bb)))
+          bFormat.write.run(value).map(bb => Bencode.BDictionary(Map(name -> bb)))
         case _ =>
           Right(Bencode.BDictionary.Empty)
       }
@@ -221,7 +221,7 @@ package object format {
 
   def encodedString[A](codec: Codec[A]): BencodeFormat[A] =
     BencodeFormat(
-      BencodeFormat.ByteVectorReader.read.flatMapF { bv =>
+      BencodeFormat.ByteVectorFormat.read.flatMapF { bv =>
         codec
           .decodeValue(bv.toBitVector)
           .toEither

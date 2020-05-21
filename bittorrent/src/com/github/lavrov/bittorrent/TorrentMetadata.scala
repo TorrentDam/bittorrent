@@ -80,7 +80,7 @@ case class TorrentFile(
 object TorrentFile {
 
   implicit val InstantFormat: BencodeFormat[Instant] =
-    BencodeFormat.LongReader.imap(Instant.ofEpochMilli)(_.toEpochMilli)
+    BencodeFormat.LongFormat.imap(Instant.ofEpochMilli)(_.toEpochMilli)
 
   implicit val TorrentFileFormat: BencodeFormat[TorrentFile] = {
     (
