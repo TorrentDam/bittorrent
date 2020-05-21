@@ -26,17 +26,21 @@ object Message {
   ).imap(qni => Query.Ping(qni))(v => v.queryingNodeId)
 
   val FindNodeQueryFormat: BencodeFormat[Query.FindNode] = (
-    field[(NodeId, NodeId)]("a")((field[NodeId]("id") and field[NodeId]("target")))
+    field[(NodeId, NodeId)]("a")(
+      (field[NodeId]("id"), field[NodeId]("target")).tupled
+    )
   ).imap(tpl => Query.FindNode.tupled(tpl))(v => (v.queryingNodeId, v.target))
 
   implicit val InfoHashFormat = BencodeFormat.ByteVectorReader.imap(InfoHash)(_.bytes)
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
-    field[(NodeId, InfoHash)]("a")((field[NodeId]("id") and field[InfoHash]("info_hash")))
-  ).imap(tpl => Query.GetPeers.tupled(tpl))(v => (v.queryingNodeId, v.infoHash))
+    field[(NodeId, InfoHash)]("a")(
+      (field[NodeId]("id"), field[InfoHash]("info_hash")).tupled
+    )
+  ).imap(Query.GetPeers.tupled)(v => (v.queryingNodeId, v.infoHash))
 
   val QueryFormat: BencodeFormat[Query] =
-    field[String]("q").consume(
+    field[String]("q").choose(
       {
         case "ping" => PingQueryFormat.upcast
         case "find_node" => FindNodeQueryFormat.upcast
@@ -97,10 +101,18 @@ object Message {
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
   val ResponseFormat: BencodeFormat[Response] =
-    PeersResponseFormat
-      .upcast[Response]
-      .or(NodesResponseFormat.upcast)
-      .or(PingResponseFormat.upcast)
+    BencodeFormat(
+      BencodeFormat.dictionaryFormat.read.flatMap {
+        case Bencode.BDictionary(dictionary) if dictionary.contains("nodes") => NodesResponseFormat.read.widen
+        case Bencode.BDictionary(dictionary) if dictionary.contains("values") => PeersResponseFormat.read.widen
+        case _ => PingResponseFormat.read.widen
+      },
+      BencodeWriter {
+        case value: Response.Nodes => NodesResponseFormat.write(value)
+        case value: Response.Peers => PeersResponseFormat.write(value)
+        case value: Response.Ping => PingResponseFormat.write(value)
+      }
+    )
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     field[ByteVector]("t"),
@@ -115,7 +127,7 @@ object Message {
   )
 
   implicit val MessageFormat: BencodeFormat[Message] =
-    field[String]("y").consume(
+    field[String]("y").choose(
       {
         case "q" => QueryMessageFormat.upcast
         case "r" => ResponseMessageFormat.upcast

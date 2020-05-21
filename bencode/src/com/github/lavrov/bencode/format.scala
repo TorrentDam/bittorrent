@@ -9,30 +9,57 @@ import shapeless.Typeable
 
 package object format {
 
-  type Result[A] = Either[BencodeFormatException, A]
+  type Result[+A] = Either[BencodeFormatException, A]
 
   type BencodeReader[A] = ReaderT[Result, Bencode, A]
   def BencodeReader[A](f: Bencode => Result[A]): BencodeReader[A] = ReaderT(f)
 
   type BencodeWriter[A] = ReaderT[Result, A, Bencode]
   def BencodeWriter[A](f: A => Result[Bencode]): BencodeWriter[A] = ReaderT(f)
-  type BencodeDictionaryWriter[A] = ReaderT[Result, A, Bencode.BDictionary]
 
   case class BencodeFormat[A](read: BencodeReader[A], write: BencodeWriter[A])
 
-  implicit class BencodeFormatSyntax[A](val self: BencodeFormat[A]) extends AnyVal {
-
-    def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] = format.upcast[A, B](self)
-
-    def or(that: BencodeFormat[A]): BencodeFormat[A] = format.or(self, that)
-
-    def and[B](that: BencodeFormat[B]): BencodeFormat[(A, B)] = format.and(self, that)
-
-    def consume[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
-      format.consume(self)(f, g)
-  }
-
   object BencodeFormat {
+
+    implicit class Ops[A](val self: BencodeFormat[A]) extends AnyVal {
+
+      def upcast[B >: A](implicit ta: Typeable[A]): BencodeFormat[B] =
+        BencodeFormat(
+          self.read.widen[B],
+          BencodeWriter { b: B =>
+            ta.cast(b) match {
+              case Some(a) => self.write(a)
+              case None => Left(BencodeFormatException(s"not a value of type ${ta.describe}"))
+            }
+          }
+        )
+
+      def choose[B](f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
+        BencodeFormat(
+          BencodeReader { bv: Bencode =>
+            self.read(bv).flatMap { a =>
+              val format = f(a)
+              format.read(bv)
+            }
+          },
+          BencodeWriter { b: B =>
+            val a = g(b)
+            val format = f(a)
+            for {
+              aa <- self.write(a).flatMap {
+                case Bencode.BDictionary(values) => Right(values)
+                case other =>
+                  Left(BencodeFormatException(s"Dictionary expected but got ${other.getClass.getSimpleName}"))
+              }
+              bb <- format.write(b.asInstanceOf).flatMap {
+                case Bencode.BDictionary(values) => Right(values)
+                case other =>
+                  Left(BencodeFormatException(s"Dictionary expected but got ${other.getClass.getSimpleName}"))
+              }
+            } yield Bencode.BDictionary(aa ++ bb)
+          }
+        )
+    }
 
     implicit val LongReader: BencodeFormat[Long] = BencodeFormat(
       BencodeReader {
@@ -81,7 +108,17 @@ package object format {
       )
     }
 
-    implicit def mapReader[A: BencodeFormat]: BencodeFormat[Map[String, A]] = {
+    implicit val dictionaryFormat: BencodeFormat[Bencode.BDictionary] = {
+      BencodeFormat(
+        BencodeReader {
+          case value @ Bencode.BDictionary(_) => Right(value)
+          case _ => Left(BencodeFormatException("Dictionary is expected"))
+        },
+        BencodeWriter { value => Right(value) }
+      )
+    }
+
+    implicit def mapFormat[A: BencodeFormat]: BencodeFormat[Map[String, A]] = {
       import cats.syntax.traverse._, cats.instances.list._
       val aReader: BencodeFormat[A] = implicitly
       BencodeFormat(
@@ -144,52 +181,6 @@ package object format {
           )
       }
   }
-
-  def consume[A, B](
-    format: BencodeFormat[A]
-  )(f: A => BencodeFormat[B], g: B => A): BencodeFormat[B] =
-    BencodeFormat(
-      BencodeReader { bv: Bencode =>
-        format.read(bv).flatMap(f(_).read(bv))
-      },
-      BencodeWriter { b: B =>
-        val a = g(b)
-        val bFromat = f(a)
-        for {
-          aa <- format.write(a).flatMap {
-            case Bencode.BDictionary(values) => Right(values)
-            case other => Left(BencodeFormatException("Dictionary expected"))
-          }
-          bb <- bFromat.write(b).flatMap {
-            case Bencode.BDictionary(values) => Right(values)
-            case other => Left(BencodeFormatException("Dictionary expected"))
-          }
-        } yield Bencode.BDictionary(aa ++ bb)
-      }
-    )
-
-  def upcast[A, B >: A](x: BencodeFormat[A])(implicit ta: Typeable[A]): BencodeFormat[B] =
-    BencodeFormat(
-      x.read.widen[B],
-      BencodeWriter { b: B =>
-        ta.cast(b) match {
-          case Some(a) => x.write(a)
-          case None => Left(BencodeFormatException(s"not a value of type ${ta.describe}"))
-        }
-      }
-    )
-
-  def and[A, B](x: BencodeFormat[A], y: BencodeFormat[B]): BencodeFormat[(A, B)] = (x, y).tupled
-
-  def or[A](x: BencodeFormat[A], y: BencodeFormat[A]): BencodeFormat[A] =
-    BencodeFormat(
-      BencodeReader { bencodeValue: Bencode =>
-        x.read(bencodeValue).left.flatMap(_ => y.read(bencodeValue))
-      },
-      BencodeWriter { a: A =>
-        x.write(a).left.flatMap(_ => y.write(a))
-      }
-    )
 
   def field[A](name: String)(implicit bReader: BencodeFormat[A]): BencodeFormat[A] =
     BencodeFormat(
