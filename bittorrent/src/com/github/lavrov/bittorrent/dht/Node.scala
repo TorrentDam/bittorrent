@@ -36,21 +36,27 @@ object Node {
         Queue
           .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
-      queryies <- Resource.liftF { Queue.unbounded[F, (InetSocketAddress, Message)] }
+      client0 <- Client(selfId, messageSocket.writeMessage, responses)
+      routingTable0 <- Resource.liftF { RoutingTable(selfId) }
+      queryHandler = QueryHandler(selfId, routingTable0)
       _ <-
         Resource
           .make(
             messageSocket.readMessage
               .flatMap {
-                case (a, m: Message.QueryMessage) => queryies.enqueue1((a, m))
+                case (a, m: Message.QueryMessage) =>
+                  logger.info(s"Received $m") >>
+                  queryHandler(m.query).flatMap { response =>
+                    val responseMessage = Message.ResponseMessage(m.transactionId, response)
+                    logger.info(s"Responding with $responseMessage") >>
+                    messageSocket.writeMessage(a, responseMessage)
+                  }
                 case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
                 case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
               }
               .foreverM
               .start
           )(_.cancel)
-      client0 <- Client(selfId, messageSocket.writeMessage, responses)
-      routingTable0 <- Resource.liftF { RoutingTable(selfId) }
       _ <- Resource.liftF {
         NodeBootstrap(client0).flatMap { nodeInfo =>
           logger.info(s"Bootstrapped with $nodeInfo") >>

@@ -7,6 +7,8 @@ import cats.effect.Sync
 import cats.effect.concurrent.Ref
 import scodec.bits.ByteVector
 
+import scala.collection.immutable.ListMap
+
 trait RoutingTable[F[_]] {
 
   def insert(node: NodeInfo): F[Unit]
@@ -21,13 +23,13 @@ object RoutingTable {
   object TreeNode {
 
     final case class Split(center: BigInt, lower: TreeNode, higher: TreeNode) extends TreeNode
-    final case class Bucket(from: BigInt, until: BigInt, nodes: Map[NodeId, InetSocketAddress]) extends TreeNode
+    final case class Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, InetSocketAddress]) extends TreeNode
 
     def empty: TreeNode =
       TreeNode.Bucket(
         from = BigInt(0),
         until = BigInt(1, ByteVector.fill(20)(-1: Byte).toArray),
-        Map.empty
+        ListMap.empty
       )
   }
 
@@ -44,11 +46,18 @@ object RoutingTable {
           else
             b.copy(higher = higher.insert(node, selfId))
         case Bucket(from, until, nodes) =>
-          if (nodes.size == MaxNodes && selfId.int >= from && selfId.int < until) {
-            val center = (from + until) / 2
-            val splitBucket: TreeNode =
-              Split(center, Bucket(from, center - 1, Map.empty), Bucket(center, until, Map.empty))
-            nodes.updated(node.id, node.address).view.map(NodeInfo.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
+          if (nodes.size == MaxNodes) {
+            val tree =
+              if (selfId.int >= from && selfId.int < until) {
+                val center = (from + until) / 2
+                val splitBucket: TreeNode =
+                  Split(center, Bucket(from, center - 1, ListMap.empty), Bucket(center, until, ListMap.empty))
+                nodes.view.map(NodeInfo.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
+              }
+              else {
+                Bucket(from, until, nodes.init)
+              }
+            tree.insert(node, selfId)
           }
           else
             Bucket(from, until, nodes.updated(node.id, node.address))
