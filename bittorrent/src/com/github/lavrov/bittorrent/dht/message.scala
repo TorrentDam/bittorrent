@@ -103,13 +103,13 @@ object Message {
   val ResponseFormat: BencodeFormat[Response] =
     BencodeFormat(
       BencodeFormat.dictionaryFormat.read.flatMap {
-        case Bencode.BDictionary(dictionary) if dictionary.contains("nodes") => NodesResponseFormat.read.widen
         case Bencode.BDictionary(dictionary) if dictionary.contains("values") => PeersResponseFormat.read.widen
+        case Bencode.BDictionary(dictionary) if dictionary.contains("nodes") => NodesResponseFormat.read.widen
         case _ => PingResponseFormat.read.widen
       },
       BencodeWriter {
-        case value: Response.Nodes => NodesResponseFormat.write(value)
         case value: Response.Peers => PeersResponseFormat.write(value)
+        case value: Response.Nodes => NodesResponseFormat.write(value)
         case value: Response.Ping => PingResponseFormat.write(value)
       }
     )

@@ -31,6 +31,7 @@ object PeerDiscovery {
               for {
                 _ <- logger.info("Start discovery")
                 initialNodes <- node.routingTable.findNodes(NodeId(infoHash.bytes))
+                initialNodes <- initialNodes.take(100).toList.pure[F]
                 _ <- logger.info(s"Got ${initialNodes.size} from routing table")
                 tvar <- TVar.of(State(initialNodes)).commit[F]
               } yield {

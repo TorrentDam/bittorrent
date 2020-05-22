@@ -13,7 +13,9 @@ trait RoutingTable[F[_]] {
 
   def insert(node: NodeInfo): F[Unit]
 
-  def findNodes(nodeId: NodeId): F[List[NodeInfo]]
+  def findNodes(nodeId: NodeId): F[Iterable[NodeInfo]]
+
+  def findBucket(nodeId: NodeId): F[List[NodeInfo]]
 }
 
 object RoutingTable {
@@ -93,6 +95,17 @@ object RoutingTable {
             higher.findBucket(nodeId)
         case b: Bucket => b
       }
+
+    def findNodes(nodeId: NodeId): Iterable[NodeInfo] =
+      bucket match {
+        case Split(center, lower, higher) =>
+          if (nodeId.int < center)
+            lower.findNodes(nodeId) ++ higher.findNodes(nodeId)
+          else
+            higher.findNodes(nodeId) ++ lower.findNodes(nodeId)
+        case b: Bucket => b.nodes.toIterable.map(NodeInfo.tupled)
+      }
+
   }
 
   def apply[F[_]: Sync](selfId: NodeId): F[RoutingTable[F]] =
@@ -103,7 +116,10 @@ object RoutingTable {
       def insert(node: NodeInfo): F[Unit] =
         treeNodeRef.update(_.insert(node, selfId))
 
-      def findNodes(nodeId: NodeId): F[List[NodeInfo]] =
+      def findNodes(nodeId: NodeId): F[Iterable[NodeInfo]] =
+        treeNodeRef.get.map(_.findNodes(nodeId))
+
+      def findBucket(nodeId: NodeId): F[List[NodeInfo]] =
         treeNodeRef.get.map(_.findBucket(nodeId).nodes.map(NodeInfo.tupled).toList)
     }
 

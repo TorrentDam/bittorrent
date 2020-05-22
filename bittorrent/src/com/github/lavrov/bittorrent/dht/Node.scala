@@ -45,10 +45,10 @@ object Node {
             messageSocket.readMessage
               .flatMap {
                 case (a, m: Message.QueryMessage) =>
-                  logger.info(s"Received $m") >>
+                  logger.debug(s"Received $m") >>
                   queryHandler(m.query).flatMap { response =>
                     val responseMessage = Message.ResponseMessage(m.transactionId, response)
-                    logger.info(s"Responding with $responseMessage") >>
+                    logger.debug(s"Responding with $responseMessage") >>
                     messageSocket.writeMessage(a, responseMessage)
                   }
                 case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))

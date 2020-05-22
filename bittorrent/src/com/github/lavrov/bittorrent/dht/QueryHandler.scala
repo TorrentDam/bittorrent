@@ -17,11 +17,11 @@ object QueryHandler {
         query match {
           case Query.Ping(_) => (Response.Ping(selfId): Response).pure[F]
           case Query.FindNode(_, target) =>
-            routingTable.findNodes(target).map { nodes =>
+            routingTable.findBucket(target).map { nodes =>
               Response.Nodes(selfId, nodes): Response
             }
           case Query.GetPeers(_, infoHash) =>
-            routingTable.findNodes(NodeId(infoHash.bytes)).map { nodes =>
+            routingTable.findBucket(NodeId(infoHash.bytes)).map { nodes =>
               Response.Nodes(selfId, nodes): Response
             }
 
