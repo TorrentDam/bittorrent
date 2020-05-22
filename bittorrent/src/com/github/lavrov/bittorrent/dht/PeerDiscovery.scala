@@ -16,59 +16,63 @@ trait PeerDiscovery[F[_]] {
 object PeerDiscovery {
 
   def make[F[_]](
-    client: Client[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] = {
-    val logger0 = logger
-    for {
-      bootstrapNode <- Resource.liftF { RoutingTableManager.bootstrap(client, logger) }
-    } yield new PeerDiscovery[F] {
-      def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
-        val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
-        Stream
-          .eval {
-            for {
-              _ <- logger.info("Start discovery")
-              tvar <- TVar.of(State(bootstrapNode :: Nil)).commit[F]
-            } yield {
-              val next = STM.atomically {
-                tvar.get
-                  .flatMap { state =>
-                    val check = STM.check(state.nodesToTry.nonEmpty)
-                    def update: STM[Unit] = {
-                      val state1 = state.copy(nodesToTry = state.nodesToTry.tail)
-                      tvar.set(state1)
-                    }
-                    check >> update as state.nodesToTry.headOption
-                  }
-              }
-              def update(nodes: List[NodeInfo]): F[Unit] =
-                tvar.modify(updateNodeList(nodes, infoHash)).commit[F]
-              def filter(peers: List[PeerInfo]): F[List[PeerInfo]] = {
-                for {
-                  state <- tvar.get
-                  (state1, newPeers) = filterNewPeers(peers)(state)
-                  _ <- tvar.set(state1)
-                } yield newPeers
-              }.commit[F]
+    node: Node[F]
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] =
+    Resource.pure[F, PeerDiscovery[F]] {
 
-              start(
-                infoHash,
-                next,
-                update,
-                filter,
-                client.getPeers,
-                logger
-              )
+      val logger0 = logger
+
+      new PeerDiscovery[F] {
+
+        def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
+          val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
+          Stream
+            .eval {
+              for {
+                _ <- logger.info("Start discovery")
+                initialNodes <- node.routingTable.findNodes(NodeId(infoHash.bytes))
+                _ <- logger.info(s"Got ${initialNodes.size} from routing table")
+                tvar <- TVar.of(State(initialNodes)).commit[F]
+              } yield {
+                val next = STM.atomically {
+                  tvar.get
+                    .flatMap { state =>
+                      val check = STM.check(state.nodesToTry.nonEmpty)
+                      def update: STM[Unit] = {
+                        val state1 = state.copy(nodesToTry = state.nodesToTry.tail)
+                        tvar.set(state1)
+                      }
+                      check >> update as state.nodesToTry.headOption
+                    }
+                }
+                def update(nodes: List[NodeInfo]): F[Unit] =
+                  tvar.modify(updateNodeList(nodes, infoHash)).commit[F]
+                def filter(peers: List[PeerInfo]): F[List[PeerInfo]] = {
+                  for {
+                    state <- tvar.get
+                    (state1, newPeers) = filterNewPeers(peers)(state)
+                    _ <- tvar.set(state1)
+                  } yield newPeers
+                }.commit[F]
+
+                start(
+                  infoHash,
+                  next,
+                  update,
+                  filter,
+                  node.client.getPeers,
+                  logger
+                )
+              }
             }
-          }
-          .flatten
-          .onFinalizeCase {
-            case ExitCase.Error(e) => logger.error(s"Discovery failed with ${e.getMessage}")
-            case _ => F.unit
-          }
+            .flatten
+            .onFinalizeCase {
+              case ExitCase.Error(e) => logger.error(s"Discovery failed with ${e.getMessage}")
+              case _ => F.unit
+            }
+        }
       }
     }
-  }
 
   private case class State(
     nodesToTry: List[NodeInfo],

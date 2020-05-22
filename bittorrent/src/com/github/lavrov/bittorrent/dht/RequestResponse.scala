@@ -22,7 +22,7 @@ object RequestResponse {
 
   def make[F[_]](
     generateTransactionId: F[ByteVector],
-    sendMessage: (InetSocketAddress, Message) => F[Unit],
+    sendQuery: (InetSocketAddress, Message.QueryMessage) => F[Unit],
     receiveMessage: F[
       (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
     ]
@@ -35,20 +35,20 @@ object RequestResponse {
         callbackRegistry <- CallbackRegistry.make[F]
         fiber <- receiveLoop(receiveMessage, callbackRegistry.complete).start
       } yield {
-        new Impl(generateTransactionId, sendMessage, callbackRegistry.add) -> fiber.cancel
+        new Impl(generateTransactionId, sendQuery, callbackRegistry.add) -> fiber.cancel
       }
     }
 
   private class Impl[F[_]](
     generateTransactionId: F[ByteVector],
-    sendMessage: (InetSocketAddress, Message) => F[Unit],
+    sendQueryMessage: (InetSocketAddress, Message.QueryMessage) => F[Unit],
     receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
   )(implicit F: MonadError[F, Throwable])
       extends RequestResponse[F] {
     def sendQuery(address: InetSocketAddress, query: Query): F[Response] = {
       generateTransactionId.flatMap { transactionId =>
         val message = Message.QueryMessage(transactionId, query)
-        val send = sendMessage(address, message)
+        val send = sendQueryMessage(address, message)
         send >> receive(transactionId, 10.seconds).flatMap(F.fromEither)
       }
     }

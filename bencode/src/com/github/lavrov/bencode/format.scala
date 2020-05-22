@@ -51,7 +51,7 @@ package object format {
                 case other =>
                   Left(BencodeFormatException(s"Dictionary expected but got ${other.getClass.getSimpleName}"))
               }
-              bb <- format.write(b.asInstanceOf).flatMap {
+              bb <- format.write(b).flatMap {
                 case Bencode.BDictionary(values) => Right(values)
                 case other =>
                   Left(BencodeFormatException(s"Dictionary expected but got ${other.getClass.getSimpleName}"))

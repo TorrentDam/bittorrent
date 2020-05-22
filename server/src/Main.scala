@@ -2,7 +2,7 @@ import Routes.FileIndex
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.dht.{Client, NodeId, PeerDiscovery}
+import com.github.lavrov.bittorrent.dht.{Client, Node, NodeId, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
@@ -56,11 +56,11 @@ object Main extends IOApp {
       implicit0(blocker: Blocker) <- Blocker[IO]
       socketGroup <- SocketGroup[IO](blocker)
       udpSocketGroup <- UdpSocketGroup[IO](blocker)
-      dhtClient <- {
+      dhtNode <- {
         implicit val ev0 = udpSocketGroup
-        Client.start[IO](selfNodeId, 9596)
+        Node[IO](selfNodeId, 9596)
       }
-      peerDiscovery <- PeerDiscovery.make[IO](dhtClient)
+      peerDiscovery <- PeerDiscovery.make[IO](dhtNode)
       createSwarm = (infoHash: InfoHash) => {
         implicit val ev0 = socketGroup
         Swarm[IO](
