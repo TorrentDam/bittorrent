@@ -11,74 +11,17 @@ import scala.scalajs.js.annotation.JSImport
 import org.scalajs.dom
 
 package core {
-  import org.scalajs.dom.raw.EventInit
   import slinky.core.facade.ReactElement
-
-  import scala.scalajs.js.annotation.JSGlobal
   import scala.scalajs.js.|
-  private object imports {
-    @js.native @JSImport("@material-ui/core/AppBar", JSImport.Default)
-    object AppBar extends js.Object
-    @js.native @JSImport("@material-ui/core/Avatar", JSImport.Default)
-    object Avatar extends js.Object
-    @js.native @JSImport("@material-ui/core/Button", JSImport.Default)
-    object Button extends js.Object
-    @js.native @JSImport("@material-ui/core/Breadcrumbs", JSImport.Default)
-    object Breadcrumbs extends js.Object
-    @js.native @JSImport("@material-ui/core/Toolbar", JSImport.Default)
-    object Toolbar extends js.Object
-    @js.native @JSImport("@material-ui/core/IconButton", JSImport.Default)
-    object IconButton extends js.Object
-    @js.native @JSImport("@material-ui/core/Box", JSImport.Default)
-    object Box extends js.Object
-    @js.native @JSImport("@material-ui/core/Typography", JSImport.Default)
-    object Typography extends js.Object
-    @js.native @JSImport("@material-ui/core/Container", JSImport.Default)
-    object Container extends js.Object
-    @js.native @JSImport("@material-ui/core/TextField", JSImport.Default)
-    object TextField extends js.Object
-    @js.native @JSImport("@material-ui/core/Paper", JSImport.Default)
-    object Paper extends js.Object
-    @js.native @JSImport("@material-ui/core/Card", JSImport.Default)
-    object Card extends js.Object
-    @js.native @JSImport("@material-ui/core/Grid", JSImport.Default)
-    object Grid extends js.Object
-    @js.native @JSImport("@material-ui/core/InputBase", JSImport.Default)
-    object InputBase extends js.Object
-    @js.native @JSImport("@material-ui/core/Link", JSImport.Default)
-    object Link extends js.Object
-    @js.native @JSImport("@material-ui/core/LinearProgress", JSImport.Default)
-    object LinearProgress extends js.Object
-    @js.native @JSImport("@material-ui/core/List", JSImport.Default)
-    object List extends js.Object
-    @js.native @JSImport("@material-ui/core/ListSubheader", JSImport.Default)
-    object ListSubheader extends js.Object
-    @js.native @JSImport("@material-ui/core/ListItem", JSImport.Default)
-    object ListItem extends js.Object
-    @js.native @JSImport("@material-ui/core/ListItemAvatar", JSImport.Default)
-    object ListItemAvatar extends js.Object
-    @js.native @JSImport("@material-ui/core/ListItemText", JSImport.Default)
-    object ListItemText extends js.Object
-    @js.native @JSImport("@material-ui/core/ListItemSecondaryAction", JSImport.Default)
-    object ListItemSecondaryAction extends js.Object
-    @js.native @JSImport("@material-ui/core/Divider", JSImport.Default)
-    object Divider extends js.Object
-    @js.native @JSImport("@material-ui/core/CssBaseline", JSImport.Default)
-    object CssBaseline extends js.Object
-    @js.native @JSImport("@material-ui/core/Table", JSImport.Default)
-    object Table extends js.Object
-    @js.native @JSImport("@material-ui/core/TableBody", JSImport.Default)
-    object TableBody extends js.Object
-    @js.native @JSImport("@material-ui/core/TableRow", JSImport.Default)
-    object TableRow extends js.Object
-    @js.native @JSImport("@material-ui/core/TableCell", JSImport.Default)
-    object TableCell extends js.Object
-  }
 
   @react
   object AppBar extends ExternalComponentWithAttributes[*.tag.type] {
     case class Props(position: String, color: UndefOr[String] = js.undefined, className: UndefOr[String] = js.undefined)
-    val component = imports.AppBar
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/AppBar", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -91,19 +34,31 @@ package core {
       startIcon: UndefOr[ReactElement] = js.undefined,
       href: UndefOr[String] = js.undefined
     )
-    val component = imports.Button
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Button", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
   object Breadcrumbs extends ExternalComponent {
     case class Props(className: UndefOr[String] = js.undefined)
-    val component = imports.Breadcrumbs
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Breadcrumbs", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
   object Toolbar extends ExternalComponent {
     case class Props(disableGutters: UndefOr[Boolean] = js.undefined)
-    val component = imports.Toolbar
+
+    val component = jsImport
+
+    @js.native @JSImport("@material-ui/core/Toolbar", JSImport.Default)
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -115,7 +70,11 @@ package core {
       href: UndefOr[String] = js.undefined,
       `type`: UndefOr[String] = js.undefined
     )
-    val component = imports.IconButton
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/IconButton", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -123,7 +82,11 @@ package core {
     case class Props(
       mb: UndefOr[Double] = js.undefined
     )
-    val component = imports.Box
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Box", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -137,7 +100,11 @@ package core {
       display: UndefOr[String] = js.undefined,
       align: UndefOr[String] = js.undefined
     )
-    val component = imports.Typography
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Typography", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -146,7 +113,11 @@ package core {
       maxWidth: UndefOr[String] = js.undefined,
       className: UndefOr[String] = js.undefined
     )
-    val component = imports.Container
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Container", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -156,7 +127,11 @@ package core {
       name: String,
       label: String
     )
-    val component = imports.TextField
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/TextField", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -168,7 +143,11 @@ package core {
       elevation: UndefOr[Int] = js.undefined,
       onSubmit: UndefOr[dom.Event => Unit] = js.undefined
     )
-    val component = imports.Paper
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Paper", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -178,7 +157,11 @@ package core {
       component: UndefOr[String] = js.undefined,
       variant: UndefOr[String] = js.undefined
     )
-    val component = imports.Card
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Card", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -191,7 +174,11 @@ package core {
       spacing: UndefOr[Int] = js.undefined,
       zeroMinWidth: UndefOr[Boolean] = js.undefined
     )
-    val component = imports.Grid
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Grid", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -203,7 +190,11 @@ package core {
       className: UndefOr[String] = js.undefined,
       disabled: UndefOr[Boolean] = js.undefined
     )
-    val component = imports.InputBase
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/InputBase", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -213,7 +204,11 @@ package core {
       onClick: UndefOr[js.Function0[Unit]] = js.undefined,
       color: UndefOr[String] = js.undefined
     )
-    val component = imports.Link
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Link", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -223,7 +218,11 @@ package core {
       value: UndefOr[Int] = js.undefined,
       variant: String = "indeterminate"
     )
-    val component = imports.LinearProgress
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/LinearProgress", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -232,11 +231,19 @@ package core {
       className: UndefOr[String] = js.undefined,
       subheader: UndefOr[ReactElement] = js.undefined
     )
-    val component = imports.List
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/List", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   object ListSubheader extends ExternalComponentNoProps {
-    val component = imports.ListSubheader
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/ListSubheader", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -245,7 +252,11 @@ package core {
       className: UndefOr[String] = js.undefined,
       button: UndefOr[Boolean] = js.undefined
     )
-    val component = imports.ListItem
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/ListItem", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -254,11 +265,19 @@ package core {
       primary: UndefOr[String | ReactElement],
       secondary: UndefOr[String | ReactElement] = js.undefined
     )
-    val component = imports.ListItemText
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/ListItemText", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   object ListItemSecondaryAction extends ExternalComponentNoProps {
-    val component = imports.ListItemSecondaryAction
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/ListItemSecondaryAction", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -268,11 +287,19 @@ package core {
       variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined
     )
-    val component = imports.Divider
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Divider", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   object CssBaseline extends ExternalComponentNoProps {
-    val component = imports.CssBaseline
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/CssBaseline", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -282,7 +309,11 @@ package core {
       variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined
     )
-    val component = imports.Table
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/Table", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -292,7 +323,11 @@ package core {
       variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined
     )
-    val component = imports.TableBody
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/TableBody", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -303,7 +338,11 @@ package core {
       component: UndefOr[String] = js.undefined,
       hover: UndefOr[Boolean] = js.undefined
     )
-    val component = imports.TableRow
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/TableRow", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
@@ -313,69 +352,67 @@ package core {
       variant: UndefOr[String] = js.undefined,
       component: UndefOr[String] = js.undefined
     )
-    val component = imports.TableCell
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/TableCell", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
   @react
   object Fade extends ExternalComponent {
     case class Props(in: Boolean)
 
-    val component = `import`
+    val component = jsImport
 
-    @js.native @JSImport("@material-ui/core/Fade", JSImport.Default)
-    private object `import` extends js.Object
+    @JSImport("@material-ui/core/Fade", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 
 }
 
 package icons {
-  private object imports {
-    @js.native @JSImport("@material-ui/icons/Home", JSImport.Default)
-    object Home extends js.Object
-    @js.native @JSImport("@material-ui/icons/Menu", JSImport.Default)
-    object Menu extends js.Object
-    @js.native @JSImport("@material-ui/icons/GetApp", JSImport.Default)
-    object GetApp extends js.Object
-    @js.native @JSImport("@material-ui/icons/PlayArrow", JSImport.Default)
-    object PlayArrow extends js.Object
-    @js.native @JSImport("@material-ui/icons/ArrowBack", JSImport.Default)
-    object ArrowBack extends js.Object
-    @js.native @JSImport("@material-ui/icons/ArrowForward", JSImport.Default)
-    object ArrowForward extends js.Object
-    @js.native @JSImport("@material-ui/icons/Search", JSImport.Default)
-    object Search extends js.Object
-  }
 
   object Home extends ExternalComponentNoProps {
-    val component = imports.Home
+    val component = jsImport
+    @JSImport("@material-ui/icons/Home", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object Menu extends ExternalComponentNoProps {
-    val component = imports.Menu
+    val component = jsImport
+    @JSImport("@material-ui/icons/Menu", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object GetApp extends ExternalComponentNoProps {
-    val component = imports.GetApp
+    val component = jsImport
+    @JSImport("@material-ui/icons/GetApp", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object PlayArrow extends ExternalComponentNoProps {
-    val component = imports.PlayArrow
+    val component = jsImport
+    @JSImport("@material-ui/icons/PlayArrow", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object ArrowBack extends ExternalComponentNoProps {
-    val component = imports.ArrowBack
+    val component = jsImport
+    @JSImport("@material-ui/icons/ArrowBack", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object ArrowForward extends ExternalComponentNoProps {
-    val component = imports.ArrowForward
+    val component = jsImport
+    @JSImport("@material-ui/icons/ArrowForward", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
   object Search extends ExternalComponentNoProps {
-    val component = imports.Search
+    val component = jsImport
+    @JSImport("@material-ui/icons/Search", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
   }
 }
 
 package object styles {
-  @js.native
-  @JSImport("@material-ui/core/styles", JSImport.Default)
-  private object imports extends js.Object {
-    def makeStyles(f: js.Function1[js.Dynamic, js.Dynamic]): js.Dynamic = js.native
-  }
 
-  def makeStyles(f: js.Function1[js.Dynamic, js.Dynamic]): js.Dynamic = imports.makeStyles(f)
+  @JSImport("@material-ui/core/styles", "makeStyles") @js.native
+  def makeStyles(f: js.Function1[js.Dynamic, js.Dynamic]): js.Dynamic = js.native
 
 }
