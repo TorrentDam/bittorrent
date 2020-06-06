@@ -1,9 +1,10 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.implicits._
-import cats.{Applicative, MonadError}
+import cats.{Applicative, Monad, MonadError}
 import cats.effect.{Concurrent, Sync}
-import cats.effect.concurrent.{Deferred, MVar, TryableDeferred}
+import cats.effect.concurrent.{Deferred, MVar, Ref}
+import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
 import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
 import com.github.lavrov.bittorrent.protocol.message.Message
@@ -17,22 +18,15 @@ trait ExtensionHandler[F[_]] {
 
 object ExtensionHandler {
 
+  def noop[F[_]](implicit F: Applicative[F]): ExtensionHandler[F] = _ => F.unit
+
+  def dynamic[F[_]: Monad](get: F[ExtensionHandler[F]]): ExtensionHandler[F] = message => get.flatMap(_(message))
+
   type Send[F[_]] = Message.Extended => F[Unit]
 
-  class Api[F[_]](
-    send: Send[F],
-    next: ExtensionHandshake => F[(ExtensionHandler[F], ExtensionApi[F])],
-    handshakeDeferred: Deferred[F, ExtensionHandshake],
-    nextDeferred: TryableDeferred[F, ExtensionHandler[F]]
-  )(implicit F: MonadError[F, Throwable]) {
+  trait Api[F[_]] {
 
-    def init: F[ExtensionApi[F]] =
-      for {
-        _ <- send(Extensions.handshake)
-        handshake <- handshakeDeferred.get
-        (handler, extensions) <- next(handshake)
-        _ <- nextDeferred.complete(handler)
-      } yield extensions
+    def init: F[ExtensionApi[F]]
   }
 
   object Api {
@@ -42,21 +36,36 @@ object ExtensionHandler {
       utMetadata: UtMetadata.Create[F]
     )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], Api[F])] =
       for {
-        handshakeDeferred <- Deferred[F, ExtensionHandshake]
-        nextDeferred <- Deferred.tryable[F, ExtensionHandler[F]]
+        apiDeferred <- Deferred[F, ExtensionApi[F]]
+        handlerRef <- Ref.of[F, ExtensionHandler[F]](ExtensionHandler.noop)
+        _ <- handlerRef.set(
+          {
+            case Message.Extended(MessageId.Handshake, payload) =>
+              for {
+                handshake <- F.fromEither(ExtensionHandshake.decode(payload))
+                (handler, extensionApi) <- ExtensionApi[F](send, utMetadata, handshake)
+                _ <- handlerRef.set(handler)
+                _ <- apiDeferred.complete(extensionApi)
+              } yield ()
+            case message =>
+              F.raiseError(InvalidMessage(s"Expected Handshake but received ${message.getClass.getSimpleName}"))
+          }
+        )
       } yield {
 
-        val handler: ExtensionHandler[F] = {
-          case Message.Extended(Extensions.MessageId.Handshake, payload) =>
-            F.fromEither(ExtensionHandshake.decode(payload)) >>= handshakeDeferred.complete
-          case message =>
-            nextDeferred.tryGet.flatMap {
-              case Some(handler) => handler(message)
-              case None => F.unit
-            }
-        }
+        val handler = dynamic(handlerRef.get)
 
-        val api = new Api(send, ExtensionApi[F](send, utMetadata, _), handshakeDeferred, nextDeferred)
+        val api = new Api[F] {
+
+          def init: F[ExtensionApi[F]] = {
+            val message =
+              Message.Extended(
+                MessageId.Handshake,
+                ExtensionHandshake.encode(Extensions.handshake)
+              )
+            send(message) >> apiDeferred.get
+          }
+        }
 
         (handler, api)
       }

@@ -9,17 +9,11 @@ object Extensions {
     val Metadata = 1L
   }
 
-  def handshakePayload: ExtensionHandshake =
+  def handshake: ExtensionHandshake =
     ExtensionHandshake(
       Map(
         ("ut_metadata", MessageId.Metadata)
       ),
       None
-    )
-
-  def handshake: Message.Extended =
-    Message.Extended(
-      MessageId.Handshake,
-      ExtensionHandshake.encode(handshakePayload)
     )
 }
