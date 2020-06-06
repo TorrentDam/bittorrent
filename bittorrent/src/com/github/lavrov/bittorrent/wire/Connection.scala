@@ -89,13 +89,11 @@ object Connection {
       chokedStatusRef <- SignallingRef(true)
       bitfieldRef <- SignallingRef(BitSet.empty)
       requestRegistry <- RequestRegistry[F]
-      extendedMessageQueue <- Queue.unbounded[F, Message.Extended]
-      result <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
-      (socket, releaseConnection) = result
-      extendedMessageSocket = new ExtendedMessageSocket[F] {
-        def send(message: Message.Extended): F[Unit] = socket.send(message)
-        def receive: F[Message.Extended] = extendedMessageQueue.dequeue1
-      }
+      (socket, releaseConnection) <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
+      (extensionHandler, extensionApi) <- ExtensionHandler.Api(
+        socket.send,
+        new ExtensionHandler.UtMetadata.Create[F]
+      )
       _ <- logger.debug(s"Connected ${peerInfo.address}")
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
       fiber <-
@@ -107,7 +105,7 @@ object Connection {
               chokedStatusRef.set,
               updateLastMessageTime,
               socket,
-              extendedMessageQueue.enqueue1
+              extensionHandler
             ),
             backgroundLoop(stateRef, timer, socket)
           )
@@ -153,17 +151,13 @@ object Connection {
 
         def downloadMetadata: F[Option[ByteVector]] =
           for {
-            handshake <- ExtensionHandshaker(extendedMessageSocket)
-            metadata <-
-              (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled
-                .traverse {
-                  case (messageId, size) =>
-                    UtMetadata
-                      .download(messageId, size, extendedMessageSocket)
-                      .ensure(InvalidMetadata()) { metadata =>
-                        metadata.digest("SHA-1") == infoHash.bytes
-                      }
+            api <- extensionApi.init
+            metadata <- api.utMetadata.traverse { utMetadata =>
+              utMetadata.fetch
+                .ensure(InvalidMetadata()) { metadata =>
+                  metadata.digest("SHA-1") == infoHash.bytes
                 }
+            }
           } yield metadata
       }
     }
@@ -178,7 +172,7 @@ object Connection {
     updateChokeStatus: Boolean => F[Unit],
     updateLastMessageAt: Long => F[Unit],
     socket: MessageSocket[F],
-    extensionHandler: Message.Extended => F[Unit]
+    extensionHandler: ExtensionHandler[F]
   )(implicit timer: Timer[F]): F[Nothing] =
     socket.receive
       .flatMap {

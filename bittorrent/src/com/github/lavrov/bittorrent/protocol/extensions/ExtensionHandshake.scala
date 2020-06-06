@@ -4,8 +4,6 @@ import cats.syntax.all._
 import com.github.lavrov.bencode
 import com.github.lavrov.bencode.format._
 import scodec.bits.ByteVector
-import com.github.lavrov.bencode.BencodeCodec
-import scodec.Err
 
 case class ExtensionHandshake(
   extensions: Map[String, Long],
@@ -13,7 +11,8 @@ case class ExtensionHandshake(
 )
 
 object ExtensionHandshake {
-  val Format =
+
+  private val format =
     (
       field[Map[String, Long]]("m"),
       fieldOptional[Long]("metadata_size")
@@ -21,7 +20,7 @@ object ExtensionHandshake {
 
   def encode(handshake: ExtensionHandshake): ByteVector =
     bencode
-      .encode(ExtensionHandshake.Format.write(handshake).toOption.get)
+      .encode(format.write(handshake).toOption.get)
       .toByteVector
 
   def decode(bytes: ByteVector): Either[Throwable, ExtensionHandshake] =
@@ -31,10 +30,11 @@ object ExtensionHandshake {
           .decode(bytes.bits)
           .leftMap(Error.BencodeError)
       handshakeResponse <-
-        ExtensionHandshake.Format
+        ExtensionHandshake.format
           .read(bc)
           .leftMap(Error.HandshakeFormatError("Unable to parse handshake response", _))
     } yield handshakeResponse
+
   object Error {
     case class BencodeError(cause: Throwable) extends Error(cause)
     case class HandshakeFormatError(message: String, cause: Throwable) extends Error(message, cause)

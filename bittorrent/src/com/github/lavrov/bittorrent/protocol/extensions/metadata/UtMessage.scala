@@ -6,12 +6,12 @@ import com.github.lavrov.bencode
 import com.github.lavrov.bencode.BencodeFormatException
 import com.github.lavrov.bencode.format._
 
-sealed trait Message
+sealed trait UtMessage
 
-object Message {
-  case class Request(piece: Long) extends Message
-  case class Data(piece: Long, byteVector: ByteVector) extends Message
-  case class Reject(piece: Long) extends Message
+object UtMessage {
+  case class Request(piece: Long) extends UtMessage
+  case class Data(piece: Long, byteVector: ByteVector) extends UtMessage
+  case class Reject(piece: Long) extends UtMessage
 
   val MessageFormat: BencodeFormat[(Long, Long)] =
     (
@@ -19,7 +19,7 @@ object Message {
       field[Long]("piece")
     ).tupled
 
-  def encode(message: Message): ByteVector = {
+  def encode(message: UtMessage): ByteVector = {
     val (bc, extraBytes) =
       message match {
         case Request(piece) => (MessageFormat.write((0, piece)).right.get, none)
@@ -29,7 +29,7 @@ object Message {
     bencode.encode(bc).toByteVector ++ extraBytes.getOrElse(ByteVector.empty)
   }
 
-  def decode(bytes: ByteVector): Either[Throwable, Message] = {
+  def decode(bytes: ByteVector): Either[Throwable, UtMessage] = {
     bencode
       .decodeHead(bytes.toBitVector)
       .flatMap {

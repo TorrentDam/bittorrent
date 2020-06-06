@@ -5,7 +5,7 @@ import cats.syntax.all._
 import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, Concurrent, ContextShift, IO, Resource, Timer}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import com.github.lavrov.bittorrent.wire.{Swarm, Torrent, UtMetadata}
+import com.github.lavrov.bittorrent.wire.{DownloadMetadata, Swarm, Torrent}
 import com.github.lavrov.bittorrent.{FileMapping, MetaInfo}
 import fs2.Stream
 import fs2.concurrent.Signal
@@ -44,7 +44,7 @@ object ServerTorrent {
             FallibleDeferred[IO, Phase.Ready].flatMap { fetchingMetadataDone =>
               peerDiscoveryDone.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get)).flatMap {
                 _ =>
-                  UtMetadata.download(swarm).flatMap { metadata =>
+                  DownloadMetadata(swarm).flatMap { metadata =>
                     logger.info(s"Metadata downloaded") >>
                     Torrent.make(metadata, swarm).use { torrent =>
                       PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}")).use { pieceStore =>
