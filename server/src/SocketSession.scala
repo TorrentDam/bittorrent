@@ -1,11 +1,8 @@
-import cats.Defer
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.Deferred
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
-import cats.effect.implicits._
 import cats.implicits._
-import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import com.github.lavrov.bittorrent.wire.Torrent
+import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
 import fs2.concurrent.Queue
 import logstage.LogIO
