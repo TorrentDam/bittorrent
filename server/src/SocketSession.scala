@@ -1,3 +1,4 @@
+import cats.Defer
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.effect.implicits._
@@ -115,15 +116,17 @@ object SocketSession {
           .void
       }
 
-    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Unit] =
-      Stream
-        .repeatEval(
-          (timer.sleep(5.seconds) >> torrent.stats).flatMap { stats =>
-            send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
-          }
-        )
-        .compile
-        .drain
+    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Unit] = {
+
+      val sendStats =
+        for {
+          stats <- torrent.stats
+          _ <- send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
+          _ <- timer.sleep(5.seconds)
+        } yield ()
+
+      sendStats.foreverM
+    }
   }
 
   object CommandHandler {
