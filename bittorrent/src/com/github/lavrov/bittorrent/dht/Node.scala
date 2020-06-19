@@ -29,6 +29,24 @@ object Node {
     cs: ContextShift[F],
     socketGroup: SocketGroup,
     logger: LogIO[F]
+  ): Resource[F, Node[F]] =
+    for {
+      routingTable <- Resource.liftF { RoutingTable(selfId) }
+      queryHandler = QueryHandler(selfId, routingTable)
+      node <- Node(selfId, port, queryHandler, routingTable)
+    } yield node
+
+  def apply[F[_]](
+    selfId: NodeId,
+    port: Int,
+    queryHandler: QueryHandler[F],
+    routingTable: RoutingTable[F]
+  )(implicit
+    F: Concurrent[F],
+    timer: Timer[F],
+    cs: ContextShift[F],
+    socketGroup: SocketGroup,
+    logger: LogIO[F]
   ): Resource[F, Node[F]] = {
     for {
       messageSocket <- MessageSocket(port)
@@ -37,8 +55,6 @@ object Node {
           .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
       client0 <- Client(selfId, messageSocket.writeMessage, responses)
-      routingTable0 <- Resource.liftF { RoutingTable(selfId) }
-      queryHandler = QueryHandler(selfId, routingTable0)
       _ <-
         Resource
           .make(
@@ -60,9 +76,10 @@ object Node {
       _ <- Resource.liftF {
         NodeBootstrap(client0).flatMap { nodeInfo =>
           logger.info(s"Bootstrapped with $nodeInfo") >>
-          routingTable0.insert(nodeInfo)
+          routingTable.insert(nodeInfo)
         }
       }
+      routingTable0 = routingTable
     } yield new Node[F] {
 
       def routingTable: RoutingTable[F] = routingTable0

@@ -10,21 +10,17 @@ trait QueryHandler[F[_]] {
 
 object QueryHandler {
 
-  def apply[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] =
-    new QueryHandler[F] {
+  def apply[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] = {
+    case Query.Ping(_) => (Response.Ping(selfId): Response).pure[F]
+    case Query.FindNode(_, target) =>
+      routingTable.findBucket(target).map { nodes =>
+        Response.Nodes(selfId, nodes): Response
+      }
+    case Query.GetPeers(_, infoHash) =>
+      routingTable.findBucket(NodeId(infoHash.bytes)).map { nodes =>
+        Response.Nodes(selfId, nodes): Response
+      }
+  }
 
-      def apply(query: Query): F[Response] =
-        query match {
-          case Query.Ping(_) => (Response.Ping(selfId): Response).pure[F]
-          case Query.FindNode(_, target) =>
-            routingTable.findBucket(target).map { nodes =>
-              Response.Nodes(selfId, nodes): Response
-            }
-          case Query.GetPeers(_, infoHash) =>
-            routingTable.findBucket(NodeId(infoHash.bytes)).map { nodes =>
-              Response.Nodes(selfId, nodes): Response
-            }
-
-        }
-    }
+  def fromFunction[F[_]](f: Query => F[Response]): QueryHandler[F] = f(_)
 }
