@@ -139,6 +139,7 @@ trait NativeImageModule extends ScalaModule {
       "-jar", assembly().path,
       "--no-fallback",
       "--initialize-at-build-time=scala",
+      "--initialize-at-build-time=scala.runtime.Statics",
       "--enable-https",
     )
     finalMainClass()
