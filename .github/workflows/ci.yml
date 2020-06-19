@@ -22,17 +22,12 @@ jobs:
     - name: Build jar
       run: ./mill server.assembly
 
-    - name: Build binary (GraalVM native-image)
-      run: |
-        gu install native-image
-        ./mill server.nativeImage
-
     - name: Deploy server
       run: |
         docker login -u lavrov -p $DOCKERHUB_TOKEN
         export VERSION=$(echo $GITHUB_SHA | head -c 7)
         export IMAGE=lavrov/bittorrent-server:$VERSION
-        docker build . -t $IMAGE
+        docker build . -f Dockerfile-openj9 -t $IMAGE
         docker push $IMAGE
         curl -L -o nomad.gz https://releases.hashicorp.com/nomad/0.10.4/nomad_0.10.4_linux_amd64.zip
         gunzip nomad.gz
