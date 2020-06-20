@@ -4,6 +4,7 @@ import cats.implicits._
 import cats.{Applicative, Monad, MonadError}
 import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, MVar, Ref}
+import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
 import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
@@ -24,17 +25,18 @@ object ExtensionHandler {
 
   type Send[F[_]] = Message.Extended => F[Unit]
 
-  trait Api[F[_]] {
+  trait InitExtension[F[_]] {
 
     def init: F[ExtensionApi[F]]
   }
 
-  object Api {
+  object InitExtension {
 
     def apply[F[_]](
+      infoHash: InfoHash,
       send: Send[F],
       utMetadata: UtMetadata.Create[F]
-    )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], Api[F])] =
+    )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
       for {
         apiDeferred <- Deferred[F, ExtensionApi[F]]
         handlerRef <- Ref.of[F, ExtensionHandler[F]](ExtensionHandler.noop)
@@ -43,7 +45,7 @@ object ExtensionHandler {
             case Message.Extended(MessageId.Handshake, payload) =>
               for {
                 handshake <- F.fromEither(ExtensionHandshake.decode(payload))
-                (handler, extensionApi) <- ExtensionApi[F](send, utMetadata, handshake)
+                (handler, extensionApi) <- ExtensionApi[F](infoHash, send, utMetadata, handshake)
                 _ <- handlerRef.set(handler)
                 _ <- apiDeferred.complete(extensionApi)
               } yield ()
@@ -55,7 +57,7 @@ object ExtensionHandler {
 
         val handler = dynamic(handlerRef.get)
 
-        val api = new Api[F] {
+        val api = new InitExtension[F] {
 
           def init: F[ExtensionApi[F]] = {
             val message =
@@ -79,12 +81,13 @@ object ExtensionHandler {
   object ExtensionApi {
 
     def apply[F[_]](
+      infoHash: InfoHash,
       send: Send[F],
       utMetadata: UtMetadata.Create[F],
       handshake: ExtensionHandshake
     )(implicit F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
       for {
-        (utHandler, utMetadata0) <- utMetadata(handshake, send)
+        (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
       } yield {
 
         val handler: ExtensionHandler[F] = {
@@ -125,6 +128,7 @@ object ExtensionHandler {
     class Create[F[_]](implicit F: Concurrent[F]) {
 
       def apply(
+        infoHash: InfoHash,
         handshake: ExtensionHandshake,
         send: Message.Extended => F[Unit]
       ): F[(Handler[F], Option[UtMetadata[F]])] = {
@@ -141,7 +145,7 @@ object ExtensionHandler {
 
               def receiveUtMessage: F[UtMessage] = receiveQueue.take
 
-              (receiveQueue.put _, (new Impl(sendUtMessage, receiveUtMessage, size)).some)
+              (receiveQueue.put _, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
             }
 
           case None =>
@@ -155,7 +159,8 @@ object ExtensionHandler {
     private class Impl[F[_]](
       send: UtMessage => F[Unit],
       receive: F[UtMessage],
-      size: Long
+      size: Long,
+      infoHash: InfoHash
     )(implicit F: Sync[F])
         extends UtMetadata[F] {
 
@@ -175,8 +180,12 @@ object ExtensionHandler {
           .find(_.size >= size)
           .compile
           .lastOrError
+          .ensure(InvalidMetadata()) { metadata =>
+            metadata.digest("SHA-1") == infoHash.bytes
+          }
     }
   }
 
-  case class InvalidMessage(message: String) extends Exception(message)
+  case class InvalidMessage(message: String) extends Throwable(message)
+  case class InvalidMetadata() extends Throwable
 }

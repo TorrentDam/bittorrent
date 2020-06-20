@@ -6,6 +6,7 @@ import cats.effect.syntax.all._
 import cats.effect.{Concurrent, ContextShift, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
+import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
 import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.io.tcp.SocketGroup
@@ -26,7 +27,7 @@ trait Connection[F[_]] {
   def availability: Signal[F, BitSet]
   def disconnected: F[Either[Throwable, Unit]]
   def close: F[Unit]
-  def downloadMetadata: F[Option[ByteVector]]
+  def extensionApi: F[ExtensionApi[F]]
 }
 
 object Connection {
@@ -90,7 +91,8 @@ object Connection {
       bitfieldRef <- SignallingRef(BitSet.empty)
       requestRegistry <- RequestRegistry[F]
       (socket, releaseConnection) <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
-      (extensionHandler, extensionApi) <- ExtensionHandler.Api(
+      (extensionHandler, initExtension) <- ExtensionHandler.InitExtension(
+        infoHash,
         socket.send,
         new ExtensionHandler.UtMetadata.Create[F]
       )
@@ -149,22 +151,12 @@ object Connection {
 
         def close: F[Unit] = doClose(().asRight)
 
-        def downloadMetadata: F[Option[ByteVector]] =
-          for {
-            api <- extensionApi.init
-            metadata <- api.utMetadata.traverse { utMetadata =>
-              utMetadata.fetch
-                .ensure(InvalidMetadata()) { metadata =>
-                  metadata.digest("SHA-1") == infoHash.bytes
-                }
-            }
-          } yield metadata
+        def extensionApi: F[ExtensionApi[F]] = initExtension.init
       }
     }
   }
 
   case class ConnectionClosed() extends Throwable
-  case class InvalidMetadata() extends Throwable
 
   private def receiveLoop[F[_]: Monad](
     requestRegistry: RequestRegistry[F],

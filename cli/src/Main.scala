@@ -6,9 +6,9 @@ import cats.data.Validated
 import cats.effect._
 import cats.effect.implicits._
 import cats.syntax.all._
-import com.github.lavrov.bencode.{decode, encode, Bencode, BencodeCodec}
-import com.github.lavrov.bittorrent.dht.{NodeId, PeerDiscovery, Client => DhtClient}
-import com.github.lavrov.bittorrent.wire.{UtMetadata, Torrent, _}
+import com.github.lavrov.bencode.{decode, encode}
+import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery}
+import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata, Swarm}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
 import fs2.io.tcp.{SocketGroup => TcpSocketGroup}
@@ -77,8 +77,8 @@ object Main extends IOApp {
       }
 
     val getTorrentCommand = Opts.subcommand(
-      name = "get-torrent",
-      help = "Download torrent metadata"
+      name = "download-metadata",
+      help = "Download torrent metadata also known as torrent file"
     ) {
       (torrentFileOpt, infoHashOpt).mapN(getTorrentAndSave)
     }
@@ -136,11 +136,9 @@ object Main extends IOApp {
             _ <- makeSwarm(infoHash).use { swarm =>
               for {
                 metaInfo <- metaInfoOpt.map(IO.pure).getOrElse {
-                  for {
-                    _ <- logger.info("Downloading torrent file using info-hash")
-                    _ <- logger.info(s"Info-hash ${infoHash.bytes.toHex}")
-                    i <- UtMetadata.download(swarm)
-                  } yield i
+                  logger.info("Downloading torrent file using info-hash") >>
+                  logger.info(s"Info-hash ${infoHash.bytes.toHex}") >>
+                  DownloadMetadata(swarm.connected.stream)
                 }
 //                _ <- FileStorage[IO](metaInfo.parsed, targetDirectory).use { fileStorage =>
 //                  for {
@@ -217,10 +215,7 @@ object Main extends IOApp {
       }
       .use { swarm =>
         for {
-          metadata <- getTorrent(infoHash, swarm)
-          metaInfo <- IO.fromEither(
-            MetaInfo.fromBytes(metadata)
-          )
+          metaInfo <- DownloadMetadata(swarm.connected.stream)
           torrentFile = TorrentFile(metaInfo, None)
           bcode <- IO.fromEither(
             TorrentFile.TorrentFileFormat.write(torrentFile)
@@ -264,29 +259,10 @@ object Main extends IOApp {
   )(implicit usg: UdpScoketGroup): Stream[IO, PeerInfo] = {
     val selfId = NodeId.generate(rnd)
     for {
-      client <- Stream.resource(DhtClient.start[IO](selfId, port = 6881))
+      client <- Stream.resource(Node[IO](selfId, port = 6881))
       discovery <- Stream.resource(PeerDiscovery.make[IO](client))
       peer <- discovery.discover(infoHash)
     } yield peer
-  }
-
-  private def getTorrent(
-    infoHash: InfoHash,
-    swarm: Swarm[IO]
-  ): IO[ByteVector] = {
-    swarm.connected.stream
-      .evalMap { c =>
-        c.downloadMetadata.attempt.flatMap {
-          case Right(v) => v.pure[IO]
-          case Left(e) =>
-            logger.error(s"Error: $e") >> none[ByteVector].pure[IO]
-        }
-      }
-      .collectFirst {
-        case Some(metadata) => metadata
-      }
-      .compile
-      .lastOrError
   }
 
 }

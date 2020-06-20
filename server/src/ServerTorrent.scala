@@ -44,7 +44,7 @@ object ServerTorrent {
             FallibleDeferred[IO, Phase.Ready].flatMap { fetchingMetadataDone =>
               peerDiscoveryDone.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get)).flatMap {
                 _ =>
-                  DownloadMetadata(swarm).flatMap { metadata =>
+                  DownloadMetadata(swarm.connected.stream).flatMap { metadata =>
                     logger.info(s"Metadata downloaded") >>
                     Torrent.make(metadata, swarm).use { torrent =>
                       PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}")).use { pieceStore =>
