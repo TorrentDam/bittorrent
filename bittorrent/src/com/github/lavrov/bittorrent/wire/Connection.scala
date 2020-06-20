@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent.wire
 import cats._
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.syntax.all._
-import cats.effect.{Concurrent, ContextShift, Timer}
+import cats.effect.{Concurrent, ContextShift, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
@@ -84,77 +84,79 @@ object Connection {
     timer: Timer[F],
     socketGroup: SocketGroup,
     logger: LogIO[F]
-  ): F[Connection[F]] = {
-    for {
-      stateRef <- Ref.of[F, State](State())
-      chokedStatusRef <- SignallingRef(true)
-      bitfieldRef <- SignallingRef(BitSet.empty)
-      requestRegistry <- RequestRegistry[F]
-      (socket, releaseConnection) <- MessageSocket.connect(selfId, peerInfo, infoHash).allocated
-      (extensionHandler, initExtension) <- ExtensionHandler.InitExtension(
-        infoHash,
-        socket.send,
-        new ExtensionHandler.UtMetadata.Create[F]
-      )
-      _ <- logger.debug(s"Connected ${peerInfo.address}")
-      updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
-      fiber <-
-        Concurrent[F]
-          .race[Nothing, Nothing](
-            receiveLoop(
-              requestRegistry,
-              bitfieldRef.update,
-              chokedStatusRef.set,
-              updateLastMessageTime,
-              socket,
-              extensionHandler
-            ),
-            backgroundLoop(stateRef, timer, socket)
+  ): Resource[F, Connection[F]] =
+    MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
+      Resource {
+        for {
+          stateRef <- Ref.of[F, State](State())
+          chokedStatusRef <- SignallingRef(true)
+          bitfieldRef <- SignallingRef(BitSet.empty)
+          requestRegistry <- RequestRegistry[F]
+          (extensionHandler, initExtension) <- ExtensionHandler.InitExtension(
+            infoHash,
+            socket.send,
+            new ExtensionHandler.UtMetadata.Create[F]
           )
-          .void
-          .attempt
-          .start
-      closed <- Deferred[F, Either[Throwable, Unit]]
-      doClose =
-        (reason: Either[Throwable, Unit]) =>
-          fiber.cancel >>
-          requestRegistry.failAll(ConnectionClosed()) >>
-          releaseConnection >>
-          logger.debug(s"Disconnected ${peerInfo.address}") >>
-          closed.complete(reason).attempt.void
-      _ <- fiber.join.flatMap(doClose).start
-    } yield {
-      new Connection[F] {
-        def info: PeerInfo = peerInfo
-        def extensionProtocol: Boolean = socket.handshake.extensionProtocol
+          _ <- logger.debug(s"Connected ${peerInfo.address}")
+          updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
+          fiber <-
+            Concurrent[F]
+              .race[Nothing, Nothing](
+                receiveLoop(
+                  requestRegistry,
+                  bitfieldRef.update,
+                  chokedStatusRef.set,
+                  updateLastMessageTime,
+                  socket,
+                  extensionHandler
+                ),
+                backgroundLoop(stateRef, timer, socket)
+              )
+              .void
+              .attempt
+              .start
+          closed <- Deferred[F, Either[Throwable, Unit]]
+          doClose =
+            (reason: Either[Throwable, Unit]) =>
+              fiber.cancel >>
+              requestRegistry.failAll(ConnectionClosed()) >>
+              logger.debug(s"Disconnected ${peerInfo.address}") >>
+              closed.complete(reason).attempt.void
+          _ <- fiber.join.flatMap(doClose).start
+        } yield {
+          val impl: Connection[F] = new Connection[F] {
+            def info: PeerInfo = peerInfo
+            def extensionProtocol: Boolean = socket.handshake.extensionProtocol
 
-        def interested: F[Unit] =
-          for {
-            interested <- stateRef.modify(s => (State.interested.set(true)(s), s.interested))
-            _ <- F.whenA(!interested)(socket.send(Message.Interested))
-          } yield ()
+            def interested: F[Unit] =
+              for {
+                interested <- stateRef.modify(s => (State.interested.set(true)(s), s.interested))
+                _ <- F.whenA(!interested)(socket.send(Message.Interested))
+              } yield ()
 
-        def request(request: Message.Request): F[ByteVector] =
-          socket.send(request) >>
-          requestRegistry.register(request).flatMap { bytes =>
-            if (bytes.length == request.length)
-              bytes.pure[F]
-            else
-              InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
+            def request(request: Message.Request): F[ByteVector] =
+              socket.send(request) >>
+              requestRegistry.register(request).flatMap { bytes =>
+                if (bytes.length == request.length)
+                  bytes.pure[F]
+                else
+                  InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
+              }
+
+            def choked: Signal[F, Boolean] = chokedStatusRef
+
+            def availability: Signal[F, BitSet] = bitfieldRef
+
+            def disconnected: F[Either[Throwable, Unit]] = closed.get
+
+            def close: F[Unit] = doClose(().asRight)
+
+            def extensionApi: F[ExtensionApi[F]] = initExtension.init
           }
-
-        def choked: Signal[F, Boolean] = chokedStatusRef
-
-        def availability: Signal[F, BitSet] = bitfieldRef
-
-        def disconnected: F[Either[Throwable, Unit]] = closed.get
-
-        def close: F[Unit] = doClose(().asRight)
-
-        def extensionApi: F[ExtensionApi[F]] = initExtension.init
+          (impl, doClose(Right(())))
+        }
       }
     }
-  }
 
   case class ConnectionClosed() extends Throwable
 

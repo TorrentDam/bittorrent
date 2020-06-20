@@ -24,7 +24,7 @@ object Swarm {
 
   def apply[F[_]](
     dhtPeers: Stream[F, PeerInfo],
-    connect: PeerInfo => F[Connection[F]],
+    connect: PeerInfo => Resource[F, Connection[F]],
     maxConnections: Int = 10
   )(implicit
     F: Concurrent[F],
@@ -46,12 +46,12 @@ object Swarm {
             peerInfo =>
               for {
                 _ <- logger.trace(s"Connecting to ${peerInfo.address}")
-                connection <- connect(peerInfo)
-                  .timeoutTo(1.second, F raiseError Error.ConnectTimeout(1.second))
-                _ <- stateRef.update(_.updated(peerInfo, connection))
-                _ <- lastConnected.set(connection)
-                _ <- connection.disconnected
-                _ <- stateRef.update(_ - peerInfo)
+                _ <- connect(peerInfo).use { connection =>
+                  stateRef.update(_.updated(peerInfo, connection)) >>
+                  lastConnected.set(connection) >>
+                  connection.disconnected >>
+                  stateRef.update(_ - peerInfo)
+                }
               } yield ()
           ).foreverM[Unit].start
         )
