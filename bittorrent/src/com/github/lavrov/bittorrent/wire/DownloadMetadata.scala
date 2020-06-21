@@ -18,9 +18,6 @@ object DownloadMetadata {
       .collectFirst {
         case Right(metadata) => metadata
       }
-      .evalMap { bytes =>
-        F.fromEither(MetaInfo.fromBytes(bytes))
-      }
       .compile
       .lastOrError
 }

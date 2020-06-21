@@ -1,6 +1,5 @@
 import Routes.FileIndex
 import cats.data.{Kleisli, OptionT}
-import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable}
@@ -9,6 +8,7 @@ import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.dht.message.Query
 import fs2.Stream
+import fs2.concurrent.Queue
 import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
@@ -25,7 +25,6 @@ import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
 import sun.misc.Signal
 
-import scala.collection.immutable.ListSet
 import scala.util.Random
 import scala.concurrent.duration._
 
@@ -56,9 +55,9 @@ object Main extends IOApp {
     import cats.effect.Sync.catsOptionTSync
     for {
       implicit0(blocker: Blocker) <- Blocker[IO]
-      socketGroup <- SocketGroup[IO](blocker)
+      implicit0(socketGroup: SocketGroup) <- SocketGroup[IO](blocker)
       udpSocketGroup <- UdpSocketGroup[IO](blocker)
-      discoveredTorrents <- Ref.of[IO, ListSet[InfoHash]](ListSet.empty).to[Resource[IO, *]]
+      getPeerRequests <- Resource.liftF { Queue.unbounded[IO, com.github.lavrov.bittorrent.InfoHash] }
       dhtNode <- {
         implicit val ev0 = udpSocketGroup
         for {
@@ -69,9 +68,7 @@ object Main extends IOApp {
               .fromFunction[IO] { query =>
                 val registerInfoHash = query match {
                   case Query.GetPeers(_, infoHash) =>
-                    discoveredTorrents.update { torrents =>
-                      torrents.incl(InfoHash(infoHash.bytes))
-                    }
+                    getPeerRequests.enqueue1(infoHash)
                   case _ => IO.unit
                 }
                 queryHandler(query).flatTap { _ =>
@@ -83,8 +80,12 @@ object Main extends IOApp {
         } yield node
       }
       peerDiscovery <- PeerDiscovery.make[IO](dhtNode)
+      _ <- MetadataDiscovery(
+        getPeerRequests.dequeue,
+        peerDiscovery,
+        (infoHash, peerInfo) => Connection.connect[IO](selfId, peerInfo, infoHash)
+      ).background
       createSwarm = (infoHash: InfoHash) => {
-        implicit val ev0 = socketGroup
         Swarm[IO](
           peerDiscovery.discover(BTInfoHash(infoHash.bytes)),
           peerInfo => Connection.connect[IO](selfId, peerInfo, BTInfoHash(infoHash.bytes)),
@@ -195,8 +196,7 @@ object Main extends IOApp {
           }
 
       handleDiscoverTorrents = for {
-        list <- discoveredTorrents.get
-        response <- Ok(list.view.map(_.toString).mkString("\n"))
+        response <- Ok("TODO")
       } yield response
 
     } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData, handleDiscoverTorrents)

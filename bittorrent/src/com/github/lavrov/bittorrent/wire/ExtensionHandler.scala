@@ -4,7 +4,7 @@ import cats.implicits._
 import cats.{Applicative, Monad, MonadError}
 import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, MVar, Ref}
-import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.{InfoHash, MetaInfo}
 import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
 import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
@@ -110,7 +110,7 @@ object ExtensionHandler {
 
   trait UtMetadata[F[_]] {
 
-    def fetch: F[ByteVector]
+    def fetch: F[MetaInfo]
   }
 
   object UtMetadata {
@@ -164,7 +164,7 @@ object ExtensionHandler {
     )(implicit F: Sync[F])
         extends UtMetadata[F] {
 
-      def fetch: F[ByteVector] =
+      def fetch: F[MetaInfo] =
         Stream
           .range(0, 100)
           .evalMap { index =>
@@ -182,6 +182,9 @@ object ExtensionHandler {
           .lastOrError
           .ensure(InvalidMetadata()) { metadata =>
             metadata.digest("SHA-1") == infoHash.bytes
+          }
+          .flatMap { bytes =>
+            MetaInfo.fromBytes(bytes).liftTo[F]
           }
     }
   }
