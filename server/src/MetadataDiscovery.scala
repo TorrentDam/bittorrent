@@ -33,7 +33,7 @@ object MetadataDiscovery {
           logger.info(s"Try download metadata for $infoHash") >>
           ref.update(_ incl infoHash)
         }
-        .evalMap { infoHash =>
+        .parEvalMapUnordered(100) { infoHash =>
           val connections =
             peerDiscovery
               .discover(infoHash)
