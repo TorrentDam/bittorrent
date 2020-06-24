@@ -1,6 +1,7 @@
 import cats.implicits._
+import cats.effect.implicits._
 import cats.effect.concurrent.Ref
-import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
+import cats.effect.{Bracket, Concurrent, ContextShift, IO, Resource, Timer}
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import com.github.lavrov.bittorrent.dht.{Node, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata}
@@ -40,18 +41,18 @@ object MetadataDiscovery {
                 Stream
                   .eval(logger.info(s"Discovered $peerInfo")) >>
                 Stream
-                  .resource(connect(infoHash, peerInfo))
+                  .resource(connect(infoHash, peerInfo).timeout(1.second))
                   .attempt
               }
               .collect { case Right(connection) => connection }
           DownloadMetadata(connections)
+            .flatTap { metadata =>
+              logger.info(s"Discovered $metadata")
+            }
             .timeoutTo(
               5.minute,
               logger.info(s"Could not download metadata for $infoHashes")
             )
-            .flatTap { metadata =>
-              logger.info(s"Discovered $metadata")
-            }
             .attempt
         }
         .compile
@@ -61,5 +62,11 @@ object MetadataDiscovery {
             logger.error(s"Failed with $e")
         }
     }
+  }
+
+  implicit class ResourceOps[F[_], A](self: Resource[F, A]) {
+
+    def timeout(duration: FiniteDuration)(implicit F: Concurrent[F], timer: Timer[F]): Resource[F, A] =
+      Resource.make(self.allocated.timeout(duration))(_._2).map(_._1)
   }
 }
