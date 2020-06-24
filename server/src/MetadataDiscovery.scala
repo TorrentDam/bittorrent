@@ -42,6 +42,9 @@ object MetadataDiscovery {
                   .eval(logger.info(s"Discovered $peerInfo")) >>
                 Stream
                   .resource(connect(infoHash, peerInfo).timeout(1.second))
+                  .evalTap { _ =>
+                    logger.info(s"Connected to $peerInfo")
+                  }
                   .attempt
               }
               .collect { case Right(connection) => connection }
@@ -51,7 +54,7 @@ object MetadataDiscovery {
             }
             .timeoutTo(
               5.minute,
-              logger.info(s"Could not download metadata for $infoHashes")
+              logger.info(s"Could not download metadata for $infoHash")
             )
             .attempt
         }
