@@ -44,18 +44,22 @@ object MetadataDiscovery {
                   .attempt
               }
               .collect { case Right(connection) => connection }
-          DownloadMetadata(connections).attempt
-        }
-        .collectFirst {
-          case Right(value) => value
+          DownloadMetadata(connections)
+            .timeoutTo(
+              5.minute,
+              logger.info(s"Could not download metadata for $infoHashes")
+            )
+            .flatTap { metadata =>
+              logger.info(s"Discovered $metadata")
+            }
+            .attempt
         }
         .compile
-        .lastOrError
-        .flatMap { metadata =>
-          logger.info(s"Discovered $metadata")
+        .drain
+        .onError {
+          case e: Throwable =>
+            logger.error(s"Failed with $e")
         }
-        .void
-        .timeout(5.minute)
     }
   }
 }
