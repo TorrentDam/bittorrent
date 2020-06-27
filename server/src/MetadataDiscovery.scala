@@ -49,14 +49,14 @@ object MetadataDiscovery {
               }
               .collect { case Right(connection) => connection }
           DownloadMetadata(connections)
-            .flatTap { metadata =>
-              logger.info(s"Discovered $metadata")
-            }
-            .timeoutTo(
-              5.minute,
-              logger.info(s"Could not download metadata for $infoHash")
-            )
+            .timeout(5.minute)
             .attempt
+            .flatMap {
+              case Right(metadata) =>
+                logger.info(s"Metadata discovered $metadata")
+              case Left(e) =>
+                logger.error(s"Could download metadata: $e")
+            }
         }
         .compile
         .drain
