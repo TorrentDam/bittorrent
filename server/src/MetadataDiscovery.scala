@@ -41,11 +41,17 @@ object MetadataDiscovery {
                 Stream
                   .eval(logger.info(s"Discovered $peerInfo")) >>
                 Stream
-                  .resource(connect(infoHash, peerInfo).timeout(1.second))
-                  .evalTap { _ =>
-                    logger.info(s"Connected to $peerInfo")
-                  }
+                  .resource(
+                    connect(infoHash, peerInfo)
+                      .timeout(1.second)
+                  )
                   .attempt
+                  .evalTap {
+                    case Right(_) =>
+                      logger.info(s"Connected to $peerInfo")
+                    case Left(e) =>
+                      logger.error(s"Could not connect $e")
+                  }
               }
               .collect { case Right(connection) => connection }
           DownloadMetadata(connections)
