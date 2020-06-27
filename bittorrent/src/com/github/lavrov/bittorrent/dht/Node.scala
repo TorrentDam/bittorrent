@@ -70,6 +70,10 @@ object Node {
                 case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
                 case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
               }
+              .recoverWith {
+                case e: Throwable =>
+                  logger.error(s"Failed to read message: $e")
+              }
               .foreverM
               .start
           )(_.cancel)
