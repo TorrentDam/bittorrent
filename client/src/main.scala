@@ -2,10 +2,12 @@ import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
 import cats.implicits._
-import cats.effect.{ContextShift, ExitCode, IO, IOApp, Timer}
+import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import cats.effect.concurrent.MVar
+import com.github.lavrov.bittorrent.app.protocol.Command
 import component.{App, Router}
-import logic.{Action, Circuit}
+import frp.Var
+import logic.{Action, Dispatcher, Handler, RootModel}
 
 import scala.concurrent.ExecutionContext
 
@@ -21,13 +23,24 @@ object Main {
   def mainIO: IO[ExitCode] = {
     for {
       out <- MVar.empty[IO, String]
-      circuit <- IO { Circuit(out.put(_).unsafeRunSync()) }
+      model <- IO { Var(RootModel.initial) }
+      dispatcher <- IO {
+        def send(command: Command): Unit = {
+          val str = upickle.default.write(command)
+          out.put(str).unsafeRunSync()
+        }
+        lazy val dispatcher: Dispatcher = {
+          val handler = Handler(send, action => dispatcher(action))
+          Dispatcher(handler, model)
+        }
+        dispatcher
+      }
       socket <- ReconnectingSocket.create(
         environment.wsUrl("/ws"),
         msg =>
           IO { org.scalajs.dom.console.info(s"WS << $msg") } >>
-          IO { circuit.dispatcher(Action.ServerEvent(msg)) },
-        connected => IO { circuit.dispatcher(Action.UpdateConnectionStatus(connected)) }
+          IO { dispatcher(Action.ServerEvent(msg)) },
+        connected => IO { dispatcher(Action.UpdateConnectionStatus(connected)) }
       )
       _ <-
         out.take
@@ -39,12 +52,12 @@ object Main {
           .start
       router <- IO { Router() }
       _ <- IO {
-        circuit.dispatcher(Action.Navigate(router.current))
-        router.onNavigate(route => circuit.dispatcher(Action.Navigate(route)))
+        dispatcher(Action.Navigate(router.current))
+        router.onNavigate(route => dispatcher(Action.Navigate(route)))
       }
       _ <- IO {
         ReactDOM.render(
-          App(router, circuit.observed, circuit.dispatcher),
+          App(router, model, dispatcher),
           dom.document.getElementById("root")
         )
       }
