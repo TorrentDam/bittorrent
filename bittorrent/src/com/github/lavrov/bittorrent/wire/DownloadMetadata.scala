@@ -14,7 +14,7 @@ object DownloadMetadata {
     connections
       .evalMap(connection =>
         DownloadMetadata(connection)
-          .timeout(10.seconds)
+          .timeout(1.minute)
           .attempt
       )
       .collectFirst {

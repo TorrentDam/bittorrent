@@ -34,28 +34,34 @@ object MetadataDiscovery {
           ref.update(_ incl infoHash)
         }
         .parEvalMapUnordered(100) { infoHash =>
-          val connections =
-            peerDiscovery
-              .discover(infoHash)
-              .flatMap { peerInfo =>
-                Stream
-                  .eval(logger.info(s"Discovered $peerInfo")) >>
-                Stream
-                  .resource(
-                    connect(infoHash, peerInfo)
-                      .timeout(1.second)
-                  )
-                  .attempt
-                  .evalTap {
-                    case Right(_) =>
-                      logger.info(s"Connected to $peerInfo")
-                    case Left(e) =>
-                      logger.error(s"Could not connect $e")
-                  }
-              }
-              .collect { case Right(connection) => connection }
-          DownloadMetadata(connections)
-            .timeout(5.minute)
+          peerDiscovery
+            .discover(infoHash)
+            .flatMap { peerInfo =>
+              Stream
+                .eval(logger.info(s"Discovered $peerInfo")) >>
+              Stream
+                .resource(
+                  connect(infoHash, peerInfo)
+                    .timeout(2.second)
+                )
+                .attempt
+                .evalTap {
+                  case Right(_) =>
+                    logger.info(s"Connected to $peerInfo")
+                  case Left(e) =>
+                    logger.error(s"Could not connect ${e.getMessage}")
+                }
+            }
+            .collect { case Right(connection) => connection }
+            .parEvalMapUnordered(100) { connection =>
+              DownloadMetadata(connection)
+                .timeout(1.minute)
+                .attempt
+            }
+            .collectFirst { case Right(metadata) => metadata }
+            .compile
+            .lastOrError
+            .timeout(5.minutes)
             .attempt
             .flatMap {
               case Right(metadata) =>
