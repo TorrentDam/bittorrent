@@ -98,7 +98,8 @@ package core {
       fontWeight: UndefOr[String] = js.undefined,
       noWrap: UndefOr[Boolean] = js.undefined,
       display: UndefOr[String] = js.undefined,
-      align: UndefOr[String] = js.undefined
+      align: UndefOr[String] = js.undefined,
+      className: UndefOr[String] = js.undefined
     )
 
     val component = jsImport
@@ -202,7 +203,8 @@ package core {
     case class Props(
       href: UndefOr[String] = js.undefined,
       onClick: UndefOr[js.Function0[Unit]] = js.undefined,
-      color: UndefOr[String] = js.undefined
+      color: UndefOr[String] = js.undefined,
+      className: UndefOr[String] = js.undefined
     )
 
     val component = jsImport

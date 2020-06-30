@@ -18,8 +18,11 @@ object App {
   private val useStyles = makeStyles(theme =>
     Dynamic.literal(
       appBarSpacer = theme.mixins.toolbar,
-      breadcrumb = Dynamic.literal(
-        paddingBottom = theme.spacing(2)
+      appBarTitle = Dynamic.literal(
+        flexGrow = 1
+      ),
+      navLink = Dynamic.literal(
+        margin = theme.spacing(1, 1.5)
       ),
       centered = Dynamic.literal(
         textAlign = "center"
@@ -29,13 +32,19 @@ object App {
 
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
+    def navLink(href: String, name: String) =
+      Link(href = href, className = classes.navLink.toString, color = "inherit")(name)
     div(
       div(className := classes.appBarSpacer.toString),
       AppBar(position = "fixed")(
         Container(maxWidth = "md")(
           Toolbar(disableGutters = true)(
-            Link(href = "#", color = "inherit")(
+            Link(href = "#", color = "inherit", className = classes.appBarTitle.toString)(
               Typography(variant = "h6")("BitTorrent")
+            ),
+            nav(
+              navLink(href = "#discover", "Discover"),
+              navLink(href = "https://github.com/lavrov/bittorrent", "GitHub")
             )
           )
         )
@@ -47,17 +56,22 @@ object App {
               props.router.when {
                 case Router.Route.Root =>
                   Search(None, props.router, props.dispatcher)
+
                 case Router.Route.Search(_) =>
                   Connect(props.model.zoomTo(_.search))(model => Search(model, props.router, props.dispatcher))
+
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
                     metadata => Torrent(props.router, torrent, metadata)
                   )
+
                 case Router.Route.File(index, torrentRoute) =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
                     metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                   )
 
+                case Router.Route.Discover =>
+                  Discover()
               }
             else
               p(className := classes.centered.toString)("Connecting to server...")

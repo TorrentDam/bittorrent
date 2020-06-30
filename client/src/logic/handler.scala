@@ -85,14 +85,14 @@ object Handler {
           }
         case Action.Navigate(route) =>
           route match {
-            case Route.Root =>
-              value
             case Route.Search(query) =>
               this(value, Action.Search(query))
             case Route.Torrent(infoHash) =>
               getTorrent(value, infoHash)
             case Route.File(_, Route.Torrent(infoHash)) =>
               getTorrent(value, infoHash)
+            case _ =>
+              value
           }
       }
     }
