@@ -47,12 +47,13 @@ object TorrentMetadataSpec extends BasicTestSuite {
 
     assert(
       TorrentMetadata.TorrentMetadataFormat.read(input) == Right(
-        TorrentMetadata(10, ByteVector.empty, List(TorrentMetadata.File(10, List("file_name"))))
+        TorrentMetadata("file_name", 10, ByteVector.empty, List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
 
     val input1 = Bencode.BDictionary(
       Map(
+        "name" -> Bencode.BString("test"),
         "piece length" -> Bencode.BInteger(10),
         "pieces" -> Bencode.BString.Empty,
         "files" -> Bencode.BList(
@@ -68,7 +69,7 @@ object TorrentMetadataSpec extends BasicTestSuite {
 
     assert(
       TorrentMetadata.TorrentMetadataFormat.read(input1) == Right(
-        TorrentMetadata(10, ByteVector.empty, TorrentMetadata.File(10, "/root" :: Nil) :: Nil)
+        TorrentMetadata("test", 10, ByteVector.empty, TorrentMetadata.File(10, "/root" :: Nil) :: Nil)
       )
     )
   }
@@ -84,8 +85,8 @@ object TorrentMetadataSpec extends BasicTestSuite {
     )
 
     assert(
-      TorrentMetadata.SingleFileFormat.read(input) == Right(
-        TorrentMetadata(10, ByteVector(10), List(TorrentMetadata.File(10, List("file_name"))))
+      TorrentMetadata.TorrentMetadataFormat.read(input) == Right(
+        TorrentMetadata("file_name", 10, ByteVector(10), List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
   }

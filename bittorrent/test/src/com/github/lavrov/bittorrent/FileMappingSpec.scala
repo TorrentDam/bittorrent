@@ -9,6 +9,7 @@ object FileMappingSpec extends BasicTestSuite {
 
   test("all files in one piece") {
     val metadata = TorrentMetadata(
+      name = "test",
       pieceLength = 10,
       pieces = ByteVector.empty,
       files = List(
@@ -30,6 +31,7 @@ object FileMappingSpec extends BasicTestSuite {
 
   test("file spans multiple pieces") {
     val metadata = TorrentMetadata(
+      name = "test",
       pieceLength = 10,
       pieces = ByteVector.empty,
       files = List(

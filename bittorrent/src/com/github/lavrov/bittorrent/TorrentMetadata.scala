@@ -5,11 +5,11 @@ import java.time.Instant
 import com.github.lavrov.bencode
 import com.github.lavrov.bencode.{Bencode, BencodeFormatException}
 import com.github.lavrov.bencode.format._
-import cats.syntax.invariant._
-import cats.syntax.apply._
+import cats.implicits._
 import scodec.bits.ByteVector
 
 case class TorrentMetadata(
+  name: String,
   pieceLength: Long,
   pieces: ByteVector,
   files: List[TorrentMetadata.File]
@@ -22,33 +22,31 @@ object TorrentMetadata {
     path: List[String]
   )
 
-  implicit val SingleFileFormat: BencodeFormat[TorrentMetadata] =
-    (
-      field[String]("name"),
-      field[Long]("piece length"),
-      field[ByteVector]("pieces"),
-      field[Long]("length")
-    ).imapN((name, pieceLength, pieces, length) =>
-      TorrentMetadata(pieceLength, pieces, List(File(length, List(name))))
-    )(v => ???)
-
   implicit val FileFormat: BencodeFormat[File] =
     (
       field[Long]("length"),
       field[List[String]]("path")
     ).imapN(File)(v => (v.length, v.path))
 
-  implicit val MultipleFileFormat: BencodeFormat[TorrentMetadata] =
+  implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] = {
+    def to(name: String, pieceLength: Long, pieces: ByteVector, length: Option[Long], filesOpt: Option[List[File]]) = {
+      val files = length match {
+        case Some(length) => List(File(length, List(name)))
+        case None => filesOpt.combineAll
+      }
+      TorrentMetadata(name, pieceLength, pieces, files)
+    }
+    def from(v: TorrentMetadata) =
+      (v.name, v.pieceLength, v.pieces, Option.empty[Long], Some(v.files))
     (
+      field[String]("name"),
       field[Long]("piece length"),
       field[ByteVector]("pieces"),
-      field[List[File]]("files")
-    ).imapN(TorrentMetadata.apply)(v => (v.pieceLength, v.pieces, v.files))
+      fieldOptional[Long]("length"),
+      fieldOptional[List[File]]("files")
+    ).imapN(to)(from)
+  }
 
-  implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] = BencodeFormat(
-    read = BencodeReader(bcode => SingleFileFormat.read(bcode) orElse MultipleFileFormat.read(bcode)),
-    write = MultipleFileFormat.write
-  )
 }
 
 case class MetaInfo private (

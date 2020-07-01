@@ -190,7 +190,7 @@ object Main extends IOApp {
             println("Info-hash:")
             pprint.pprintln(infoHash.bytes.toHex(Bases.Alphabets.HexUppercase))
             println()
-            pprint.pprintln(torrentMetadata)
+            pprint.pprintln(torrentMetadata, height = Int.MaxValue)
           }
       }
   }

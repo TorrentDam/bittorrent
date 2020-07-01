@@ -96,7 +96,7 @@ object SocketSession {
               .flatMap { phase =>
                 val metadata = phase.serverTorrent.metadata.parsed
                 val files = metadata.files.map(f => Event.File(f.path, f.length))
-                send(Event.TorrentMetadataReceived(infoHash, files)) >>
+                send(Event.TorrentMetadataReceived(infoHash, metadata.name, files)) >>
                 phase.serverTorrent.pure[IO]
               }
               .timeout(1.minute)
