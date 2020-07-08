@@ -1,6 +1,6 @@
 package logic
 
-import frp.Var
+import rx.Var
 
 trait Dispatcher {
   def apply(action: Action): Unit
@@ -9,5 +9,5 @@ trait Dispatcher {
 object Dispatcher {
 
   def apply(handler: Handler, state: Var[RootModel]): Dispatcher =
-    action => state.set(handler(state.value, action))
+    action => state.update(handler(state.now, action))
 }

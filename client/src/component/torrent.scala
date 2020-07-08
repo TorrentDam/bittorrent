@@ -22,7 +22,7 @@ object Torrent {
 
     div(
       Toolbar(
-        Typography(color = "textSecondary", variant = "h5")("Files")
+        Typography(color = "textSecondary", variant = "h5")(props.metadata.name)
       ),
       Divider(),
       renderList(videoStreamUrl, props.metadata, props.model.availability, handlePlayClick)

@@ -66,7 +66,8 @@ object client extends JsModule {
     ivy"me.shadaj::slinky-web::0.6.4",
     ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
     ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
-    ivy"org.typelevel::squants::1.6.0"
+    ivy"org.typelevel::squants::1.6.0",
+    ivy"com.lihaoyi::scalarx::${Versions.scalarx}",
   )
 
   def `package`: T[PathRef] = T {
@@ -108,7 +109,6 @@ trait Module extends ScalaModule with ScalafmtModule {
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
   def scalaJSVersion = "1.1.0"
-  def scalaJSWorkerVersion = "1.0"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
@@ -155,5 +155,6 @@ object Versions {
   val `scodec-bits` = "1.1.14"
   val upickle = "1.0.0"
   val http4s = "0.21.1"
+  val scalarx = "0.4.3"
 }
 

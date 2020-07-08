@@ -1,3 +1,4 @@
+
 import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
@@ -6,8 +7,8 @@ import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import cats.effect.concurrent.MVar
 import com.github.lavrov.bittorrent.app.protocol.Command
 import component.{App, Router}
-import frp.Var
 import logic.{Action, Dispatcher, Handler, RootModel}
+import rx.Var
 
 import scala.concurrent.ExecutionContext
 

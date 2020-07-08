@@ -53,7 +53,7 @@ object Handler {
                 torrent = value.torrent.map(_.copy(connected = count))
               )
 
-            case Event.TorrentMetadataReceived(infoHash, files) if value.torrent.exists(_.infoHash == infoHash) =>
+            case Event.TorrentMetadataReceived(infoHash, name, files) if value.torrent.exists(_.infoHash == infoHash) =>
               value.torrent match {
                 case Some(torrent) =>
                   val metadataFiles = files.map { f =>
@@ -62,7 +62,7 @@ object Handler {
                       information.Bytes(f.size)
                     )
                   }
-                  val metadata = Metadata(metadataFiles)
+                  val metadata = Metadata(name, metadataFiles)
                   val withMetadata = torrent.withMetadata(metadata)
                   value.copy(torrent = Some(withMetadata))
 

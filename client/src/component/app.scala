@@ -2,7 +2,8 @@ package component
 
 import component.material_ui.core._
 import component.material_ui.styles.makeStyles
-import frp.Observable
+import rx._
+import rx.Ctx.Owner.Unsafe.Unsafe
 import logic.{Dispatcher, Metadata, RootModel, TorrentModel}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
@@ -13,7 +14,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object App {
-  case class Props(router: Router, model: Observable[RootModel], dispatcher: Dispatcher)
+  case class Props(router: Router, model: Rx[RootModel], dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
     Dynamic.literal(
@@ -51,14 +52,14 @@ object App {
       ),
       main(
         Container(maxWidth = "md")(
-          Connect(props.model.zoomTo(_.connected)) { connected =>
+          Connect(props.model.map(_.connected)) { connected =>
             if (connected)
               props.router.when {
                 case Router.Route.Root =>
                   Search(None, props.router, props.dispatcher)
 
                 case Router.Route.Search(_) =>
-                  Connect(props.model.zoomTo(_.search))(model => Search(model, props.router, props.dispatcher))
+                  Connect(props.model.map(_.search))(model => Search(model, props.router, props.dispatcher))
 
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
@@ -81,10 +82,10 @@ object App {
     )
   }
 
-  private def withTorrent(route: Router.Route.Torrent, model: Observable[RootModel], dispatcher: Dispatcher)(
+  private def withTorrent(route: Router.Route.Torrent, model: Rx[RootModel], dispatcher: Dispatcher)(
     component: TorrentModel => Metadata => ReactElement
   ): ReactElement = {
-    Connect(model.zoomTo(_.torrent)) {
+    Connect(model.map(_.torrent)) {
       case Some(torrent) =>
         FetchingMetadata(torrent, component(torrent))
       case _ =>

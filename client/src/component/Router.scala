@@ -3,7 +3,7 @@ package component
 import java.net.URLDecoder
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import frp.{Observable, Var}
+import rx._
 import slinky.core.facade.{Hooks, ReactElement}
 import org.scalajs.dom.window
 import slinky.core.FunctionalComponent
@@ -23,25 +23,25 @@ object Router {
     val routeVar = Var[Route](parseHash.getOrElse(Route.Root))
     window.onhashchange = { _ =>
       val route = parseHash.getOrElse(Route.Root)
-      if (route != routeVar.value) routeVar.set(route)
+      routeVar.update(route)
     }
     new Router {
-      def current: Route = routeVar.value
+      def current: Route = routeVar.now
       def navigate(route: Route): Unit =
         window.location.hash = Route.toString(route)
       def onNavigate(callback: Route => Unit): Unit =
-        routeVar.subscribe(callback)
+        routeVar.trigger(callback)(Ctx.Owner.Unsafe)
       def when(matchRoute: PartialFunction[Route, ReactElement]): ReactElement =
-        component(routeVar.zoomTo(matchRoute.lift))
+        component(routeVar.map(matchRoute.lift)(Ctx.Owner.Unsafe))
     }
   }
 
-  private val component = FunctionalComponent[Observable[Option[ReactElement]]] { childVar =>
-    val (child, setChild) = Hooks.useState(childVar.value)
+  private val component = FunctionalComponent[Rx[Option[ReactElement]]] { childVar =>
+    val (child, setChild) = Hooks.useState(childVar.now)
     def subscribe() = {
-      childVar.subscribe { newChild =>
+      childVar.trigger { newChild =>
         if (child != newChild) setChild(newChild)
-      }
+      }(Ctx.Owner.Unsafe)
     }
     Hooks.useEffect(subscribe)
     child

@@ -38,6 +38,7 @@ case class TorrentModel(
 }
 
 case class Metadata(
+  name: String,
   files: List[Metadata.File]
 )
 object Metadata {
