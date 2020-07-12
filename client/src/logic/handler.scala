@@ -5,6 +5,7 @@ import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import component.Router.Route
 import squants.information
 
+import scala.util.chaining._
 import scala.concurrent.ExecutionContext
 
 trait Handler {
@@ -84,15 +85,17 @@ object Handler {
               value
           }
         case Action.Navigate(route) =>
-          route match {
-            case Route.Search(query) =>
-              this(value, Action.Search(query))
-            case Route.Torrent(infoHash) =>
-              getTorrent(value, infoHash)
-            case Route.File(_, Route.Torrent(infoHash)) =>
-              getTorrent(value, infoHash)
-            case _ =>
-              value
+          value.copy(route = Some(route)).pipe { value =>
+            route match {
+              case Route.Search(query) =>
+                this(value, Action.Search(query))
+              case Route.Torrent(infoHash) =>
+                getTorrent(value, infoHash)
+              case Route.File(_, Route.Torrent(infoHash)) =>
+                getTorrent(value, infoHash)
+              case _ =>
+                value
+            }
           }
       }
     }

@@ -1,23 +1,33 @@
 package component
 
-import rx.{Rx, Obs}
+import monix.reactive._
+import monix.reactive.subjects._
+import monix.execution.Scheduler.Implicits.global
 import logic.Dispatcher
 import slinky.core.{FunctionalComponent, KeyAddingStage}
 import slinky.core.facade.{Hooks, ReactElement}
+import slinky.web.html._
+import slinky.core.Component
 
 object Connect {
-  def apply[Model, R](observed: Rx[Model])(
+
+  def apply[Model, R](observable: Observable[Model])(
     component: Model => ReactElement
-  ): KeyAddingStage = {
+  ): ReactElement = {
+
+    val mutableVar = Var(Option.empty[Model])
+    val subscription = observable.subscribe(mutableVar := Some(_))
+
     val wrapper = FunctionalComponent[Unit] { _ =>
-      val (state, setState) = Hooks.useState(observed.now)
-      def subscribe(): Obs = observed.trigger(value => setState(value))(rx.Ctx.Owner.Unsafe)
-      Hooks.useEffect { () => 
-        val obs = subscribe() 
-        () => obs.kill()
+      val (state, setState) = Hooks.useState(mutableVar())
+      def subscribe(): () => Unit = {
+        mutableVar.tail.foreach(setState)
+        () => subscription.cancel()
       }
-      component(state)
+      Hooks.useEffect(subscribe, List(true))
+      state.fold[ReactElement](span())(component)
     }
+
     wrapper()
   }
 }

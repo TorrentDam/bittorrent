@@ -1,6 +1,7 @@
 package logic
 
-import rx.Var
+import monix.reactive.subjects.Var
+import monix.execution.Scheduler.Implicits.global
 
 trait Dispatcher {
   def apply(action: Action): Unit
@@ -9,5 +10,5 @@ trait Dispatcher {
 object Dispatcher {
 
   def apply(handler: Handler, state: Var[RootModel]): Dispatcher =
-    action => state.update(handler(state.now, action))
+    action => state := handler(state(), action)
 }

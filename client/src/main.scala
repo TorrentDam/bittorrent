@@ -8,9 +8,12 @@ import cats.effect.concurrent.MVar
 import com.github.lavrov.bittorrent.app.protocol.Command
 import component.{App, Router}
 import logic.{Action, Dispatcher, Handler, RootModel}
-import rx.Var
+import monix.reactive.subjects.Var
+import monix.execution.Scheduler.Implicits.global
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+import component.Connect
 
 object Main {
 
@@ -58,7 +61,7 @@ object Main {
       }
       _ <- IO {
         ReactDOM.render(
-          App(router, model, dispatcher),
+          Connect(model)(model => App(router, model, dispatcher)),
           dom.document.getElementById("root")
         )
       }

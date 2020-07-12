@@ -3,16 +3,17 @@ package component
 import java.net.URLDecoder
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
-import rx._
+import monix.reactive.subjects.Var
+import monix.execution.Scheduler.Implicits.global
 import slinky.core.facade.{Hooks, ReactElement}
 import org.scalajs.dom.window
 import slinky.core.FunctionalComponent
+import slinky.web.html._
 
 trait Router {
   def current: Router.Route
   def navigate(route: Router.Route): Unit
   def onNavigate(route: Router.Route => Unit): Unit
-  def when(matchRoute: PartialFunction[Router.Route, ReactElement]): ReactElement
 }
 object Router {
   def apply(): Router = {
@@ -23,28 +24,15 @@ object Router {
     val routeVar = Var[Route](parseHash.getOrElse(Route.Root))
     window.onhashchange = { _ =>
       val route = parseHash.getOrElse(Route.Root)
-      routeVar.update(route)
+      routeVar := route
     }
     new Router {
-      def current: Route = routeVar.now
+      def current: Route = routeVar()
       def navigate(route: Route): Unit =
         window.location.hash = Route.toString(route)
       def onNavigate(callback: Route => Unit): Unit =
-        routeVar.trigger(callback)(Ctx.Owner.Unsafe)
-      def when(matchRoute: PartialFunction[Route, ReactElement]): ReactElement =
-        component(routeVar.map(matchRoute.lift)(Ctx.Owner.Unsafe))
+        routeVar.foreach(callback)
     }
-  }
-
-  private val component = FunctionalComponent[Rx[Option[ReactElement]]] { childVar =>
-    val (child, setChild) = Hooks.useState(childVar.now)
-    def subscribe() = {
-      childVar.trigger { newChild =>
-        if (child != newChild) setChild(newChild)
-      }(Ctx.Owner.Unsafe)
-    }
-    Hooks.useEffect(subscribe)
-    child
   }
 
   sealed trait Route

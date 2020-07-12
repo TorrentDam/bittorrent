@@ -63,11 +63,12 @@ object server extends Module with NativeImageModule {
 object client extends JsModule {
   def moduleDeps = List(shared.js)
   def ivyDeps = Agg(
-    ivy"me.shadaj::slinky-web::0.6.4",
+    ivy"me.shadaj::slinky-web::${Versions.slinky}",
     ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
     ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
     ivy"org.typelevel::squants::1.6.0",
     ivy"com.lihaoyi::scalarx::${Versions.scalarx}",
+    ivy"io.monix::monix-reactive::${Versions.monix}",
   )
 
   def `package`: T[PathRef] = T {
@@ -156,5 +157,7 @@ object Versions {
   val upickle = "1.0.0"
   val http4s = "0.21.1"
   val scalarx = "0.4.3"
+  val monix = "3.2.2"
+  val slinky = "0.6.5"
 }
 

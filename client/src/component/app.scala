@@ -2,8 +2,7 @@ package component
 
 import component.material_ui.core._
 import component.material_ui.styles.makeStyles
-import rx._
-import rx.Ctx.Owner.Unsafe.Unsafe
+import monix.reactive._
 import logic.{Dispatcher, Metadata, RootModel, TorrentModel}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
@@ -14,7 +13,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object App {
-  case class Props(router: Router, model: Rx[RootModel], dispatcher: Dispatcher)
+  case class Props(router: Router, model: RootModel, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
     Dynamic.literal(
@@ -52,14 +51,13 @@ object App {
       ),
       main(
         Container(maxWidth = "md")(
-          Connect(props.model.map(_.connected)) { connected =>
-            if (connected)
-              props.router.when {
+            if (props.model.connected)
+              props.model.route.fold[ReactElement](span()) {
                 case Router.Route.Root =>
                   Search(None, props.router, props.dispatcher)
 
-                case Router.Route.Search(_) =>
-                  Connect(props.model.map(_.search))(model => Search(model, props.router, props.dispatcher))
+                case Router.Route.Search(name) =>
+                  Search(props.model.search, props.router, props.dispatcher)
 
                 case torrentRoute: Router.Route.Torrent =>
                   withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
@@ -76,16 +74,15 @@ object App {
               }
             else
               p(className := classes.centered.toString)("Connecting to server...")
-          }
         )
       )
     )
   }
 
-  private def withTorrent(route: Router.Route.Torrent, model: Rx[RootModel], dispatcher: Dispatcher)(
+  private def withTorrent(route: Router.Route.Torrent, model: RootModel, dispatcher: Dispatcher)(
     component: TorrentModel => Metadata => ReactElement
   ): ReactElement = {
-    Connect(model.map(_.torrent)) {
+    model.torrent match {
       case Some(torrent) =>
         FetchingMetadata(torrent, component(torrent))
       case _ =>
