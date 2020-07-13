@@ -14,6 +14,8 @@ import monix.execution.Scheduler.Implicits.global
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import component.Connect
+import slinky.web.svg.mode
+import logic.WindowTitle
 
 object Main {
 
@@ -59,6 +61,7 @@ object Main {
         dispatcher(Action.Navigate(router.current))
         router.onNavigate(route => dispatcher(Action.Navigate(route)))
       }
+      _ <- model.map(WindowTitle.fromModel).foreachL { dom.document.title = _ }.to[IO].start
       _ <- IO {
         ReactDOM.render(
           Connect(model)(model => App(router, model, dispatcher)),
