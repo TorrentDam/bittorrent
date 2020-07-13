@@ -67,7 +67,6 @@ object client extends JsModule {
     ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
     ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
     ivy"org.typelevel::squants::1.6.0",
-    ivy"com.lihaoyi::scalarx::${Versions.scalarx}",
     ivy"io.monix::monix-reactive::${Versions.monix}",
   )
 
@@ -148,7 +147,7 @@ trait NativeImageModule extends ScalaModule {
 }
 
 object Versions {
-  val cats = "2.2.0-M3"
+  val cats = "2.2.0-RC1"
   val `cats-effect` = "2.1.3"
   val fs2 = "2.4.2"
   val monocle = "2.0.0"
@@ -156,7 +155,6 @@ object Versions {
   val `scodec-bits` = "1.1.14"
   val upickle = "1.0.0"
   val http4s = "0.21.1"
-  val scalarx = "0.4.3"
   val monix = "3.2.2"
   val slinky = "0.6.5"
 }
