@@ -16,7 +16,7 @@ object bittorrent extends Module {
     ivy"org.typelevel::cats-core:${Versions.cats}",
     ivy"org.typelevel::cats-tagless-macros:0.11",
     ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
-    ivy"org.typelevel::cats-mtl-core:0.7.0",
+    ivy"org.typelevel::cats-mtl-core:0.7.1",
     ivy"com.olegpy::meow-mtl-effects:0.4.0",
     ivy"io.github.timwspence::cats-stm:0.5.0",
     ivy"co.fs2::fs2-io:${Versions.fs2}",
