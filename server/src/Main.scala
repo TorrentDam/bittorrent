@@ -80,10 +80,12 @@ object Main extends IOApp {
         } yield node
       }
       peerDiscovery <- PeerDiscovery.make[IO](dhtNode)
+      metadataRegistry <- MetadataRegistry[IO]().to[Resource[IO, *]]
       _ <- MetadataDiscovery(
         getPeerRequests.dequeue,
         peerDiscovery,
-        (infoHash, peerInfo) => Connection.connect[IO](selfId, peerInfo, infoHash)
+        (infoHash, peerInfo) => Connection.connect[IO](selfId, peerInfo, infoHash),
+        metadataRegistry
       ).background
       createSwarm = (infoHash: InfoHash) => {
         Swarm[IO](
@@ -94,7 +96,7 @@ object Main extends IOApp {
       }
       createServerTorrent = new ServerTorrent.Create(createSwarm)
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(createServerTorrent) }
-      handleSocket = SocketSession(torrentRegistry.get)
+      handleSocket = SocketSession(torrentRegistry.get, metadataRegistry)
       handleGetTorrent =
         (infoHash: InfoHash) =>
           torrentRegistry

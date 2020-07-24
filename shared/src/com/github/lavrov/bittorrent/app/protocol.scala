@@ -7,14 +7,19 @@ sealed trait Command
 object Command {
   case class GetTorrent(infoHash: InfoHash) extends Command
 
+  case class GetRecent() extends Command
+
   implicit val rw: ReadWriter[Command] = ReadWriter.merge(
-    macroRW[GetTorrent]
+    macroRW[GetTorrent],
+    macroRW[GetRecent]
   )
 }
 
 sealed trait Event
 object Event {
   case class RequestAccepted(infoHash: InfoHash) extends Event
+
+  case class RecentDiscovery(torrents: Iterable[(InfoHash, String)]) extends Event
 
   case class TorrentPeersDiscovered(infoHash: InfoHash, connected: Int) extends Event
   case class TorrentMetadataReceived(infoHash: InfoHash, name: String, files: List[File]) extends Event
@@ -30,6 +35,7 @@ object Event {
     macroRW[TorrentPeersDiscovered],
     macroRW[TorrentMetadataReceived],
     macroRW[TorrentError],
-    macroRW[TorrentStats]
+    macroRW[TorrentStats],
+    macroRW[RecentDiscovery]
   )
 }

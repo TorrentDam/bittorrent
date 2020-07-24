@@ -16,7 +16,8 @@ object MetadataDiscovery {
   def apply(
     infoHashes: Stream[IO, InfoHash],
     peerDiscovery: PeerDiscovery[IO],
-    connect: (InfoHash, PeerInfo) => Resource[IO, Connection[IO]]
+    connect: (InfoHash, PeerInfo) => Resource[IO, Connection[IO]],
+    metadataRegistry: MetadataRegistry[IO]
   )(implicit
     concurrent: Concurrent[IO],
     cs: ContextShift[IO],
@@ -65,7 +66,8 @@ object MetadataDiscovery {
             .attempt
             .flatMap {
               case Right(metadata) =>
-                logger.info(s"Metadata discovered $metadata")
+                logger.info(s"Metadata discovered $metadata") >>
+                metadataRegistry.put(infoHash, metadata)
               case Left(e) =>
                 logger.error(s"Could download metadata: $e")
             }

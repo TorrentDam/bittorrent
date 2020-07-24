@@ -1,6 +1,7 @@
 import cats.effect.concurrent.Deferred
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
+import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
@@ -15,7 +16,8 @@ import scala.util.Try
 
 object SocketSession {
   def apply(
-    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
+    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+    metadataRegistry: MetadataRegistry[IO]
   )(implicit
     F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -27,7 +29,7 @@ object SocketSession {
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
       send = (e: Event) => output.enqueue1(WebSocketFrame.Text(upickle.default.write(e)))
-      handlerAndClose <- CommandHandler(send, makeTorrent).allocated
+      handlerAndClose <- CommandHandler(send, makeTorrent, metadataRegistry).allocated
       (handler, closeHandler) = handlerAndClose
       fiber <- processor(input, send, handler).compile.drain.start
       pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
@@ -59,6 +61,7 @@ object SocketSession {
   class CommandHandler(
     send: Event => IO[Unit],
     getTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+    metadataRegistry: MetadataRegistry[IO],
     closed: IO[Unit]
   )(implicit
     F: Concurrent[IO],
@@ -73,6 +76,18 @@ object SocketSession {
             _ <- send(Event.RequestAccepted(infoHash))
             _ <- handleGetTorrent(infoHash)
           } yield ()
+
+        case Command.GetRecent() =>
+          for {
+            torrents <- metadataRegistry.recent
+            torrents <-
+              torrents
+                .map {
+                  case (infoHash, metadata) => (InfoHash(infoHash.bytes), metadata.parsed.name)
+                }
+                .pure[IO]
+            _ <- send(Event.RecentDiscovery(torrents))
+          } yield {}
       }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
@@ -129,7 +144,8 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
+      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+      metadataRegistry: MetadataRegistry[IO]
     )(implicit
       F: Concurrent[IO],
       cs: ContextShift[IO],
@@ -143,6 +159,7 @@ object SocketSession {
           val impl = new CommandHandler(
             send,
             makeTorrent,
+            metadataRegistry,
             closed.get
           )
           (impl, closed.complete(()))
