@@ -12,7 +12,6 @@ import slinky.core.{FunctionalComponent, SyntheticEvent}
 import slinky.core.annotations.react
 import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
-import slinky.web.svg.in
 
 import scala.scalajs.js.Dynamic
 
@@ -41,10 +40,25 @@ object Search {
   )
 
   val component = FunctionalComponent[Props] { props =>
+    val classes = useStyles()
     div(
       SearchBox(props.model.map(_.query).getOrElse(""), props.router, props.dispatcher),
       for (search <- props.model; results <- search.results)
-        yield ResultList(results, props.router)
+        yield {
+          val items = results.results.collect {
+            case SearchResults.Item(title, extractInfoHash(infoHash)) =>
+              (infoHash, title)
+          }
+
+          val result: ReactElement =
+            if (items.nonEmpty)
+              Fade(in = true)(
+                TorrentList(items, props.router)
+              )
+            else
+              p(className := classes.notFound.toString)("Nothing discovered yet")
+          result
+        }
     )
   }
 
@@ -57,7 +71,7 @@ object Search {
       val classes = useStyles()
       val (state, setState) = Hooks.useState(props.initialValue)
 
-      val infoHashOpt = extractInfoHash(state)
+      val infoHashOpt = extractInfoHash.lift(state)
 
       def handleSubmit(e: Event) = {
         e.preventDefault()
@@ -85,52 +99,12 @@ object Search {
     }
   }
 
-  @react
-  object ResultList {
-
-    case class Props(searchResults: SearchResults, router: Router)
-
-    val component = FunctionalComponent[Props] { props =>
-      val classes = useStyles()
-
-      def handleClick(infoHash: InfoHash) =
-        () => {
-          props.router.navigate(Route.Torrent(infoHash))
-        }
-
-      Fade(in = true)(
-        if (props.searchResults.results.nonEmpty)
-          List(
-            for {
-              (item, index) <- props.searchResults.results.zipWithIndex
-              infoHash <- extractInfoHash(item.magnet)
-            } yield {
-              ListItem(button = true)(
-                key := s"search-result-$index",
-                onClick := handleClick(infoHash),
-                ListItemText(
-                  primary = Typography(noWrap = true)(item.title): ReactElement,
-                  secondary = infoHash.toString
-                )
-              )
-            }
-          )
-        else
-          p(className := classes.notFound.toString)("Nothing found")
-      )
-    }
-  }
-
   private val regex = """xt=urn:btih:(\w+)""".r
 
-  private def extractInfoHash(value: String): Option[InfoHash] = {
-    InfoHash.fromString
-      .lift(value)
-      .orElse(
-        regex.findFirstMatchIn(value).map(_.group(1)).collectFirst {
-          case InfoHash.fromString(infoHash) => infoHash
-        }
-      )
+  private val extractInfoHash: PartialFunction[String, InfoHash] = {
+    InfoHash.fromString.orElse {
+      case regex(InfoHash.fromString(infoHash)) => infoHash
+    }
   }
 
 }

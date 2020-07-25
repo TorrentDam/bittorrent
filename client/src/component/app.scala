@@ -51,29 +51,29 @@ object App {
       ),
       main(
         Container(maxWidth = "md")(
-            if (props.model.connected)
-              props.model.route.fold[ReactElement](span()) {
-                case Router.Route.Root =>
-                  Search(None, props.router, props.dispatcher)
+          if (props.model.connected)
+            props.model.route.fold[ReactElement](span()) {
+              case Router.Route.Root =>
+                Search(None, props.router, props.dispatcher)
 
-                case Router.Route.Search(name) =>
-                  Search(props.model.search, props.router, props.dispatcher)
+              case Router.Route.Search(name) =>
+                Search(props.model.search, props.router, props.dispatcher)
 
-                case torrentRoute: Router.Route.Torrent =>
-                  withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
-                    metadata => Torrent(props.router, torrent, metadata)
-                  )
+              case torrentRoute: Router.Route.Torrent =>
+                withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
+                  metadata => Torrent(props.router, torrent, metadata)
+                )
 
-                case Router.Route.File(index, torrentRoute) =>
-                  withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
-                    metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
-                  )
+              case Router.Route.File(index, torrentRoute) =>
+                withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
+                  metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
+                )
 
-                case Router.Route.Discover =>
-                  Discover()
-              }
-            else
-              p(className := classes.centered.toString)("Connecting to server...")
+              case Router.Route.Discover =>
+                Discover(props.model.discovered, props.router)
+            }
+          else
+            p(className := classes.centered.toString)("Connecting to server...")
         )
       )
     )

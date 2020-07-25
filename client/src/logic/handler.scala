@@ -75,6 +75,11 @@ object Handler {
                 torrent = value.torrent.map(_.withError(message))
               )
 
+            case Event.Discovered(torrents) =>
+              value.copy(
+                discovered = Some(Discovered(torrents.toList))
+              )
+
             case Event.TorrentStats(infoHash, connected, availability)
                 if value.torrent.exists(_.infoHash == infoHash) =>
               value.copy(
@@ -93,6 +98,9 @@ object Handler {
                 getTorrent(value, infoHash)
               case Route.File(_, Route.Torrent(infoHash)) =>
                 getTorrent(value, infoHash)
+              case Route.Discover =>
+                send(Command.GetDiscovered())
+                value
               case _ =>
                 value
             }

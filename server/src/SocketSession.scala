@@ -77,16 +77,16 @@ object SocketSession {
             _ <- handleGetTorrent(infoHash)
           } yield ()
 
-        case Command.GetRecent() =>
+        case Command.GetDiscovered() =>
           for {
             torrents <- metadataRegistry.recent
             torrents <-
               torrents
                 .map {
-                  case (infoHash, metadata) => (InfoHash(infoHash.bytes), metadata.parsed.name)
+                  case (infoHash, metadata) => (infoHash, metadata.parsed.name)
                 }
                 .pure[IO]
-            _ <- send(Event.RecentDiscovery(torrents))
+            _ <- send(Event.Discovered(torrents))
           } yield {}
       }
 

@@ -29,7 +29,11 @@ object ServerTorrent {
 
   case class Error() extends Throwable
 
-  def create(infoHash: InfoHash, makeSwarm: InfoHash => Resource[IO, Swarm[IO]])(implicit
+  def create(
+    infoHash: InfoHash,
+    makeSwarm: InfoHash => Resource[IO, Swarm[IO]],
+    metadataRegistry: MetadataRegistry[IO]
+  )(implicit
     cs: ContextShift[IO],
     timer: Timer[IO],
     logger: LogIO[IO],
@@ -37,14 +41,18 @@ object ServerTorrent {
   ): Resource[IO, Phase.PeerDiscovery] =
     Resource {
 
-      def backgroundTask(peerDiscoveryDone: FallibleDeferred[IO, Phase.FetchingMetadata]): IO[Unit] =
+      def backgroundTask(peerDiscoveryDone: FallibleDeferred[IO, Phase.FetchingMetadata]): IO[Unit] = {
         makeSwarm(infoHash)
           .use { swarm =>
+            val getMetadata = metadataRegistry.get(infoHash).flatMap {
+              case Some(value) => value.pure[IO]
+              case None => DownloadMetadata(swarm.connected.stream).flatTap(metadataRegistry.put(infoHash, _))
+            }
             swarm.connected.count.discrete.find(_ > 0).compile.drain >>
             FallibleDeferred[IO, Phase.Ready].flatMap { fetchingMetadataDone =>
               peerDiscoveryDone.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get)).flatMap {
                 _ =>
-                  DownloadMetadata(swarm.connected.stream).flatMap { metadata =>
+                  getMetadata.flatMap { metadata =>
                     logger.info(s"Metadata downloaded") >>
                     Torrent.make(metadata, swarm).use { torrent =>
                       PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}")).use { pieceStore =>
@@ -62,6 +70,7 @@ object ServerTorrent {
           .orElse(
             peerDiscoveryDone.fail(Error())
           )
+      }
 
       for {
         peerDiscoveryDone <- FallibleDeferred[IO, Phase.FetchingMetadata]
@@ -109,13 +118,17 @@ object ServerTorrent {
     }
   }
 
-  class Create(createSwarm: InfoHash => Resource[IO, Swarm[IO]])(implicit
+  class Create(
+    createSwarm: InfoHash => Resource[IO, Swarm[IO]],
+    metadataRegistry: MetadataRegistry[IO]
+  )(implicit
     cs: ContextShift[IO],
     timer: Timer[IO],
     logger: LogIO[IO],
     blocker: Blocker
   ) {
-    def apply(infoHash: InfoHash): Resource[IO, Phase.PeerDiscovery] = create(infoHash, createSwarm)
+    def apply(infoHash: InfoHash): Resource[IO, Phase.PeerDiscovery] =
+      create(infoHash, createSwarm, metadataRegistry)
   }
 
   case class Stats(

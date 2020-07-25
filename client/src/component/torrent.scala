@@ -25,12 +25,11 @@ object Torrent {
         Typography(color = "textSecondary", variant = "h5")(props.metadata.name)
       ),
       Divider(),
-      renderList(videoStreamUrl, props.metadata, props.model.availability, handlePlayClick)
+      renderList(props.metadata, props.model.availability, handlePlayClick)
     )
   }
 
   private def renderList(
-    videoSrc: Int => String,
     metadata: Metadata,
     availability: List[Double],
     handleClick: Int => () => Unit

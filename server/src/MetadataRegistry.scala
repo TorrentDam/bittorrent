@@ -1,17 +1,16 @@
 import cats.implicits._
-import cats.mtl.implicits._
-import cats.Monad
-import cats.data.StateT
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import cats.mtl.MonadState
-import com.github.lavrov.bittorrent.{InfoHash, MetaInfo}
+import com.github.lavrov.bittorrent.MetaInfo
+import com.github.lavrov.bittorrent.app.domain.InfoHash
 
 import scala.collection.immutable.ListMap
 
 trait MetadataRegistry[F[_]] {
 
   def recent: F[Iterable[(InfoHash, MetaInfo)]]
+
+  def get(infoHash: InfoHash): F[Option[MetaInfo]]
 
   def put(infoHash: InfoHash, metaInfo: MetaInfo): F[Unit]
 }
@@ -32,6 +31,9 @@ object MetadataRegistry {
 
         def recent: F[Iterable[(InfoHash, MetaInfo)]] =
           ref.get.widen
+
+        def get(infoHash: InfoHash): F[Option[MetaInfo]] =
+          ref.get.map(_.get(infoHash))
 
         def put(infoHash: InfoHash, metaInfo: MetaInfo): F[Unit] =
           ref

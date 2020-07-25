@@ -94,7 +94,7 @@ object Main extends IOApp {
           30
         )
       }
-      createServerTorrent = new ServerTorrent.Create(createSwarm)
+      createServerTorrent = new ServerTorrent.Create(createSwarm, metadataRegistry)
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(createServerTorrent) }
       handleSocket = SocketSession(torrentRegistry.get, metadataRegistry)
       handleGetTorrent =

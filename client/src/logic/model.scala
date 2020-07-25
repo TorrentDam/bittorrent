@@ -11,6 +11,7 @@ case class RootModel(
   route: Option[Route],
   search: Option[RootModel.Search],
   torrent: Option[TorrentModel],
+  discovered: Option[Discovered],
   logs: List[String]
 )
 
@@ -21,6 +22,7 @@ object RootModel {
       route = None,
       search = None,
       torrent = None,
+      discovered = None,
       logs = List.empty
     )
   }
@@ -50,3 +52,5 @@ object Metadata {
     size: Quantity[Information]
   )
 }
+
+case class Discovered(torrents: List[(InfoHash, String)])
