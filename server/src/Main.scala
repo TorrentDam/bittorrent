@@ -7,6 +7,7 @@ import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.dht.message.Query
+import com.github.lavrov.bencode.encode
 import fs2.Stream
 import fs2.concurrent.Queue
 import fs2.io.tcp.SocketGroup
@@ -198,8 +199,21 @@ object Main extends IOApp {
           }
 
       handleDiscoverTorrents = for {
-        response <- Ok("TODO")
-      } yield response
+        torrents <- metadataRegistry.recent
+        json <-
+          ujson
+            .Arr(
+              torrents.map {
+                case (infoHash, metadata) =>
+                  ujson.Obj(
+                    "infoHash" -> infoHash.toString,
+                    "metadata" -> encode(metadata.raw).toBase64
+                  )
+              }
+            )
+            .pure[IO]
+        response <- Ok(json.render())
+      } yield response.withContentType(`Content-Type`(MediaType.application.json))
 
     } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData, handleDiscoverTorrents)
   }
