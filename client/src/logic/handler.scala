@@ -1,5 +1,6 @@
 package logic
 
+import logic.model._
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import component.Router.Route
@@ -10,7 +11,7 @@ import scala.concurrent.ExecutionContext
 
 trait Handler {
 
-  def apply(value: RootModel, action: Action): RootModel
+  def apply(model: Root, action: Action): Root
 }
 
 object Handler {
@@ -20,26 +21,26 @@ object Handler {
 
   private class Impl(send: Command => Unit, dispatcher: Dispatcher)(implicit ec: ExecutionContext) extends Handler {
 
-    override def apply(value: RootModel, action: Action): RootModel = {
+    override def apply(model: Root, action: Action): Root = {
       action match {
         case Action.UpdateConnectionStatus(connected) =>
-          value.copy(connected = connected)
+          model.copy(connected = connected)
 
         case Action.Search(query) =>
-          value.search match {
-            case Some(RootModel.Search(`query`, _)) => value
+          model.search match {
+            case Some(Root.Search(`query`, _)) => model
             case _ =>
-              val search = RootModel.Search(query, None)
+              val search = Root.Search(query, None)
               SearchApi(query).foreach { results =>
                 dispatcher(Action.UpdateSearchResults(query, results))
               }
-              value.copy(search = Some(search))
+              model.copy(search = Some(search))
           }
 
         case Action.UpdateSearchResults(query, results) =>
-          value.search.filter(_.query == query).fold(value) { search =>
+          model.search.filter(_.query == query).fold(model) { search =>
             val updated = search.copy(results = Some(results))
-            value.copy(search = Some(updated))
+            model.copy(search = Some(updated))
           }
 
         case Action.ServerEvent(payload) =>
@@ -47,15 +48,15 @@ object Handler {
 
           event match {
             case Event.RequestAccepted(infoHash) =>
-              value.copy(torrent = Some(TorrentModel(infoHash, 0, Nil, None)))
+              model.copy(torrent = Some(Torrent(infoHash, 0, Nil, None)))
 
-            case Event.TorrentPeersDiscovered(infoHash, count) if value.torrent.exists(_.infoHash == infoHash) =>
-              value.copy(
-                torrent = value.torrent.map(_.copy(connected = count))
+            case Event.TorrentPeersDiscovered(infoHash, count) if model.torrent.exists(_.infoHash == infoHash) =>
+              model.copy(
+                torrent = model.torrent.map(_.copy(connected = count))
               )
 
-            case Event.TorrentMetadataReceived(infoHash, name, files) if value.torrent.exists(_.infoHash == infoHash) =>
-              value.torrent match {
+            case Event.TorrentMetadataReceived(infoHash, name, files) if model.torrent.exists(_.infoHash == infoHash) =>
+              model.torrent match {
                 case Some(torrent) =>
                   val metadataFiles = files.map { f =>
                     Metadata.File(
@@ -65,32 +66,32 @@ object Handler {
                   }
                   val metadata = Metadata(name, metadataFiles)
                   val withMetadata = torrent.withMetadata(metadata)
-                  value.copy(torrent = Some(withMetadata))
+                  model.copy(torrent = Some(withMetadata))
 
-                case _ => value
+                case _ => model
               }
 
-            case Event.TorrentError(infoHash, message) if value.torrent.exists(_.infoHash == infoHash) =>
-              value.copy(
-                torrent = value.torrent.map(_.withError(message))
+            case Event.TorrentError(infoHash, message) if model.torrent.exists(_.infoHash == infoHash) =>
+              model.copy(
+                torrent = model.torrent.map(_.withError(message))
               )
 
             case Event.Discovered(torrents) =>
-              value.copy(
+              model.copy(
                 discovered = Some(Discovered(torrents.toList))
               )
 
             case Event.TorrentStats(infoHash, connected, availability)
-                if value.torrent.exists(_.infoHash == infoHash) =>
-              value.copy(
-                torrent = value.torrent.map(_.copy(connected = connected, availability = availability))
+                if model.torrent.exists(_.infoHash == infoHash) =>
+              model.copy(
+                torrent = model.torrent.map(_.copy(connected = connected, availability = availability))
               )
 
             case _ =>
-              value
+              model
           }
         case Action.Navigate(route) =>
-          value.copy(route = Some(route)).pipe { value =>
+          model.copy(route = Some(route)).pipe { value =>
             route match {
               case Route.Search(query) =>
                 this(value, Action.Search(query))
@@ -108,13 +109,13 @@ object Handler {
       }
     }
 
-    private def getTorrent(model: RootModel, infoHash: InfoHash) = {
+    private def getTorrent(model: Root, infoHash: InfoHash) = {
       if (model.torrent.exists(_.infoHash == infoHash))
         model
       else {
         send(Command.GetTorrent(infoHash))
         model.copy(
-          torrent = Some(TorrentModel(infoHash, 0, Nil, None))
+          torrent = Some(Torrent(infoHash, 0, Nil, None))
         )
       }
     }

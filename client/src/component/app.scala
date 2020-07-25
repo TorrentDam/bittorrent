@@ -3,7 +3,8 @@ package component
 import component.material_ui.core._
 import component.material_ui.styles.makeStyles
 import monix.reactive._
-import logic.{Dispatcher, Metadata, RootModel, TorrentModel}
+import logic.Dispatcher
+import logic.model.{Metadata, Root, Torrent => TorrentModel}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
@@ -13,7 +14,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object App {
-  case class Props(router: Router, model: RootModel, dispatcher: Dispatcher)
+  case class Props(router: Router, model: Root, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
     Dynamic.literal(
@@ -60,12 +61,10 @@ object App {
                 Search(props.model.search, props.router, props.dispatcher)
 
               case torrentRoute: Router.Route.Torrent =>
-                withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
-                  metadata => Torrent(props.router, torrent, metadata)
-                )
+                withTorrent(props.model)(torrent => metadata => Torrent(props.router, torrent, metadata))
 
               case Router.Route.File(index, torrentRoute) =>
-                withTorrent(torrentRoute, props.model, props.dispatcher)(torrent =>
+                withTorrent(props.model)(torrent =>
                   metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                 )
 
@@ -79,7 +78,7 @@ object App {
     )
   }
 
-  private def withTorrent(route: Router.Route.Torrent, model: RootModel, dispatcher: Dispatcher)(
+  private def withTorrent(model: Root)(
     component: TorrentModel => Metadata => ReactElement
   ): ReactElement = {
     model.torrent match {

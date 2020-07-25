@@ -3,8 +3,7 @@ package component
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.material_ui.icons
 import component.material_ui.core._
-import component.material_ui.styles.makeStyles
-import logic.Metadata
+import logic.model.Metadata
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
 import slinky.core.{CustomAttribute, FunctionalComponent}

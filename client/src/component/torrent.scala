@@ -1,7 +1,7 @@
 package component
 
 import component.material_ui.core.{Divider, ListItem, ListItemText, Toolbar, Typography, List => MUIList}
-import logic.{Metadata, TorrentModel}
+import logic.model.{Metadata, Torrent => TorrentModel}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement

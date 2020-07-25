@@ -1,6 +1,6 @@
 package component
 
-import logic.Discovered
+import logic.model.Discovered
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement

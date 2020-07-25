@@ -1,4 +1,3 @@
-
 import scalajs.js.annotation.JSExportTopLevel
 import org.scalajs.dom
 import slinky.web.ReactDOM
@@ -7,7 +6,8 @@ import cats.effect.{ContextShift, ExitCode, IO, Timer}
 import cats.effect.concurrent.MVar
 import com.github.lavrov.bittorrent.app.protocol.Command
 import component.{App, Router}
-import logic.{Action, Dispatcher, Handler, RootModel}
+import logic.{Action, Dispatcher, Handler}
+import logic.model.Root
 import monix.reactive.subjects.Var
 import monix.execution.Scheduler.Implicits.global
 
@@ -29,7 +29,7 @@ object Main {
   def mainIO: IO[ExitCode] = {
     for {
       out <- MVar.empty[IO, String]
-      model <- IO { Var(RootModel.initial) }
+      model <- IO { Var(Root.initial) }
       dispatcher <- IO {
         def send(command: Command): Unit = {
           val str = upickle.default.write(command)

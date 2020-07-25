@@ -1,4 +1,4 @@
-package logic
+package logic.model
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import logic.SearchApi.SearchResults
@@ -6,18 +6,18 @@ import squants.Quantity
 import squants.information.Information
 import component.Router.Route
 
-case class RootModel(
+case class Root(
   connected: Boolean,
   route: Option[Route],
-  search: Option[RootModel.Search],
-  torrent: Option[TorrentModel],
+  search: Option[Root.Search],
+  torrent: Option[Torrent],
   discovered: Option[Discovered],
   logs: List[String]
 )
 
-object RootModel {
-  def initial: RootModel = {
-    RootModel(
+object Root {
+  def initial: Root = {
+    Root(
       connected = false,
       route = None,
       search = None,
@@ -32,14 +32,14 @@ object RootModel {
   )
 }
 
-case class TorrentModel(
+case class Torrent(
   infoHash: InfoHash,
   connected: Int,
   availability: List[Double],
   metadata: Option[Either[String, Metadata]]
 ) {
-  def withMetadata(metadata: Metadata): TorrentModel = copy(metadata = Some(Right(metadata)))
-  def withError(message: String): TorrentModel = copy(metadata = Some(Left(message)))
+  def withMetadata(metadata: Metadata): Torrent = copy(metadata = Some(Right(metadata)))
+  def withError(message: String): Torrent = copy(metadata = Some(Left(message)))
 }
 
 case class Metadata(

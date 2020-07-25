@@ -1,7 +1,7 @@
 package component
 
 import component.material_ui.styles.makeStyles
-import logic.{Metadata, TorrentModel}
+import logic.model.{Metadata, Torrent}
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
@@ -12,7 +12,7 @@ import scala.scalajs.js.Dynamic.literal
 @react
 object FetchingMetadata {
 
-  case class Props(model: TorrentModel, render: Metadata => ReactElement)
+  case class Props(model: Torrent, render: Metadata => ReactElement)
 
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()

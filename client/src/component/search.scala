@@ -2,7 +2,8 @@ package component
 
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.Router.Route
-import logic.{Action, Dispatcher, RootModel}
+import logic.Dispatcher
+import logic.model.Root
 import logic.SearchApi.SearchResults
 import material_ui.core._
 import material_ui.icons
@@ -17,7 +18,7 @@ import scala.scalajs.js.Dynamic
 
 @react
 object Search {
-  case class Props(model: Option[RootModel.Search], router: Router, dispatcher: Dispatcher)
+  case class Props(model: Option[Root.Search], router: Router, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
     Dynamic.literal(
