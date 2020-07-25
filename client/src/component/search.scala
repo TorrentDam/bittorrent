@@ -102,10 +102,14 @@ object Search {
 
   private val regex = """xt=urn:btih:(\w+)""".r
 
+  private val infoHashInUri: String => Option[InfoHash] =
+    regex
+      .findFirstMatchIn(_)
+      .map(_.group(1))
+      .flatMap(InfoHash.fromString.lift)
+
   private val extractInfoHash: PartialFunction[String, InfoHash] = {
-    InfoHash.fromString.orElse {
-      case regex(InfoHash.fromString(infoHash)) => infoHash
-    }
+    InfoHash.fromString.orElse(infoHashInUri.unlift)
   }
 
 }
