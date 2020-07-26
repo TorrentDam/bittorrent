@@ -2,4 +2,4 @@ FROM adoptopenjdk:openj9
 
 COPY ./out/server/assembly/dest/out.jar /opt/bittorrent-server
 
-ENTRYPOINT ["java", "-Xmx500m", "-jar", "/opt/bittorrent-server"]
+ENTRYPOINT ["java", "-Xmx700m", "-jar", "/opt/bittorrent-server"]
