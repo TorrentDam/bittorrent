@@ -13,6 +13,7 @@
     "@hot-loader/react-dom": "^16.13.0",
     "html-webpack-plugin": "^4.3.0",
     "react-hot-loader": "^4.12.21",
+    "@svgr/webpack": "^5.4.0",
     "webpack": "^4.43.0",
     "webpack-cli": "^3.3.12",
     "webpack-dev-server": "^3.11.0"

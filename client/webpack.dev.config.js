@@ -9,6 +9,7 @@ module.exports = {
   resolve: {
     modules: [
       __dirname + '/node_modules',
+      __dirname + '/public',
       __dirname + '/../out/client/compileJs/dest'
     ],
     alias: {
@@ -17,7 +18,8 @@ module.exports = {
   },
   module: {
     rules: [
-      { test: /\.js$/, exclude: /node_modules/, loaders: ['react-hot-loader/webpack'] }
+      { test: /\.js$/, exclude: /node_modules/, use: ['react-hot-loader/webpack'] },
+      { test: /\.svg$/, use: ['@svgr/webpack'] }
     ]
   },
   output: {

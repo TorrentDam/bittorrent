@@ -2,7 +2,6 @@ package component
 
 import component.material_ui.core._
 import component.material_ui.styles.makeStyles
-import monix.reactive._
 import logic.Dispatcher
 import logic.model.{Metadata, Root, Torrent => TorrentModel}
 import slinky.core.FunctionalComponent
@@ -10,7 +9,9 @@ import slinky.core.annotations.react
 import slinky.core.facade.ReactElement
 import slinky.web.html._
 
+import scala.scalajs.js
 import scala.scalajs.js.Dynamic
+import scala.scalajs.js.annotation.JSImport
 
 @react
 object App {
@@ -20,7 +21,8 @@ object App {
     Dynamic.literal(
       appBarSpacer = theme.mixins.toolbar,
       appBarTitle = Dynamic.literal(
-        flexGrow = 1
+        flexGrow = 1,
+        margin = theme.spacing(1)
       ),
       navLink = Dynamic.literal(
         margin = theme.spacing(1, 1.5)
@@ -31,6 +33,10 @@ object App {
     )
   )
 
+  @JSImport("windmill.svg", JSImport.Default)
+  @js.native
+  val windmillIcon: js.Object = js.native
+
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
     def navLink(href: String, name: String) =
@@ -40,8 +46,9 @@ object App {
       AppBar(position = "fixed")(
         Container(maxWidth = "md")(
           Toolbar(disableGutters = true)(
+            SvgIcon(component = windmillIcon, viewBox = "0 0 15 15", color = "inherit"),
             Link(href = "#", color = "inherit", className = classes.appBarTitle.toString)(
-              Typography(variant = "h6")("BitTorrent")
+              Typography(variant = "h6")("TorrentDam")
             ),
             nav(
               navLink(href = "#discover", "Discover"),

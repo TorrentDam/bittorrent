@@ -371,6 +371,16 @@ package core {
     private def jsImport: js.Object = js.native
   }
 
+  @react
+  object SvgIcon extends ExternalComponent {
+    case class Props(component: js.Any, viewBox: UndefOr[String] = js.undefined, color: UndefOr[String] = js.undefined)
+
+    val component = jsImport
+
+    @JSImport("@material-ui/core/SvgIcon", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
+  }
+
 }
 
 package icons {

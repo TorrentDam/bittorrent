@@ -8,8 +8,14 @@ module.exports = {
   resolve: {
     extensions: ['.js'],
     modules: [
+      __dirname + '/public',
       __dirname + '/node_modules',
       __dirname + '/../out/client/fullOpt/dest'
+    ]
+  },
+  module: {
+    rules: [
+      { test: /\.svg$/, use: ['@svgr/webpack'] }
     ]
   },
   plugins: [
