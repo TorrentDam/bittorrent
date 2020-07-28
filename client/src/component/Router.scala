@@ -42,15 +42,13 @@ object Router {
     case class Search(query: String) extends Route
     case class Torrent(infoHash: InfoHash) extends Route
     case class File(index: Int, torrent: Torrent) extends Route
-    case object Discover extends Route
 
     def fromString(string: String): Option[Route] =
       PartialFunction.condOpt(decode(string)) {
-        case "" => Root
         case s"search/$query" => Search(query)
         case s"torrent/${InfoHash.fromString(infoHash)}/file/${Number(index)}" => File(index, Torrent(infoHash))
         case s"torrent/${InfoHash.fromString(infoHash)}" => Torrent(infoHash)
-        case s"discover" => Discover
+        case _ => Root
       }
 
     def toString(route: Route): String =
@@ -59,7 +57,6 @@ object Router {
         case Search(query) => s"search/$query"
         case Torrent(infoHash) => s"torrent/$infoHash"
         case File(index, Torrent(infoHash)) => s"torrent/$infoHash/file/$index"
-        case Discover => s"discover"
       }
 
     private val Number: PartialFunction[String, Int] = Function.unlift(_.toIntOption)

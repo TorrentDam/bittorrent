@@ -96,13 +96,12 @@ object Handler {
               case Route.Search(query) =>
                 this(value, Action.Search(query))
               case Route.Torrent(infoHash) =>
+                println("Handler navigated to torrent")
                 getTorrent(value, infoHash)
               case Route.File(_, Route.Torrent(infoHash)) =>
                 getTorrent(value, infoHash)
-              case Route.Discover =>
-                send(Command.GetDiscovered())
-                value
               case _ =>
+                send(Command.GetDiscovered())
                 value
             }
           }

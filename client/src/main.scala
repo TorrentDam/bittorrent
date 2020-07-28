@@ -12,9 +12,7 @@ import monix.reactive.subjects.Var
 import monix.execution.Scheduler.Implicits.global
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
 import component.Connect
-import slinky.web.svg.mode
 import logic.WindowTitle
 
 object Main {
@@ -33,7 +31,7 @@ object Main {
       dispatcher <- IO {
         def send(command: Command): Unit = {
           val str = upickle.default.write(command)
-          out.put(str).unsafeRunSync()
+          out.put(str).unsafeRunAsyncAndForget()
         }
         lazy val dispatcher: Dispatcher = {
           val handler = Handler(send, action => dispatcher(action))

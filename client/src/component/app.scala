@@ -62,10 +62,10 @@ object App {
           if (props.model.connected)
             props.model.route.fold[ReactElement](span()) {
               case Router.Route.Root =>
-                Search(None, props.router, props.dispatcher)
+                Search(None, props.model.discovered, props.router, props.dispatcher)
 
               case Router.Route.Search(_) =>
-                Search(props.model.search, props.router, props.dispatcher)
+                Search(props.model.search, None, props.router, props.dispatcher)
 
               case Router.Route.Torrent(_) =>
                 withTorrent(props.model)(torrent => metadata => Torrent(props.router, torrent, metadata))
@@ -74,9 +74,6 @@ object App {
                 withTorrent(props.model)(torrent =>
                   metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                 )
-
-              case Router.Route.Discover =>
-                Discover(props.model.discovered, props.router)
             }
           else
             p(className := classes.centered.toString)("Connecting to server...")

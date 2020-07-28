@@ -3,37 +3,40 @@ package component
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import component.Router.Route
 import logic.Dispatcher
-import logic.model.Root
+import logic.model.{Discovered, Root}
 import logic.SearchApi.SearchResults
 import material_ui.core._
 import material_ui.icons
 import material_ui.styles.makeStyles
 import org.scalajs.dom.Event
-import slinky.core.{FunctionalComponent, SyntheticEvent}
+import slinky.core.{FunctionalComponent}
 import slinky.core.annotations.react
 import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
 
-import scala.scalajs.js.Dynamic
+import scala.scalajs.js.Dynamic.{literal => obj}
 
 @react
 object Search {
-  case class Props(model: Option[Root.Search], router: Router, dispatcher: Dispatcher)
+  case class Props(model: Option[Root.Search], discovered: Option[Discovered], router: Router, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
-    Dynamic.literal(
-      root = Dynamic.literal(
+    obj(
+      root = obj(
         padding = theme.spacing(1),
         display = "flex",
         textAlign = "center",
         marginTop = theme.spacing(4)
       ),
-      input = Dynamic.literal(
+      input = obj(
         marginLeft = theme.spacing(1),
         marginRight = theme.spacing(1),
         flex = 1
       ),
-      notFound = Dynamic.literal(
+      searchContent = obj(
+        marginTop = theme.spacing(4)
+      ),
+      notFound = obj(
         textAlign = "center",
         marginTop = theme.spacing(4)
       )
@@ -44,22 +47,31 @@ object Search {
     val classes = useStyles()
     div(
       SearchBox(props.model.map(_.query).getOrElse(""), props.router, props.dispatcher),
-      for (search <- props.model; results <- search.results)
-        yield {
-          val items = results.results.collect {
-            case SearchResults.Item(title, extractInfoHash(infoHash)) =>
-              (infoHash, title)
-          }
+      div(className := classes.searchContent.toString)(
+        props.model match {
+          case Some(search) =>
+            search.results.map { results =>
+              val items = results.results.collect {
+                case SearchResults.Item(title, extractInfoHash(infoHash)) =>
+                  (infoHash, title)
+              }
 
-          val result: ReactElement =
-            if (items.nonEmpty)
-              Fade(in = true)(
-                TorrentList(items, props.router)
-              )
-            else
-              p(className := classes.notFound.toString)("Nothing discovered yet")
-          result
+              val element: ReactElement =
+                if (items.nonEmpty)
+                  Fade(in = true)(
+                    TorrentList("Search results", items, props.router)
+                  )
+                else
+                  p(className := classes.notFound.toString)("Nothing discovered yet")
+
+              element
+            }
+          case _ =>
+            props.discovered.filter(_.torrents.nonEmpty).map { discovered =>
+              TorrentList("Recent torrents", discovered.torrents, props.router)
+            }
         }
+      )
     )
   }
 
