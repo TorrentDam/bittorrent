@@ -1,6 +1,7 @@
 package component
 
 import component.material_ui.core._
+import component.material_ui.icons
 import component.material_ui.styles.makeStyles
 import logic.Dispatcher
 import logic.model.{Metadata, Root, Torrent => TorrentModel}
@@ -10,7 +11,7 @@ import slinky.core.facade.ReactElement
 import slinky.web.html._
 
 import scala.scalajs.js
-import scala.scalajs.js.Dynamic
+import scala.scalajs.js.Dynamic.{literal => obj}
 import scala.scalajs.js.annotation.JSImport
 
 @react
@@ -18,16 +19,16 @@ object App {
   case class Props(router: Router, model: Root, dispatcher: Dispatcher)
 
   private val useStyles = makeStyles(theme =>
-    Dynamic.literal(
+    obj(
       appBarSpacer = theme.mixins.toolbar,
-      appBarTitle = Dynamic.literal(
+      appBarTitle = obj(
         flexGrow = 1,
         margin = theme.spacing(1)
       ),
-      navLink = Dynamic.literal(
+      navLink = obj(
         margin = theme.spacing(1, 1.5)
       ),
-      centered = Dynamic.literal(
+      centered = obj(
         textAlign = "center"
       )
     )
@@ -39,9 +40,9 @@ object App {
 
   val component = FunctionalComponent[Props] { props =>
     val classes = useStyles()
-    def navLink(href: String, name: String) =
-      Link(href = href, className = classes.navLink.toString, color = "inherit")(name)
-    div(
+
+    div()(
+      CssBaseline(),
       div(className := classes.appBarSpacer.toString),
       AppBar(position = "fixed")(
         Container(maxWidth = "md")(
@@ -50,9 +51,8 @@ object App {
             Link(href = "#", color = "inherit", className = classes.appBarTitle.toString)(
               Typography(variant = "h6")("TorrentDam")
             ),
-            nav(
-              navLink(href = "#discover", "Discover"),
-              navLink(href = "https://github.com/lavrov/bittorrent", "GitHub")
+            IconButton(href = "https://github.com/lavrov/bittorrent")(
+              icons.GitHub()
             )
           )
         )
@@ -64,13 +64,13 @@ object App {
               case Router.Route.Root =>
                 Search(None, props.router, props.dispatcher)
 
-              case Router.Route.Search(name) =>
+              case Router.Route.Search(_) =>
                 Search(props.model.search, props.router, props.dispatcher)
 
-              case torrentRoute: Router.Route.Torrent =>
+              case Router.Route.Torrent(_) =>
                 withTorrent(props.model)(torrent => metadata => Torrent(props.router, torrent, metadata))
 
-              case Router.Route.File(index, torrentRoute) =>
+              case Router.Route.File(index, _) =>
                 withTorrent(props.model)(torrent =>
                   metadata => VideoPlayer(props.router, torrent.infoHash, metadata.files(index), index)
                 )

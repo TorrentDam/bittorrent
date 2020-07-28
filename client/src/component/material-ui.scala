@@ -420,6 +420,11 @@ package icons {
     @JSImport("@material-ui/icons/Search", JSImport.Default) @js.native
     private def jsImport: js.Object = js.native
   }
+  object GitHub extends ExternalComponentNoProps {
+    val component = jsImport
+    @JSImport("@material-ui/icons/GitHub", JSImport.Default) @js.native
+    private def jsImport: js.Object = js.native
+  }
 }
 
 package object styles {
