@@ -3,9 +3,9 @@ package com.github.lavrov.bittorrent.dht.message
 import java.net.{InetAddress, InetSocketAddress}
 
 import cats.implicits._
-import com.github.lavrov.bencode.Bencode
+import com.github.torrentdam.bencode.Bencode
+import com.github.torrentdam.bencode.format._
 import com.github.lavrov.bittorrent.dht.{NodeId, NodeInfo}
-import com.github.lavrov.bencode.format._
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.Codec
 import scodec.bits.ByteVector

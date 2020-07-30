@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent
 
 import verify._
 
-import com.github.lavrov.bencode._
+import com.github.torrentdam.bencode._
 import scodec.bits.{Bases, BitVector, ByteVector}
 import TestUtils.InputStreamExtensions
 

@@ -7,7 +7,7 @@ import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.dht.message.Query
-import com.github.lavrov.bencode.encode
+import com.github.torrentdam.bencode.encode
 import fs2.Stream
 import fs2.concurrent.Queue
 import fs2.io.tcp.SocketGroup
@@ -114,7 +114,7 @@ object Main extends IOApp {
                 case file :: Nil if file.path.nonEmpty => file.path.last
                 case _ => infoHash.bytes.toHex
               }
-              val bytes = com.github.lavrov.bencode.encode(bcode)
+              val bytes = encode(bcode)
               OptionT.liftF(
                 Ok(
                   bytes.toByteArray,

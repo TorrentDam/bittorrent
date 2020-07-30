@@ -1,8 +1,8 @@
 package com.github.lavrov.bittorrent.protocol.extensions
 
 import cats.syntax.all._
-import com.github.lavrov.bencode
-import com.github.lavrov.bencode.format._
+import com.github.torrentdam.bencode
+import com.github.torrentdam.bencode.format._
 import scodec.bits.ByteVector
 
 case class ExtensionHandshake(

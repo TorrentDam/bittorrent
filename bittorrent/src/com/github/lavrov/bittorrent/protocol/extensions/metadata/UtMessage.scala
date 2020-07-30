@@ -2,9 +2,8 @@ package com.github.lavrov.bittorrent.protocol.extensions.metadata
 
 import scodec.bits.ByteVector
 import cats.syntax.all._
-import com.github.lavrov.bencode
-import com.github.lavrov.bencode.BencodeFormatException
-import com.github.lavrov.bencode.format._
+import com.github.torrentdam.bencode
+import com.github.torrentdam.bencode.format._
 
 sealed trait UtMessage
 

@@ -2,9 +2,9 @@ package com.github.lavrov.bittorrent
 
 import java.time.Instant
 
-import com.github.lavrov.bencode
-import com.github.lavrov.bencode.{Bencode, BencodeFormatException}
-import com.github.lavrov.bencode.format._
+import com.github.torrentdam.bencode
+import com.github.torrentdam.bencode.{Bencode, BencodeFormatException}
+import com.github.torrentdam.bencode.format._
 import cats.implicits._
 import scodec.bits.ByteVector
 

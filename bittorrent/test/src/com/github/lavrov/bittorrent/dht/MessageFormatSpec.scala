@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent.dht
 
 import verify._
 
-import com.github.lavrov.bencode.Bencode
+import com.github.torrentdam.bencode.Bencode
 import com.github.lavrov.bittorrent.dht.message.{Message, Query}
 import scodec.bits.ByteVector
 
@@ -27,7 +27,8 @@ object MessageFormatSpec extends BasicTestSuite {
     val expectation = Right(
       Message.QueryMessage(
         ByteVector.fromValidHex("6a76679c"),
-        Query.Ping(NodeId(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267"))))
+        Query.Ping(NodeId(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267")))
+      )
     )
 
     assert(result == expectation)

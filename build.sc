@@ -1,17 +1,12 @@
-import mill._, scalalib._, scalafmt.ScalafmtModule
+import mill._
+import scalalib._
+import scalafmt.ScalafmtModule
 import mill.eval.Result
-import $file.release, release.ReleaseModule
-
-object bencode extends Module {
-  def ivyDeps = Agg(
-    ivy"org.scodec::scodec-core:1.11.4", 
-    ivy"org.typelevel::cats-core:${Versions.cats}",
-  )
-  object test extends TestModule
-}
+import $file.release
+import coursier.maven.MavenRepository
+import release.ReleaseModule
 
 object bittorrent extends Module {
-  def moduleDeps = List(bencode)
   def ivyDeps = Agg(
     ivy"org.typelevel::cats-core:${Versions.cats}",
     ivy"org.typelevel::cats-tagless-macros:0.11",
@@ -23,6 +18,7 @@ object bittorrent extends Module {
     ivy"io.7mind.izumi::logstage-core:${Versions.logstage}",
     ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
     ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
+    ivy"com.github.torrentdam::bencode:${Versions.bencode}",
   )
   object test extends TestModule
 }
@@ -94,7 +90,9 @@ trait Module extends ScalaModule with ScalafmtModule {
     "-language:higherKinds",
     "-Ymacro-annotations",
   )
-
+  def repositories = super.repositories ++ Seq(
+      MavenRepository("https://dl.bintray.com/lavrov/maven")
+  )
   def scalacPluginIvyDeps = Agg(
     ivy"org.typelevel:::kind-projector:0.11.0",
     ivy"com.olegpy::better-monadic-for:0.3.1",
@@ -157,5 +155,6 @@ object Versions {
   val http4s = "0.21.1"
   val monix = "3.2.2"
   val slinky = "0.6.5"
+  val bencode = "0.1.0"
 }
 

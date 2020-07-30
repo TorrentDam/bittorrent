@@ -7,7 +7,7 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.syntax.all._
 import cats.effect.{Async, Concurrent, Resource, Timer}
 import cats.syntax.all._
-import com.github.lavrov.bencode.Bencode
+import com.github.torrentdam.bencode.Bencode
 import com.github.lavrov.bittorrent.dht.RequestResponse.Timeout
 import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import scodec.bits.ByteVector

@@ -5,12 +5,10 @@ import java.net.InetSocketAddress
 import cats._
 import cats.effect.{Concurrent, ContextShift, Resource}
 import cats.syntax.all._
-import com.github.lavrov.bencode.{decode, encode}
+import com.github.torrentdam.bencode.{decode, encode}
 import com.github.lavrov.bittorrent.dht.message.Message
 import fs2.Chunk
 import fs2.io.udp.{Packet, Socket, SocketGroup}
-import scodec.Err
-import scodec.bits.BitVector
 import logstage.LogIO
 
 class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(implicit
