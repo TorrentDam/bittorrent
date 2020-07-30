@@ -51,7 +51,7 @@ object App {
             Link(href = "#", color = "inherit", className = classes.appBarTitle.toString)(
               Typography(variant = "h6")("TorrentDam")
             ),
-            IconButton(href = "https://github.com/lavrov/bittorrent")(
+            IconButton(href = "https://github.com/TorrentDam/bittorrent")(
               icons.GitHub()
             )
           )
