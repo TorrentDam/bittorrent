@@ -202,7 +202,7 @@ object Main extends IOApp {
         torrents <- metadataRegistry.recent
         json <-
           ujson
-            .Arr(
+            .write(
               torrents.map {
                 case (infoHash, metadata) =>
                   ujson.Obj(
@@ -212,7 +212,7 @@ object Main extends IOApp {
               }
             )
             .pure[IO]
-        response <- Ok(json.render())
+        response <- Ok(json)
       } yield response.withContentType(`Content-Type`(MediaType.application.json))
 
     } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData, handleDiscoverTorrents)
