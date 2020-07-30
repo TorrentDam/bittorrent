@@ -5,6 +5,7 @@ import mill.eval.Result
 import $file.release
 import coursier.maven.MavenRepository
 import release.ReleaseModule
+import $ivy.`com.lihaoyi::mill-contrib-bsp:$MILL_VERSION`
 
 object bittorrent extends Module {
   def ivyDeps = Agg(

@@ -8,6 +8,10 @@ Generate idea project:
 ```sh
 $ ./mill mill.scalalib.GenIdea/idea
 ```
+You can open it as BSP projet as well:
+```sh
+$ ./mill mill.contrib.BSP/install
+```
 
 Run tests:
 ```sh

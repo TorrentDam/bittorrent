@@ -4,5 +4,6 @@ logs
 .idea_modules
 .metals
 .bloop
+.bsp
 node_modules
 package-lock.json
