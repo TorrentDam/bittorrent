@@ -4,7 +4,8 @@ import cats.implicits._
 import cats.{Applicative, Monad, MonadError}
 import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, MVar, Ref}
-import com.github.lavrov.bittorrent.{InfoHash, MetaInfo}
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
 import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
 import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
@@ -110,7 +111,7 @@ object ExtensionHandler {
 
   trait UtMetadata[F[_]] {
 
-    def fetch: F[MetaInfo]
+    def fetch: F[Lossless]
   }
 
   object UtMetadata {
@@ -164,7 +165,7 @@ object ExtensionHandler {
     )(implicit F: Sync[F])
         extends UtMetadata[F] {
 
-      def fetch: F[MetaInfo] =
+      def fetch: F[Lossless] =
         Stream
           .range(0, 100)
           .evalMap { index =>
@@ -184,7 +185,7 @@ object ExtensionHandler {
             metadata.digest("SHA-1") == infoHash.bytes
           }
           .flatMap { bytes =>
-            MetaInfo.fromBytes(bytes).liftTo[F]
+              Lossless.fromBytes(bytes).liftTo[F]
           }
     }
   }

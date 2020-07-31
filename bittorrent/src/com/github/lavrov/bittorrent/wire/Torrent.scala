@@ -4,14 +4,14 @@ import cats.effect.concurrent.MVar
 import cats.effect.implicits._
 import cats.effect.{Concurrent, Resource, Timer}
 import cats.implicits._
-import com.github.lavrov.bittorrent.MetaInfo
+import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import logstage.LogIO
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
 
 trait Torrent[F[_]] {
-  def getMetaInfo: MetaInfo
+  def getMetaInfo: Lossless
   def stats: F[Torrent.Stats]
   def piece(index: Int): F[ByteVector]
 }
@@ -19,7 +19,7 @@ trait Torrent[F[_]] {
 object Torrent {
 
   def make[F[_]](
-    metaInfo: MetaInfo,
+    metaInfo: Lossless,
     swarm: Swarm[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] =
     Resource {

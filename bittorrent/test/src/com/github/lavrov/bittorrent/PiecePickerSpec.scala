@@ -15,7 +15,7 @@ object PiecePickerSpec extends BasicTestSuite {
     val torrentFile = TorrentFile.TorrentFileFormat.read(result).toOption.get
     assert(
       PartialFunction.cond(torrentFile.info) {
-        case MetaInfo(metadata @ TorrentMetadata(_, _, _, List(file)), _) =>
+        case TorrentMetadata.Lossless(metadata @ TorrentMetadata(_, _, _, List(file)), _) =>
           val fileSize = file.length
           val queue = PiecePicker.buildQueue(metadata)
           assert(queue.map(_.size).toList.sum == fileSize)

@@ -171,7 +171,7 @@ object Main extends IOApp {
     )
   }
 
-  def readTorrentFile(torrentPath: Path): IO[(InfoHash, MetaInfo)] = {
+  def readTorrentFile(torrentPath: Path): IO[(InfoHash, TorrentMetadata.Lossless)] = {
     for {
       bytes <- IO(BitVector(Files.readAllBytes(torrentPath)))
       bc <- IO.fromEither(decode(bytes))

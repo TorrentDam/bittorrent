@@ -10,17 +10,13 @@ object MessageFormatSpec extends BasicTestSuite {
 
   test("decode ping response") {
     val input = Bencode.BDictionary(
-      Map(
-        "ip" -> Bencode.BString(ByteVector.fromValidHex("1f14bdfa9f21")),
-        "y" -> Bencode.BString("q"),
-        "t" -> Bencode.BString(ByteVector.fromValidHex("6a76679c")),
-        "a" -> Bencode.BDictionary(
-          Map(
-            "id" -> Bencode.BString(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267"))
-          )
-        ),
-        "q" -> Bencode.BString("ping")
-      )
+      "ip" -> Bencode.BString(ByteVector.fromValidHex("1f14bdfa9f21")),
+      "y" -> Bencode.BString("q"),
+      "t" -> Bencode.BString(ByteVector.fromValidHex("6a76679c")),
+      "a" -> Bencode.BDictionary(
+        "id" -> Bencode.BString(ByteVector.fromValidHex("32f54e697351ff4aec29cdbaabf2fbe3467cc267"))
+      ),
+      "q" -> Bencode.BString("ping")
     )
 
     val result = Message.MessageFormat.read(input)

@@ -47,31 +47,30 @@ object TorrentMetadata {
     ).imapN(to)(from)
   }
 
-}
+  case class Lossless private (
+    parsed: TorrentMetadata,
+    raw: Bencode
+  )
 
-case class MetaInfo private (
-  parsed: TorrentMetadata,
-  raw: Bencode
-)
+  object Lossless {
+    def fromBytes(bytes: ByteVector): Either[Throwable, Lossless] =
+      bencode.decode(bytes.bits).flatMap(fromBencode)
 
-object MetaInfo {
-  def fromBytes(bytes: ByteVector): Either[Throwable, MetaInfo] =
-    bencode.decode(bytes.bits).flatMap(fromBencode)
-
-  def fromBencode(bcode: Bencode): Either[BencodeFormatException, MetaInfo] =
-    TorrentMetadata.TorrentMetadataFormat.read(bcode).map { metadata =>
-      MetaInfo(metadata, bcode)
+    def fromBencode(bcode: Bencode): Either[BencodeFormatException, Lossless] =
+      TorrentMetadata.TorrentMetadataFormat.read(bcode).map { metadata =>
+        Lossless(metadata, bcode)
+      }
+    implicit val MetaInfoFormat: BencodeFormat[Lossless] = {
+      BencodeFormat(
+        read = BencodeReader(fromBencode),
+        write = BencodeWriter(metadata => BencodeFormat.BencodeValueFormat.write(metadata.raw))
+      )
     }
-  implicit val MetaInfoFormat: BencodeFormat[MetaInfo] = {
-    BencodeFormat(
-      read = BencodeReader(MetaInfo.fromBencode),
-      write = BencodeWriter(metadata => BencodeFormat.BencodeValueFormat.write(metadata.raw))
-    )
   }
 }
 
 case class TorrentFile(
-  info: MetaInfo,
+  info: TorrentMetadata.Lossless,
   creationDate: Option[Instant]
 )
 
@@ -82,7 +81,7 @@ object TorrentFile {
 
   implicit val TorrentFileFormat: BencodeFormat[TorrentFile] = {
     (
-      field[MetaInfo]("info"),
+      field[TorrentMetadata.Lossless]("info"),
       fieldOptional[Instant]("creationDate")
     ).imapN(TorrentFile(_, _))(v => (v.info, v.creationDate))
   }

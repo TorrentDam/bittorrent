@@ -156,6 +156,6 @@ object Versions {
   val http4s = "0.21.1"
   val monix = "3.2.2"
   val slinky = "0.6.5"
-  val bencode = "0.1.0"
+  val bencode = "0.2.0"
 }
 

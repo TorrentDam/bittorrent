@@ -12,10 +12,8 @@ object TorrentMetadataSpec extends BasicTestSuite {
     val result = TorrentMetadata.FileFormat.write(TorrentMetadata.File(77, "abc" :: Nil))
     val expectation = Right(
       Bencode.BDictionary(
-        Map(
-          "length" -> Bencode.BInteger(77),
-          "path" -> Bencode.BList(Bencode.BString("abc") :: Nil)
-        )
+        "length" -> Bencode.BInteger(77),
+        "path" -> Bencode.BList(Bencode.BString("abc") :: Nil)
       )
     )
     assert(result == expectation)
@@ -37,12 +35,10 @@ object TorrentMetadataSpec extends BasicTestSuite {
 
   test("decode either a or b") {
     val input = Bencode.BDictionary(
-      Map(
-        "name" -> Bencode.BString("file_name"),
-        "piece length" -> Bencode.BInteger(10),
-        "pieces" -> Bencode.BString.Empty,
-        "length" -> Bencode.BInteger(10)
-      )
+      "name" -> Bencode.BString("file_name"),
+      "piece length" -> Bencode.BInteger(10),
+      "pieces" -> Bencode.BString.Empty,
+      "length" -> Bencode.BInteger(10)
     )
 
     assert(
@@ -52,18 +48,14 @@ object TorrentMetadataSpec extends BasicTestSuite {
     )
 
     val input1 = Bencode.BDictionary(
-      Map(
-        "name" -> Bencode.BString("test"),
-        "piece length" -> Bencode.BInteger(10),
-        "pieces" -> Bencode.BString.Empty,
-        "files" -> Bencode.BList(
-          Bencode.BDictionary(
-            Map(
-              "length" -> Bencode.BInteger(10),
-              "path" -> Bencode.BList(Bencode.BString("/root") :: Nil)
-            )
-          ) :: Nil
-        )
+      "name" -> Bencode.BString("test"),
+      "piece length" -> Bencode.BInteger(10),
+      "pieces" -> Bencode.BString.Empty,
+      "files" -> Bencode.BList(
+        Bencode.BDictionary(
+          "length" -> Bencode.BInteger(10),
+          "path" -> Bencode.BList(Bencode.BString("/root") :: Nil)
+        ) :: Nil
       )
     )
 
@@ -76,12 +68,10 @@ object TorrentMetadataSpec extends BasicTestSuite {
 
   test("decode dictionary") {
     val input = Bencode.BDictionary(
-      Map(
-        "name" -> Bencode.BString("file_name"),
-        "piece length" -> Bencode.BInteger(10),
-        "pieces" -> Bencode.BString(ByteVector(10)),
-        "length" -> Bencode.BInteger(10)
-      )
+      "name" -> Bencode.BString("file_name"),
+      "piece length" -> Bencode.BInteger(10),
+      "pieces" -> Bencode.BString(ByteVector(10)),
+      "length" -> Bencode.BInteger(10)
     )
 
     assert(
@@ -101,7 +91,7 @@ object TorrentMetadataSpec extends BasicTestSuite {
     )
     assert(
       decode(BitVector.encodeAscii("d1:ai6ee").right.get) == Right(
-        Bencode.BDictionary(Map("a" -> Bencode.BInteger(6)))
+        Bencode.BDictionary("a" -> Bencode.BInteger(6))
       )
     )
     val source = getClass.getClassLoader

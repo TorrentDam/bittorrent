@@ -1,23 +1,23 @@
 import cats.implicits._
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import com.github.lavrov.bittorrent.MetaInfo
+import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 
 import scala.collection.immutable.ListMap
 
 trait MetadataRegistry[F[_]] {
 
-  def recent: F[Iterable[(InfoHash, MetaInfo)]]
+  def recent: F[Iterable[(InfoHash, Lossless)]]
 
-  def get(infoHash: InfoHash): F[Option[MetaInfo]]
+  def get(infoHash: InfoHash): F[Option[Lossless]]
 
-  def put(infoHash: InfoHash, metaInfo: MetaInfo): F[Unit]
+  def put(infoHash: InfoHash, metaInfo: Lossless): F[Unit]
 }
 
 object MetadataRegistry {
 
-  type State = ListMap[InfoHash, MetaInfo]
+  type State = ListMap[InfoHash, Lossless]
   object State {
     val empty: State = ListMap.empty
   }
@@ -29,13 +29,13 @@ object MetadataRegistry {
 
       new MetadataRegistry[F] {
 
-        def recent: F[Iterable[(InfoHash, MetaInfo)]] =
+        def recent: F[Iterable[(InfoHash, Lossless)]] =
           ref.get.widen
 
-        def get(infoHash: InfoHash): F[Option[MetaInfo]] =
+        def get(infoHash: InfoHash): F[Option[Lossless]] =
           ref.get.map(_.get(infoHash))
 
-        def put(infoHash: InfoHash, metaInfo: MetaInfo): F[Unit] =
+        def put(infoHash: InfoHash, metaInfo: Lossless): F[Unit] =
           ref
             .update { map =>
               map.updated(infoHash, metaInfo)

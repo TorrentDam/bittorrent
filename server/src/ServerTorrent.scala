@@ -6,7 +6,8 @@ import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, Concurrent, ContextShift, IO, Resource, Timer}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.wire.{DownloadMetadata, Swarm, Torrent}
-import com.github.lavrov.bittorrent.{FileMapping, MetaInfo}
+import com.github.lavrov.bittorrent.FileMapping
+import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
 import fs2.concurrent.Signal
 import logstage.LogIO
@@ -15,7 +16,7 @@ trait ServerTorrent {
   def files: FileMapping
   def stats: IO[ServerTorrent.Stats]
   def piece(index: Int): IO[Stream[IO, Byte]]
-  def metadata: MetaInfo
+  def metadata: Lossless
 }
 
 object ServerTorrent {
@@ -113,7 +114,7 @@ object ServerTorrent {
             }
           )
         def piece(index: Int): IO[Stream[IO, Byte]] = multiplexer.get(index)
-        def metadata: MetaInfo = torrent.getMetaInfo
+        def metadata: Lossless = torrent.getMetaInfo
       }
     }
   }
