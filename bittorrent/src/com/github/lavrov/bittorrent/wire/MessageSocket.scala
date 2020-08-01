@@ -8,6 +8,7 @@ import cats.effect.{Concurrent, ContextShift, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent._
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
+import com.github.lavrov.bittorrent.wire.MessageSocket.{MaxMessageSize, OversizedMessage}
 import fs2.Chunk
 import fs2.io.tcp.Socket
 import logstage.LogIO
@@ -39,9 +40,14 @@ class MessageSocket[F[_]](
     for {
       bytes <- readExactlyN(4)
       size <-
-        F fromTry Message.MessageSizeCodec
+        Message.MessageSizeCodec
           .decodeValue(bytes.toBitVector)
           .toTry
+          .liftTo[F]
+      _ <- F.whenA(size > MaxMessageSize)(
+        logger.error(s"Oversized payload $size $MaxMessageSize") >>
+        OversizedMessage(size, MaxMessageSize).raiseError
+      )
       bytes <- readExactlyN(size.toInt)
       message <- F.fromTry(
         Message.MessageBodyCodec
@@ -64,6 +70,8 @@ class MessageSocket[F[_]](
 
 object MessageSocket {
   import fs2.io.tcp.SocketGroup
+
+  val MaxMessageSize: Long = 1024 * 1024 // 1MB
 
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
     F: Concurrent[F],
@@ -123,4 +131,5 @@ object MessageSocket {
   }
 
   case class Error(message: String, cause: Throwable = null) extends Exception(message, cause)
+  case class OversizedMessage(size: Long, maxSize: Long) extends Throwable(s"Oversized message [$size > $maxSize]")
 }
