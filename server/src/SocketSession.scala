@@ -87,6 +87,24 @@ object SocketSession {
                 }
                 .pure[IO]
             _ <- send(Event.Discovered(torrents))
+            _ <- metadataRegistry
+              .subscribe
+              .chunks
+              .evalTap { chunk =>
+                val event =
+                  Event.Discovered(
+                    chunk
+                      .toIterable
+                      .map {
+                        case (infoHash, metadata) => (infoHash, metadata.parsed.name)
+                      }
+                  )
+                send(event)
+              }
+              .interruptWhen(closed.attempt)
+              .compile
+              .drain
+              .start
           } yield {}
       }
 

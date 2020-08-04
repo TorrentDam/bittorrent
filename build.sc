@@ -147,7 +147,7 @@ trait NativeImageModule extends ScalaModule {
 
 object Versions {
   val cats = "2.2.0-RC1"
-  val `cats-effect` = "2.1.3"
+  val `cats-effect` = "2.2.0-RC3"
   val fs2 = "2.4.2"
   val monocle = "2.0.0"
   val logstage = "0.10.2"

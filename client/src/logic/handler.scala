@@ -1,5 +1,6 @@
 package logic
 
+import cats.implicits._
 import logic.model._
 import com.github.lavrov.bittorrent.app.domain.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
@@ -78,7 +79,13 @@ object Handler {
 
             case Event.Discovered(torrents) =>
               model.copy(
-                discovered = Some(Discovered(torrents.toList))
+                discovered =
+                  model
+                    .discovered
+                    .fold(Discovered(torrents.toList)){ discovered =>
+                      discovered.copy(torrents = torrents.toList ++ discovered.torrents)
+                    }
+                    .some
               )
 
             case Event.TorrentStats(infoHash, connected, availability)
@@ -101,8 +108,13 @@ object Handler {
               case Route.File(_, Route.Torrent(infoHash)) =>
                 getTorrent(value, infoHash)
               case _ =>
-                send(Command.GetDiscovered())
-                value
+                if (value.discovered.isEmpty) {
+                  send(Command.GetDiscovered())
+                  value.copy(discovered = Discovered(List.empty).some)
+                }
+                else {
+                  value
+                }
             }
           }
       }
