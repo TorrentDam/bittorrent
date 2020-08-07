@@ -13,8 +13,6 @@ import logstage.LogIO
 
 trait Node[F[_]] {
 
-  def routingTable: RoutingTable[F]
-
   def client: Client[F]
 }
 
@@ -33,14 +31,13 @@ object Node {
     for {
       routingTable <- Resource.liftF { RoutingTable(selfId) }
       queryHandler = QueryHandler(selfId, routingTable)
-      node <- Node(selfId, port, queryHandler, routingTable)
+      node <- Node(selfId, port, queryHandler)
     } yield node
 
   def apply[F[_]](
     selfId: NodeId,
     port: Int,
     queryHandler: QueryHandler[F],
-    routingTable: RoutingTable[F]
   )(implicit
     F: Concurrent[F],
     timer: Timer[F],
@@ -62,7 +59,7 @@ object Node {
               .flatMap {
                 case (a, m: Message.QueryMessage) =>
                   logger.debug(s"Received $m") >>
-                  queryHandler(m.query).flatMap { response =>
+                  queryHandler(a, m.query).flatMap { response =>
                     val responseMessage = Message.ResponseMessage(m.transactionId, response)
                     logger.debug(s"Responding with $responseMessage") >>
                     messageSocket.writeMessage(a, responseMessage)
@@ -77,34 +74,9 @@ object Node {
               .foreverM
               .start
           )(_.cancel)
-      _ <- Resource.liftF {
-        NodeBootstrap(client0).flatMap { nodeInfo =>
-          logger.info(s"Bootstrapped with $nodeInfo") >>
-          routingTable.insert(nodeInfo)
-        }
-      }
-      routingTable0 = routingTable
     } yield new Node[F] {
 
-      def routingTable: RoutingTable[F] = routingTable0
-
-      def client: Client[F] =
-        new Client[F] {
-
-          def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): F[Either[Response.Nodes, Response.Peers]] =
-            client0
-              .getPeers(nodeInfo, infoHash)
-              .flatTap { response =>
-                routingTable.insert(nodeInfo)
-              }
-
-          def ping(address: InetSocketAddress): F[Response.Ping] =
-            client0
-              .ping(address)
-              .flatTap { response =>
-                routingTable.insert(NodeInfo(response.id, address))
-              }
-        }
+      def client: Client[F] = client0
     }
   }
 

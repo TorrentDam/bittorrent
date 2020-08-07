@@ -14,7 +14,11 @@ import scala.util.Random
 import logstage.LogIO
 
 trait Client[F[_]] {
+
   def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): F[Either[Response.Nodes, Response.Peers]]
+
+  def findNodes(nodeInfo: NodeInfo): F[Response.Nodes]
+
   def ping(address: InetSocketAddress): F[Response.Ping]
 }
 
@@ -50,6 +54,12 @@ object Client {
         requestResponse.sendQuery(nodeInfo.address, Query.GetPeers(selfId, infoHash)).flatMap {
           case nodes: Response.Nodes => nodes.asLeft.pure
           case peers: Response.Peers => peers.asRight.pure
+          case _ => Concurrent[F].raiseError(InvalidResponse())
+        }
+
+      def findNodes(nodeInfo: NodeInfo): F[Response.Nodes] =
+        requestResponse.sendQuery(nodeInfo.address, Query.FindNode(selfId, nodeInfo.id)).flatMap {
+          case nodes: Response.Nodes => nodes.pure
           case _ => Concurrent[F].raiseError(InvalidResponse())
         }
 

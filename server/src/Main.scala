@@ -2,7 +2,7 @@ import Routes.FileIndex
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable}
+import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
 import com.github.lavrov.bittorrent.app.domain.InfoHash
@@ -14,14 +14,7 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{
-  `Accept-Ranges`,
-  `Content-Disposition`,
-  `Content-Length`,
-  `Content-Range`,
-  `Content-Type`,
-  Range
-}
+import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
 import sun.misc.Signal
@@ -59,28 +52,29 @@ object Main extends IOApp {
       implicit0(socketGroup: SocketGroup) <- SocketGroup[IO](blocker)
       udpSocketGroup <- UdpSocketGroup[IO](blocker)
       getPeerRequests <- Resource.liftF { Queue.unbounded[IO, com.github.lavrov.bittorrent.InfoHash] }
-      dhtNode <- {
+      (routingTable, dhtNode) <- {
         implicit val ev0 = udpSocketGroup
         for {
           routingTable <- Resource.liftF { RoutingTable[IO](selfNodeId) }
           queryHandler <- QueryHandler(selfNodeId, routingTable).pure[Resource[IO, *]]
           queryHandler <-
             QueryHandler
-              .fromFunction[IO] { query =>
+              .fromFunction[IO] { (address, query) =>
                 val registerInfoHash = query match {
                   case Query.GetPeers(_, infoHash) =>
                     getPeerRequests.enqueue1(infoHash)
                   case _ => IO.unit
                 }
-                queryHandler(query).flatTap { _ =>
-                  registerInfoHash
+                queryHandler(address, query).flatTap { _ =>
+                  registerInfoHash >> routingTable.insert(NodeInfo(query.queryingNodeId, address))
                 }
               }
               .pure[Resource[IO, *]]
-          node <- Node[IO](selfNodeId, 9596, queryHandler, routingTable)
-        } yield node
+          node <- Node[IO](selfNodeId, 9596, queryHandler)
+          _ <- Resource.liftF { RoutingTableBootstrap.seedNode(routingTable, node.client) }
+        } yield (routingTable, node)
       }
-      peerDiscovery <- PeerDiscovery.make[IO](dhtNode)
+      peerDiscovery <- PeerDiscovery.make[IO](routingTable, dhtNode.client)
       metadataRegistry <- MetadataRegistry[IO]().to[Resource[IO, *]]
       _ <- MetadataDiscovery(
         getPeerRequests.dequeue,

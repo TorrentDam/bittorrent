@@ -16,7 +16,8 @@ trait PeerDiscovery[F[_]] {
 object PeerDiscovery {
 
   def make[F[_]](
-    node: Node[F]
+    routingTable: RoutingTable[F],
+    dhtClient: Client[F]
   )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] =
     Resource.pure[F, PeerDiscovery[F]] {
 
@@ -30,7 +31,7 @@ object PeerDiscovery {
             .eval {
               for {
                 _ <- logger.info("Start discovery")
-                initialNodes <- node.routingTable.findNodes(NodeId(infoHash.bytes))
+                initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
                 initialNodes <- initialNodes.take(100).toList.pure[F]
                 _ <- logger.info(s"Got ${initialNodes.size} from routing table")
                 tvar <- TVar.of(State(initialNodes)).commit[F]
@@ -61,7 +62,7 @@ object PeerDiscovery {
                   next,
                   update,
                   filter,
-                  node.client.getPeers,
+                  dhtClient.getPeers,
                   logger
                 )
               }
