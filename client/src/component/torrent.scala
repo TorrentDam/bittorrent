@@ -10,6 +10,7 @@ import squants.Percent
 import squants.experimental.formatter.Formatters.InformationMetricFormatter
 
 import scala.scalajs.js
+import scala.math.Ordering.Implicits._
 
 @react
 object Torrent {
@@ -35,7 +36,7 @@ object Torrent {
     handleClick: Int => () => Unit
   ): ReactElement =
     MUIList(
-      for ((file, index) <- metadata.files.zipWithIndex)
+      for ((file, index) <- metadata.files.sortBy(_.path).zipWithIndex)
         yield {
           ListItem(button = true)(
             key := s"file-$index",
