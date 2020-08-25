@@ -17,7 +17,7 @@ jobs:
 
     - uses: olafurpg/setup-scala@v7
       with:
-        java-version: graalvm-ce-java11@20.2.0
+        java-version: graalvm-ce-java11@20.1.0
 
     - name: Build jar
       run: ./mill server.assembly

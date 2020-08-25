@@ -143,7 +143,7 @@ object TorrentRegistry {
     private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
       logger: LogIO[IO]
     ): IO[Unit] = {
-      val idleTimeout = 5.minutes
+      val idleTimeout = 30.minutes
       val waitAndTry =
         logger.debug(s"Schedule torrent closure in $idleTimeout") >>
         timer.sleep(idleTimeout) >>
