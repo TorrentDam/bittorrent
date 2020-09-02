@@ -36,7 +36,7 @@ object Torrent {
     handleClick: Int => () => Unit
   ): ReactElement =
     MUIList(
-      for ((file, index) <- metadata.files.sortBy(_.path).zipWithIndex)
+      for ((file, index) <- metadata.files.zipWithIndex.sortBy(_._1.path))
         yield {
           ListItem(button = true)(
             key := s"file-$index",
