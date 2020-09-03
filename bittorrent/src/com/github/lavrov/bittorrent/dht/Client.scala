@@ -32,7 +32,7 @@ object Client {
   def apply[F[_]](
     selfId: NodeId,
     sendQueryMessage: (InetSocketAddress, Message.QueryMessage) => F[Unit],
-    responses: Queue[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
+    receiveResponse: F[(InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
   )(implicit
     F: Concurrent[F],
     timer: Timer[F],
@@ -43,7 +43,7 @@ object Client {
       requestResponse <- RequestResponse.make(
         generateTransactionId,
         sendQueryMessage,
-        responses.dequeue1
+        receiveResponse
       )
     } yield new Client[F] {
 

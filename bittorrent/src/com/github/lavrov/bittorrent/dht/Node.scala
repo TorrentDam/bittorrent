@@ -20,22 +20,6 @@ object Node {
 
   def apply[F[_]](
     selfId: NodeId,
-    port: Int
-  )(implicit
-    F: Concurrent[F],
-    timer: Timer[F],
-    cs: ContextShift[F],
-    socketGroup: SocketGroup,
-    logger: LogIO[F]
-  ): Resource[F, Node[F]] =
-    for {
-      routingTable <- Resource.liftF { RoutingTable(selfId) }
-      queryHandler = QueryHandler(selfId, routingTable)
-      node <- Node(selfId, port, queryHandler)
-    } yield node
-
-  def apply[F[_]](
-    selfId: NodeId,
     port: Int,
     queryHandler: QueryHandler[F],
   )(implicit
@@ -51,7 +35,7 @@ object Node {
         Queue
           .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
-      client0 <- Client(selfId, messageSocket.writeMessage, responses)
+      client0 <- Client(selfId, messageSocket.writeMessage, responses.dequeue1)
       _ <-
         Resource
           .make(

@@ -12,14 +12,18 @@ trait QueryHandler[F[_]] {
 
 object QueryHandler {
 
-  def apply[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] = { (_, query) =>
+  def apply[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] = { (address, query) =>
     query match {
-      case Query.Ping(_) => (Response.Ping(selfId): Response).pure[F]
-      case Query.FindNode(_, target) =>
+      case Query.Ping(nodeId) =>
+        routingTable.insert(NodeInfo(nodeId, address)) >>
+        (Response.Ping(selfId): Response).pure[F]
+      case Query.FindNode(nodeId, target) =>
+        routingTable.insert(NodeInfo(nodeId, address)) >>
         routingTable.findBucket(target).map { nodes =>
           Response.Nodes(selfId, nodes): Response
         }
-      case Query.GetPeers(_, infoHash) =>
+      case Query.GetPeers(nodeId, infoHash) =>
+        routingTable.insert(NodeInfo(nodeId, address)) >>
         routingTable.findBucket(NodeId(infoHash.bytes)).map { nodes =>
           Response.Nodes(selfId, nodes): Response
         }

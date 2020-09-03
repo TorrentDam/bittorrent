@@ -51,7 +51,7 @@ object MetadataDiscovery {
                   case Right(_) =>
                     logger.info(s"Connected to $peerInfo")
                   case Left(e) =>
-                    logger.error(s"Could not connect ${e.getMessage}")
+                    IO.unit
                 }
             }
             .collect { case Right(connection) => connection }
@@ -70,7 +70,7 @@ object MetadataDiscovery {
                 logger.info(s"Metadata discovered $metadata") >>
                 metadataRegistry.put(domain.InfoHash(infoHash.bytes), metadata)
               case Left(e) =>
-                logger.error(s"Could download metadata: $e")
+                logger.error(s"Could download metadata $infoHash")
             }
         }
         .compile

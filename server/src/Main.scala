@@ -50,34 +50,20 @@ object Main extends IOApp {
     for {
       implicit0(blocker: Blocker) <- Blocker[IO]
       implicit0(socketGroup: SocketGroup) <- SocketGroup[IO](blocker)
-      udpSocketGroup <- UdpSocketGroup[IO](blocker)
-      getPeerRequests <- Resource.liftF { Queue.unbounded[IO, com.github.lavrov.bittorrent.InfoHash] }
-      (routingTable, dhtNode) <- {
-        implicit val ev0 = udpSocketGroup
+      implicit0(udpSocketGroup: UdpSocketGroup) <- UdpSocketGroup[IO](blocker)
+      (routingTable, dhtNode, seedNode) <- {
         for {
           routingTable <- Resource.liftF { RoutingTable[IO](selfNodeId) }
           queryHandler <- QueryHandler(selfNodeId, routingTable).pure[Resource[IO, *]]
-          queryHandler <-
-            QueryHandler
-              .fromFunction[IO] { (address, query) =>
-                val registerInfoHash = query match {
-                  case Query.GetPeers(_, infoHash) =>
-                    getPeerRequests.enqueue1(infoHash)
-                  case _ => IO.unit
-                }
-                queryHandler(address, query).flatTap { _ =>
-                  registerInfoHash >> routingTable.insert(NodeInfo(query.queryingNodeId, address))
-                }
-              }
-              .pure[Resource[IO, *]]
           node <- Node[IO](selfNodeId, 9596, queryHandler)
-          _ <- Resource.liftF { RoutingTableBootstrap.seedNode(routingTable, node.client) }
-        } yield (routingTable, node)
+          seedNode <- RoutingTableBootstrap.resolveSeedNode(node.client).to[Resource[IO, *]]
+          _ <- routingTable.insert(seedNode).to[Resource[IO, *]]
+        } yield (routingTable, node, seedNode)
       }
       peerDiscovery <- PeerDiscovery.make[IO](routingTable, dhtNode.client)
       metadataRegistry <- MetadataRegistry[IO]().to[Resource[IO, *]]
       _ <- MetadataDiscovery(
-        getPeerRequests.dequeue,
+        DhtPool.fishForInfoHashes(seedNode),
         peerDiscovery,
         (infoHash, peerInfo) => Connection.connect[IO](selfId, peerInfo, infoHash),
         metadataRegistry
