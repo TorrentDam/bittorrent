@@ -5,6 +5,7 @@ import java.net.InetSocketAddress
 import cats.implicits._
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
+import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.ListMap
@@ -16,6 +17,10 @@ trait RoutingTable[F[_]] {
   def findNodes(nodeId: NodeId): F[Iterable[NodeInfo]]
 
   def findBucket(nodeId: NodeId): F[List[NodeInfo]]
+
+  def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): F[Unit]
+
+  def findPeers(infoHash: InfoHash): F[Option[Iterable[PeerInfo]]]
 }
 
 object RoutingTable {
@@ -111,6 +116,7 @@ object RoutingTable {
   def apply[F[_]: Sync](selfId: NodeId): F[RoutingTable[F]] =
     for {
       treeNodeRef <- Ref.of(TreeNode.empty)
+      peers <- Ref.of(Map.empty[InfoHash, Set[PeerInfo]])
     } yield new RoutingTable[F] {
 
       def insert(node: NodeInfo): F[Unit] =
@@ -121,6 +127,17 @@ object RoutingTable {
 
       def findBucket(nodeId: NodeId): F[List[NodeInfo]] =
         treeNodeRef.get.map(_.findBucket(nodeId).nodes.map(NodeInfo.tupled).toList)
+
+      def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): F[Unit] =
+        peers.update { map =>
+          map.updatedWith(infoHash) {
+            case Some(set) => Some(set + peerInfo)
+            case None => Some(Set(peerInfo))
+          }
+        }
+
+      def findPeers(infoHash: InfoHash): F[Option[Iterable[PeerInfo]]] =
+        peers.get.map(_.get(infoHash))
     }
 
 }

@@ -39,17 +39,25 @@ object Message {
     )
   ).imap(Query.GetPeers.tupled)(v => (v.queryingNodeId, v.infoHash))
 
+  val AnnouncePeerQueryFormat: BencodeFormat[Query.AnnouncePeer] = (
+    field[(NodeId, InfoHash, Long)]("a")(
+      (field[NodeId]("id"), field[InfoHash]("info_hash"), field[Long]("port")).tupled
+    )
+    ).imap(Query.AnnouncePeer.tupled)(v => (v.queryingNodeId, v.infoHash, v.port))
+
   val QueryFormat: BencodeFormat[Query] =
     field[String]("q").choose(
       {
         case "ping" => PingQueryFormat.upcast
         case "find_node" => FindNodeQueryFormat.upcast
         case "get_peers" => GetPeersQueryFormat.upcast
+        case "announce_peer" => AnnouncePeerQueryFormat.upcast
       },
       {
         case _: Query.Ping => "ping"
         case _: Query.FindNode => "find_node"
         case _: Query.GetPeers => "get_peers"
+        case _: Query.AnnouncePeer => "announce_peer"
       }
     )
 
@@ -148,6 +156,7 @@ object Query {
   final case class Ping(queryingNodeId: NodeId) extends Query
   final case class FindNode(queryingNodeId: NodeId, target: NodeId) extends Query
   final case class GetPeers(queryingNodeId: NodeId, infoHash: InfoHash) extends Query
+  final case class AnnouncePeer(queryingNodeId: NodeId, infoHash: InfoHash, port: Long) extends Query
 }
 
 sealed trait Response
