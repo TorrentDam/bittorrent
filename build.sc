@@ -12,8 +12,7 @@ object bittorrent extends Module {
     ivy"org.typelevel::cats-core:${Versions.cats}",
     ivy"org.typelevel::cats-tagless-macros:0.11",
     ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
-    ivy"org.typelevel::cats-mtl-core:0.7.1",
-    ivy"com.olegpy::meow-mtl-effects:0.4.0",
+    ivy"org.typelevel::cats-mtl:${Versions.`cats-mtl`}",
     ivy"io.github.timwspence::cats-stm:0.5.0",
     ivy"co.fs2::fs2-io:${Versions.fs2}",
     ivy"io.7mind.izumi::logstage-core:${Versions.logstage}",
@@ -146,8 +145,9 @@ trait NativeImageModule extends ScalaModule {
 }
 
 object Versions {
-  val cats = "2.2.0-RC1"
-  val `cats-effect` = "2.2.0-RC3"
+  val cats = "2.2.0"
+  val `cats-effect` = "2.2.0"
+  val `cats-mtl` = "1.0.0"
   val fs2 = "2.4.2"
   val monocle = "2.0.0"
   val logstage = "0.10.2"
