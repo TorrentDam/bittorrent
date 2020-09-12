@@ -43,7 +43,7 @@ jobs:
         NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
         NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
 
-  client:
+  webapp:
     runs-on: ubuntu-latest
     steps:
 
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/cache@v1
         id: npm-cache
         with:
-          path: client/node_modules
+          path: webapp/node_modules
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package.json') }}
 
       - uses: olafurpg/setup-scala@v7
@@ -67,15 +67,15 @@ jobs:
       - name: Install npm dependencies
         if: steps.npm-cache.outputs.cache-hit != 'true'
         run: npm install
-        working-directory: ./client
+        working-directory: ./webapp
 
-      - name: Build client
-        run: ./mill client.package
+      - name: Build webapp
+        run: ./mill webapp.package
 
-      - name: Deploy client
+      - name: Deploy webapp
         uses: peaceiris/actions-gh-pages@v3.6.4
         with:
           deploy_key: ${{ secrets.GH_PAGES_DEPLOY_KEY }}
           external_repository: TorrentDam/TorrentDam.github.io
           publish_branch: gh-pages
-          publish_dir: ./out/client/package/dest
+          publish_dir: ./out/webapp/package/dest
