@@ -56,7 +56,7 @@ object server extends Module with NativeImageModule {
   )
 }
 
-object client extends JsModule {
+object webapp extends JsModule {
   def moduleDeps = List(shared.js)
   def ivyDeps = Agg(
     ivy"me.shadaj::slinky-web::${Versions.slinky}",

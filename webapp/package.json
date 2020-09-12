@@ -3,7 +3,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev-server": "webpack-dev-server --config ./webpack.dev.config.js --mode development",
+    "start": "webpack-dev-server --config ./webpack.dev.config.js --mode development",
     "package": "webpack --config ./webpack.prod.config.js --mode production"
   },
   "keywords": [],

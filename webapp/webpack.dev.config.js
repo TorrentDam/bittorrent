@@ -10,7 +10,7 @@ module.exports = {
     modules: [
       __dirname + '/node_modules',
       __dirname + '/public',
-      __dirname + '/../out/client/compileJs/dest'
+      __dirname + '/../out/webapp/compileJs/dest'
     ],
     alias: {
       'react-dom': '@hot-loader/react-dom',
@@ -23,7 +23,7 @@ module.exports = {
     ]
   },
   output: {
-    path: __dirname + '/../out/client/webpack/dest',
+    path: __dirname + '/../out/webapp/webpack/dest',
     publicPath: '/',
     filename: 'bundle.js'
   },

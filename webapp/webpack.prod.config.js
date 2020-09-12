@@ -10,7 +10,7 @@ module.exports = {
     modules: [
       __dirname + '/public',
       __dirname + '/node_modules',
-      __dirname + '/../out/client/fullOpt/dest'
+      __dirname + '/../out/webapp/fullOpt/dest'
     ]
   },
   module: {

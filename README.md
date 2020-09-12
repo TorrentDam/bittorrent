@@ -20,13 +20,13 @@ $ ./mill _.test
 
 Client requires [npm](https://www.npmjs.com/)
 ```sh
-$ ./mill -w client.compileJs
+$ ./mill -w webapp.compileJs
 ```
 Run in another terminal
 ```sh
-$ cd client
+$ cd webapp
 $ npm install
-$ npm run dev-server
+$ npm start
 ```
 Then open http://localhost:8080. Changes will refresh page automatically.
 
