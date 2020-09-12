@@ -1,13 +1,11 @@
 package com.github.lavrov.bittorrent.protocol.message
 
-import verify._
-
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import scodec.bits.ByteVector
 
 import scala.util.chaining._
 
-object HandshakeSpec extends BasicTestSuite {
+class HandshakeSpec extends munit.FunSuite {
 
   test("read and write protocol extension bit") {
     val message =

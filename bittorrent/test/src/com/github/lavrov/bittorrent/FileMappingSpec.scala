@@ -1,11 +1,10 @@
 package com.github.lavrov.bittorrent
 
 import scodec.bits.ByteVector
-import verify.BasicTestSuite
 import TorrentMetadata.File
 import FileMapping.Span
 
-object FileMappingSpec extends BasicTestSuite {
+class FileMappingSpec extends munit.FunSuite {
 
   test("all files in one piece") {
     val metadata = TorrentMetadata(

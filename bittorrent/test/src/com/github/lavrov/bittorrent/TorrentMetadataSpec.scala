@@ -1,12 +1,10 @@
 package com.github.lavrov.bittorrent
 
-import verify._
-
 import com.github.torrentdam.bencode._
 import scodec.bits.{Bases, BitVector, ByteVector}
 import TestUtils.InputStreamExtensions
 
-object TorrentMetadataSpec extends BasicTestSuite {
+class TorrentMetadataSpec extends munit.FunSuite {
 
   test("encode file class") {
     val result = TorrentMetadata.FileFormat.write(TorrentMetadata.File(77, "abc" :: Nil))

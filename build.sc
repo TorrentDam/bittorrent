@@ -99,9 +99,11 @@ trait Module extends ScalaModule with ScalafmtModule {
   )
   trait TestModule extends Tests {
     def ivyDeps = Agg(
-      ivy"com.eed3si9n.verify::verify:0.2.0",
+      ivy"org.scalameta::munit:0.7.12",
     )
-    def testFrameworks = Seq("verify.runner.Framework")
+    def testFrameworks = Seq(
+      "munit.Framework"
+    )
   }
 }
 

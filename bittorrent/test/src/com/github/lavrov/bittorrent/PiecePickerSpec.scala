@@ -5,7 +5,7 @@ import com.github.lavrov.bittorrent.TestUtils._
 import com.github.lavrov.bittorrent.wire.PiecePicker
 import verify._
 
-object PiecePickerSpec extends BasicTestSuite {
+class PiecePickerSpec extends munit.FunSuite {
 
   test("build request queue from torrent metadata") {
     val source = getClass.getClassLoader

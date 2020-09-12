@@ -1,7 +1,5 @@
 package com.github.lavrov.bittorrent.dht
 
-import verify._
-
 import cats.effect.SyncIO
 import cats.effect.concurrent.Ref
 import com.github.lavrov.bittorrent.PeerInfo
@@ -10,8 +8,7 @@ import scodec.bits.ByteVector
 import com.github.lavrov.bittorrent.dht.message.Response
 import java.net.InetSocketAddress
 
-
-class PeerDiscoverySpec extends BasicTestSuite {
+class PeerDiscoverySpec extends munit.FunSuite {
 
   test("discover new peers") {
     type F[A] = SyncIO[A]

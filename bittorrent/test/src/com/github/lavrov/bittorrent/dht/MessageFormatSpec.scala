@@ -1,12 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
 import com.github.lavrov.bittorrent.InfoHash
-import verify._
 import com.github.torrentdam.bencode.Bencode
 import com.github.lavrov.bittorrent.dht.message.{Message, Query}
 import scodec.bits.ByteVector
 
-object MessageFormatSpec extends BasicTestSuite {
+class MessageFormatSpec extends munit.FunSuite {
 
   test("decode ping response") {
     val input = Bencode.BDictionary(
