@@ -3,8 +3,8 @@ import cats.implicits._
 import cats.effect.implicits._
 import cats.effect.Concurrent
 import cats.effect.concurrent.Ref
+import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
-import com.github.lavrov.bittorrent.app.domain.InfoHash
 import fs2.Stream
 import fs2.concurrent.Topic
 

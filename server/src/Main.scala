@@ -4,9 +4,7 @@ import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
-import com.github.lavrov.bittorrent.{FileMapping, PeerId, TorrentFile, InfoHash => BTInfoHash}
-import com.github.lavrov.bittorrent.app.domain.InfoHash
-import com.github.lavrov.bittorrent.dht.message.Query
+import com.github.lavrov.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
 import com.github.torrentdam.bencode.encode
 import fs2.Stream
 import fs2.concurrent.Queue
@@ -70,8 +68,8 @@ object Main extends IOApp {
       ).background
       createSwarm = (infoHash: InfoHash) => {
         Swarm[IO](
-          peerDiscovery.discover(BTInfoHash(infoHash.bytes)),
-          peerInfo => Connection.connect[IO](selfId, peerInfo, BTInfoHash(infoHash.bytes)),
+          peerDiscovery.discover(infoHash),
+          peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
           30
         )
       }

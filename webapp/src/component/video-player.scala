@@ -1,6 +1,6 @@
 package component
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import component.material_ui.icons
 import component.material_ui.core._
 import logic.model.Metadata

@@ -2,7 +2,7 @@ package logic
 
 import cats.implicits._
 import logic.model._
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import component.Router.Route
 import squants.information

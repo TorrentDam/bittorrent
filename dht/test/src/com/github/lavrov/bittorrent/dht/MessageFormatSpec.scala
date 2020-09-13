@@ -2,7 +2,6 @@ package com.github.lavrov.bittorrent.dht
 
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.torrentdam.bencode.Bencode
-import com.github.lavrov.bittorrent.dht.message.{Message, Query}
 import scodec.bits.ByteVector
 
 class MessageFormatSpec extends munit.FunSuite {

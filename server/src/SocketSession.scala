@@ -2,7 +2,7 @@ import cats.effect.concurrent.Deferred
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.TorrentMetadata
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
 import fs2.concurrent.Queue
@@ -74,7 +74,7 @@ object SocketSession {
         case Command.GetTorrent(infoHash) =>
           for {
             _ <- send(Event.RequestAccepted(infoHash))
-            _ <- handleGetTorrent(infoHash)
+            _ <- handleGetTorrent(InfoHash(infoHash.bytes))
           } yield ()
 
         case Command.GetDiscovered() =>

@@ -1,6 +1,6 @@
 package component
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import component.Router.Route
 import logic.Dispatcher
 import logic.model.{Discovered, Root}

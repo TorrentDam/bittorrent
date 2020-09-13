@@ -3,7 +3,6 @@ package com.github.lavrov.bittorrent
 import com.github.torrentdam.bencode
 import com.github.lavrov.bittorrent.TestUtils._
 import com.github.lavrov.bittorrent.wire.PiecePicker
-import verify._
 
 class PiecePickerSpec extends munit.FunSuite {
 

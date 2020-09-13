@@ -1,6 +1,6 @@
 package logic.model
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import logic.SearchApi.SearchResults
 import squants.Quantity
 import squants.information.Information

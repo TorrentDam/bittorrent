@@ -4,7 +4,7 @@ import ServerTorrent.Phase.FetchingMetadata
 import cats.syntax.all._
 import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, Concurrent, ContextShift, IO, Resource, Timer}
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.wire.{DownloadMetadata, Swarm, Torrent}
 import com.github.lavrov.bittorrent.FileMapping
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless

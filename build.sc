@@ -7,18 +7,41 @@ import coursier.maven.MavenRepository
 import release.ReleaseModule
 import $ivy.`com.lihaoyi::mill-contrib-bsp:$MILL_VERSION`
 
-object bittorrent extends Module {
+object common extends Module {
   def ivyDeps = Agg(
-    ivy"org.typelevel::cats-core:${Versions.cats}",
-    ivy"org.typelevel::cats-tagless-macros:0.11",
-    ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
-    ivy"org.typelevel::cats-mtl:${Versions.`cats-mtl`}",
-    ivy"io.github.timwspence::cats-stm:0.5.0",
-    ivy"co.fs2::fs2-io:${Versions.fs2}",
-    ivy"io.7mind.izumi::logstage-core:${Versions.logstage}",
-    ivy"com.github.julien-truffaut::monocle-core:${Versions.monocle}",
-    ivy"com.github.julien-truffaut::monocle-macro:${Versions.monocle}",
-    ivy"com.github.torrentdam::bencode:${Versions.bencode}",
+    Deps.`scodec-bits`,
+  )
+  object js extends JsModule {
+    def sources = common.sources
+    def ivyDeps = common.ivyDeps
+  }
+}
+
+object dht extends Module {
+  def moduleDeps = List(common)
+  def ivyDeps = Agg(
+    Deps.bencode,
+    Deps.`cats-core`,
+    Deps.`cats-stm`,
+    Deps.`fs2-io`,
+    Deps.logstage,
+  )
+  object test extends TestModule
+}
+
+object bittorrent extends Module {
+  def moduleDeps = List(common, dht)
+  def ivyDeps = Agg(
+    Deps.bencode,
+    Deps.`cats-core`,
+    Deps.`cats-effect`,
+    Deps.`cats-mtl`,
+    Deps.`cats-tagless-macros`,
+    Deps.`cats-stm`,
+    Deps.`fs2-io`,
+    Deps.`monocle-core`,
+    Deps.`monocle-macro`,
+    Deps.logstage,
   )
   object test extends TestModule
 }
@@ -33,16 +56,15 @@ object cli extends Module with NativeImageModule with ReleaseModule {
 }
 
 object shared extends Module {
+  def moduleDeps = List(common)
   def ivyDeps = Agg(
-    ivy"com.lihaoyi::upickle:${Versions.upickle}",
-    ivy"org.scodec::scodec-bits:${Versions.`scodec-bits`}",
+    Deps.upickle,
+    Deps.`scodec-bits`,
   )
   object js extends JsModule {
+    def moduleDeps = List(common.js)
     def sources = shared.sources
-    def ivyDeps = Agg(
-      ivy"com.lihaoyi::upickle::${Versions.upickle}",
-      ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
-    )
+    def ivyDeps = shared.ivyDeps
   }
 }
 
@@ -159,5 +181,27 @@ object Versions {
   val monix = "3.2.2"
   val slinky = "0.6.5"
   val bencode = "0.2.0"
+}
+
+object Deps {
+
+  val `cats-core` = ivy"org.typelevel::cats-core::${Versions.cats}"
+  val `cats-effect` = ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}"
+  val `cats-tagless-macros` = ivy"org.typelevel::cats-tagless-macros::0.11"
+  val `cats-mtl` = ivy"org.typelevel::cats-mtl::${Versions.`cats-mtl`}"
+  val `cats-stm` = ivy"io.github.timwspence::cats-stm:0.5.0"
+
+  val `fs2-io` = ivy"co.fs2::fs2-io::${Versions.fs2}"
+
+  val `scodec-bits` = ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
+
+  val logstage = ivy"io.7mind.izumi::logstage-core::${Versions.logstage}"
+
+  val `monocle-core` = ivy"com.github.julien-truffaut::monocle-core::${Versions.monocle}"
+  val `monocle-macro` = ivy"com.github.julien-truffaut::monocle-macro::${Versions.monocle}"
+
+  val upickle = ivy"com.lihaoyi::upickle::${Versions.upickle}"
+
+  val bencode = ivy"com.github.torrentdam::bencode::${Versions.bencode}"
 }
 

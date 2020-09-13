@@ -1,7 +1,8 @@
 package com.github.lavrov.bittorrent.app.protocol
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
-import upickle.default.{macroRW, ReadWriter}
+import com.github.lavrov.bittorrent.InfoHash
+import scodec.bits.ByteVector
+import upickle.default.{ReadWriter, macroRW}
 
 sealed trait Command
 object Command {
@@ -9,11 +10,13 @@ object Command {
 
   case class GetDiscovered() extends Command
 
+  import CommonFormats._
   implicit val rw: ReadWriter[Command] = ReadWriter.merge(
     macroRW[GetTorrent],
     macroRW[GetDiscovered]
   )
 }
+
 
 sealed trait Event
 object Event {
@@ -29,6 +32,7 @@ object Event {
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
+  import CommonFormats._
   implicit val fileRW: ReadWriter[File] = macroRW
   implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(
     macroRW[RequestAccepted],
@@ -38,4 +42,14 @@ object Event {
     macroRW[TorrentStats],
     macroRW[Discovered]
   )
+}
+
+
+object CommonFormats {
+
+  implicit val infoHashRW: ReadWriter[InfoHash] =
+    implicitly[ReadWriter[String]].bimap(
+      infoHash => infoHash.bytes.toHex,
+      string => InfoHash(ByteVector.fromValidHex(string))
+    )
 }

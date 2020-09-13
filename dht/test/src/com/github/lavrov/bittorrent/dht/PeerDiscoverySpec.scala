@@ -5,7 +5,6 @@ import cats.effect.concurrent.Ref
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import com.github.lavrov.bittorrent.dht.message.Response
 import java.net.InetSocketAddress
 
 class PeerDiscoverySpec extends munit.FunSuite {

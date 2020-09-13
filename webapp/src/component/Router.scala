@@ -2,7 +2,7 @@ package component
 
 import java.net.URLDecoder
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import monix.reactive.subjects.Var
 import monix.execution.Scheduler.Implicits.global
 import slinky.core.facade.{Hooks, ReactElement}

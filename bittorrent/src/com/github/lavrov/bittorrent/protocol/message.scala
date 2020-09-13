@@ -29,7 +29,7 @@ object Handshake {
           else v
         )
   )
-  val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash, _.bytes)
+  val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash(_), _.bytes)
   val PeerIdCodec: Codec[PeerId] = bytes(20).xmap(PeerId.apply, _.bytes)
   val HandshakeCodec: Codec[Handshake] =
     (ProtocolStringCodec ~> ReserveCodec :: InfoHashCodec :: PeerIdCodec).as

@@ -5,7 +5,6 @@ import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import com.github.lavrov.bittorrent.dht.PeerDiscovery
 import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata}
-import com.github.lavrov.bittorrent.app.domain
 import fs2.Stream
 import logstage.LogIO
 
@@ -68,7 +67,7 @@ object MetadataDiscovery {
             .flatMap {
               case Right(metadata) =>
                 logger.info(s"Metadata discovered $metadata") >>
-                metadataRegistry.put(domain.InfoHash(infoHash.bytes), metadata)
+                metadataRegistry.put(infoHash, metadata)
               case Left(e) =>
                 logger.error(s"Could download metadata $infoHash")
             }

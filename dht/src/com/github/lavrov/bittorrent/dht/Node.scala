@@ -6,7 +6,6 @@ import cats.implicits._
 import cats.effect.implicits._
 import cats.effect.{Concurrent, ContextShift, Resource, Timer}
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.message.{Message, Response}
 import fs2.concurrent.Queue
 import fs2.io.udp.SocketGroup
 import logstage.LogIO

@@ -5,7 +5,6 @@ import java.net.InetSocketAddress
 import cats.Monad
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
-import com.github.lavrov.bittorrent.dht.message.{Query, Response}
 
 trait QueryHandler[F[_]] {
   def apply(address: InetSocketAddress, query: Query): F[Response]

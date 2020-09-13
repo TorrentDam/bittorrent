@@ -1,11 +1,10 @@
-package com.github.lavrov.bittorrent.dht.message
+package com.github.lavrov.bittorrent.dht
 
 import java.net.{InetAddress, InetSocketAddress}
 
 import cats.implicits._
 import com.github.torrentdam.bencode.Bencode
 import com.github.torrentdam.bencode.format._
-import com.github.lavrov.bittorrent.dht.{NodeId, NodeInfo}
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.Codec
 import scodec.bits.ByteVector
@@ -31,7 +30,7 @@ object Message {
     )
   ).imap(tpl => Query.FindNode.tupled(tpl))(v => (v.queryingNodeId, v.target))
 
-  implicit val InfoHashFormat = BencodeFormat.ByteVectorFormat.imap(InfoHash)(_.bytes)
+  implicit val InfoHashFormat = BencodeFormat.ByteVectorFormat.imap(InfoHash(_))(_.bytes)
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
     field[(NodeId, InfoHash)]("a")(

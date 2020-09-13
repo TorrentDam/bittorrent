@@ -1,6 +1,6 @@
 package component
 
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import component.Router.Route
 import component.material_ui.core.{List, ListItem, ListItemText, ListSubheader, Typography}
 import slinky.core.FunctionalComponent

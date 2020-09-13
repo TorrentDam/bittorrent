@@ -3,7 +3,6 @@ package com.github.lavrov.bittorrent.dht
 import cats.effect.{Concurrent, ConcurrentEffect, ExitCase, Resource, Timer}
 import cats.instances.all._
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.dht.message.Response
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import fs2.Stream
 import io.github.timwspence.cats.stm.{STM, TVar}

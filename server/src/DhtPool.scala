@@ -2,7 +2,7 @@ import cats.effect.{ContextShift, IO, Timer}
 import cats.effect.concurrent.{MVar, Ref}
 import cats.implicits._
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.message.Query
+import com.github.lavrov.bittorrent.dht.Query
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import fs2.io.udp.SocketGroup
 import fs2.Stream

@@ -4,7 +4,7 @@ import cats.data.OptionT
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
-import com.github.lavrov.bittorrent.app.domain.InfoHash
+import com.github.lavrov.bittorrent.InfoHash
 import logstage.LogIO
 
 import scala.concurrent.duration._

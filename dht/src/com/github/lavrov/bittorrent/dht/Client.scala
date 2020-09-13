@@ -6,7 +6,6 @@ import cats.effect.syntax.all._
 import cats.effect.{Concurrent, ContextShift, Resource, Sync, Timer}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.message.{Message, Query, Response}
 import fs2.concurrent.Queue
 import scodec.bits.ByteVector
 

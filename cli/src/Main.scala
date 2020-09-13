@@ -6,7 +6,6 @@ import cats.data.Validated
 import cats.effect._
 import cats.syntax.all._
 import com.github.torrentdam.bencode.{decode, encode}
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery}
 import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata, Swarm}
 import com.monovore.decline.{Command, Opts}
 import fs2.Stream
