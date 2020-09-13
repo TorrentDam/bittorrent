@@ -71,7 +71,7 @@ object DhtPool {
         queue.dequeue.concurrently {
           Stream
             .fixedRate(30.seconds)
-            .parEvalMapUnordered(100) { _ =>
+            .parEvalMapUnordered(1000) { _ =>
               spawn(queue.enqueue1).attempt
             }
         }
