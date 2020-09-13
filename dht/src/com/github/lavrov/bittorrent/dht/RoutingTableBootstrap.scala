@@ -35,7 +35,7 @@ object RoutingTableBootstrap {
     selfId: NodeId,
     seedNodes: List[NodeInfo],
     onFound: NodeInfo => F[Unit],
-    findNodes: NodeInfo => F[List[NodeInfo]],
+    findNodes: NodeInfo => F[List[NodeInfo]]
   ): F[Unit] = {
 
     def selfDistance(nodeInfo: NodeInfo) = NodeId.distance(nodeInfo.id, selfId)

@@ -14,8 +14,7 @@ import scala.util.Random
 
 object DhtPool {
 
-  def fishForInfoHashes(seedNode: NodeInfo)(
-    implicit
+  def fishForInfoHashes(seedNode: NodeInfo)(implicit
     contextShift: ContextShift[IO],
     timer: Timer[IO],
     socketGroup: SocketGroup,
@@ -33,16 +32,17 @@ object DhtPool {
         nodeId <- randomNodeId
         routingTable <- RoutingTable[IO](nodeId)
         queryHandler <- QueryHandler[IO](nodeId, routingTable).pure[IO]
-        queryHandler <- QueryHandler
-          .fromFunction[IO] { (address, query) =>
-            val reportGetPeers = query match {
-              case Query.GetPeers(_, infoHash) =>
-                mvar.put(infoHash)
-              case _ => IO.unit
+        queryHandler <-
+          QueryHandler
+            .fromFunction[IO] { (address, query) =>
+              val reportGetPeers = query match {
+                case Query.GetPeers(_, infoHash) =>
+                  mvar.put(infoHash)
+                case _ => IO.unit
+              }
+              reportGetPeers >> queryHandler(address, query)
             }
-            reportGetPeers >> queryHandler(address, query)
-          }
-          .pure[IO]
+            .pure[IO]
         _ <- Node[IO](nodeId, 0, queryHandler).use { node =>
           RoutingTableBootstrap
             .search(
@@ -65,7 +65,8 @@ object DhtPool {
         }
       } yield ()
 
-    Stream.eval(Queue.unbounded[IO, InfoHash])
+    Stream
+      .eval(Queue.unbounded[IO, InfoHash])
       .flatMap { queue =>
         queue.dequeue.concurrently {
           Stream

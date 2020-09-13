@@ -185,7 +185,7 @@ object ExtensionHandler {
             metadata.digest("SHA-1") == infoHash.bytes
           }
           .flatMap { bytes =>
-              Lossless.fromBytes(bytes).liftTo[F]
+            Lossless.fromBytes(bytes).liftTo[F]
           }
     }
   }

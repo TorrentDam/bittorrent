@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent.app.protocol
 
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import upickle.default.{ReadWriter, macroRW}
+import upickle.default.{macroRW, ReadWriter}
 
 sealed trait Command
 object Command {
@@ -16,7 +16,6 @@ object Command {
     macroRW[GetDiscovered]
   )
 }
-
 
 sealed trait Event
 object Event {
@@ -43,7 +42,6 @@ object Event {
     macroRW[Discovered]
   )
 }
-
 
 object CommonFormats {
 

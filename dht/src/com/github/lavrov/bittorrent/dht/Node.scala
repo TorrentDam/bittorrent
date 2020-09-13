@@ -20,7 +20,7 @@ object Node {
   def apply[F[_]](
     selfId: NodeId,
     port: Int,
-    queryHandler: QueryHandler[F],
+    queryHandler: QueryHandler[F]
   )(implicit
     F: Concurrent[F],
     timer: Timer[F],

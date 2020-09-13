@@ -42,7 +42,7 @@ object Message {
     field[(NodeId, InfoHash, Long)]("a")(
       (field[NodeId]("id"), field[InfoHash]("info_hash"), field[Long]("port")).tupled
     )
-    ).imap(Query.AnnouncePeer.tupled)(v => (v.queryingNodeId, v.infoHash, v.port))
+  ).imap(Query.AnnouncePeer.tupled)(v => (v.queryingNodeId, v.infoHash, v.port))
 
   val QueryFormat: BencodeFormat[Query] =
     field[String]("q").choose(

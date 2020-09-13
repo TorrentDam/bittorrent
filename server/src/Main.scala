@@ -2,7 +2,15 @@ import Routes.FileIndex
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
+import com.github.lavrov.bittorrent.dht.{
+  Node,
+  NodeId,
+  NodeInfo,
+  PeerDiscovery,
+  QueryHandler,
+  RoutingTable,
+  RoutingTableBootstrap
+}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
 import com.github.torrentdam.bencode.encode
@@ -12,7 +20,14 @@ import fs2.io.tcp.SocketGroup
 import fs2.io.udp.{SocketGroup => UdpSocketGroup}
 import izumi.logstage.api.IzLogger
 import logstage.LogIO
-import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
+import org.http4s.headers.{
+  `Accept-Ranges`,
+  `Content-Disposition`,
+  `Content-Length`,
+  `Content-Range`,
+  `Content-Type`,
+  Range
+}
 import org.http4s.server.blaze.BlazeServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
 import sun.misc.Signal

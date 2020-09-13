@@ -33,7 +33,7 @@ object MetadataRegistry {
   }
 
   object State {
-     def empty: State = State(Map.empty, List.empty)
+    def empty: State = State(Map.empty, List.empty)
   }
 
   def apply[F[_]: Concurrent](): F[MetadataRegistry[F]] =

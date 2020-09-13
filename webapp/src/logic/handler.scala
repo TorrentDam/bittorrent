@@ -79,13 +79,11 @@ object Handler {
 
             case Event.Discovered(torrents) =>
               model.copy(
-                discovered =
-                  model
-                    .discovered
-                    .fold(Discovered(torrents.toList)){ discovered =>
-                      discovered.copy(torrents = torrents.toList ++ discovered.torrents)
-                    }
-                    .some
+                discovered = model.discovered
+                  .fold(Discovered(torrents.toList)) { discovered =>
+                    discovered.copy(torrents = torrents.toList ++ discovered.torrents)
+                  }
+                  .some
               )
 
             case Event.TorrentStats(infoHash, connected, availability)
