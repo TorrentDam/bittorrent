@@ -41,6 +41,8 @@ object QueryHandler {
         routingTable.addPeer(infoHash, PeerInfo(new InetSocketAddress(address.getAddress, port.toInt))).as {
           Response.Ping(selfId): Response
         }
+      case Query.SampleInfoHashes(_, _) =>
+        (Response.SampleInfoHashes(selfId, None, List.empty): Response).pure[F]
     }
   }
 

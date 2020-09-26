@@ -16,9 +16,11 @@ trait Client[F[_]] {
 
   def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): F[Either[Response.Nodes, Response.Peers]]
 
-  def findNodes(nodeInfo: NodeInfo): F[Response.Nodes]
+  def findNodes(nodeInfo: NodeInfo, target: NodeId): F[Response.Nodes]
 
   def ping(address: InetSocketAddress): F[Response.Ping]
+
+  def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): F[Either[Response.Nodes, Response.SampleInfoHashes]]
 }
 
 object Client {
@@ -56,8 +58,8 @@ object Client {
           case _ => Concurrent[F].raiseError(InvalidResponse())
         }
 
-      def findNodes(nodeInfo: NodeInfo): F[Response.Nodes] =
-        requestResponse.sendQuery(nodeInfo.address, Query.FindNode(selfId, nodeInfo.id)).flatMap {
+      def findNodes(nodeInfo: NodeInfo, target: NodeId): F[Response.Nodes] =
+        requestResponse.sendQuery(nodeInfo.address, Query.FindNode(selfId, target)).flatMap {
           case nodes: Response.Nodes => nodes.pure
           case _ => Concurrent[F].raiseError(InvalidResponse())
         }
@@ -65,6 +67,12 @@ object Client {
       def ping(address: InetSocketAddress): F[Response.Ping] =
         requestResponse.sendQuery(address, Query.Ping(selfId)).flatMap {
           case ping: Response.Ping => ping.pure
+          case _ => Concurrent[F].raiseError(InvalidResponse())
+        }
+      def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): F[Either[Response.Nodes, Response.SampleInfoHashes]] =
+        requestResponse.sendQuery(nodeInfo.address, Query.SampleInfoHashes(selfId, target)).flatMap {
+          case response: Response.SampleInfoHashes => response.asRight[Response.Nodes].pure
+          case response: Response.Nodes => response.asLeft[Response.SampleInfoHashes].pure
           case _ => Concurrent[F].raiseError(InvalidResponse())
         }
     }

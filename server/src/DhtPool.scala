@@ -51,7 +51,7 @@ object DhtPool {
               routingTable.insert,
               nodeInfo =>
                 node.client
-                  .findNodes(nodeInfo)
+                  .findNodes(nodeInfo, nodeId)
                   .map(_.nodes)
             )
             .background

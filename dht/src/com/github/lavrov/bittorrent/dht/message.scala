@@ -44,6 +44,12 @@ object Message {
     )
   ).imap(Query.AnnouncePeer.tupled)(v => (v.queryingNodeId, v.infoHash, v.port))
 
+  val SampleInfoHashesQueryFormat: BencodeFormat[Query.SampleInfoHashes] = (
+    field[(NodeId, NodeId)]("a")(
+      (field[NodeId]("id"), field[NodeId]("target")).tupled
+    )
+    ).imap(Query.SampleInfoHashes.tupled)(v => (v.queryingNodeId, v.target))
+
   val QueryFormat: BencodeFormat[Query] =
     field[String]("q").choose(
       {
@@ -51,12 +57,14 @@ object Message {
         case "find_node" => FindNodeQueryFormat.upcast
         case "get_peers" => GetPeersQueryFormat.upcast
         case "announce_peer" => AnnouncePeerQueryFormat.upcast
+        case "sample_infohashes" => SampleInfoHashesQueryFormat.upcast
       },
       {
         case _: Query.Ping => "ping"
         case _: Query.FindNode => "find_node"
         case _: Query.GetPeers => "get_peers"
         case _: Query.AnnouncePeer => "announce_peer"
+        case _: Query.SampleInfoHashes => "sample_infohashes"
       }
     )
 
@@ -94,6 +102,13 @@ object Message {
 
   val CompactPeerInfoCodec: Codec[PeerInfo] = InetSocketAddressCodec.xmap(PeerInfo, _.address)
 
+  val CompactInfoHashCodec: Codec[List[InfoHash]] = {
+    import scodec.codecs._
+    list(
+      (bytes(20)).xmap(InfoHash(_), _.bytes)
+    )
+  }
+
   val PingResponseFormat: BencodeFormat[Response.Ping] =
     field[NodeId]("id").imap(Response.Ping)(_.id)
 
@@ -107,10 +122,17 @@ object Message {
     field[List[PeerInfo]]("values")(BencodeFormat.listFormat(encodedString(CompactPeerInfoCodec)))
   ).imapN(Response.Peers)(v => (v.id, v.peers))
 
+  val SampleInfoHashesResponseFormat: BencodeFormat[Response.SampleInfoHashes] = (
+    field[NodeId]("id"),
+    fieldOptional[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec)),
+    field[List[InfoHash]]("samples")(encodedString(CompactInfoHashCodec))
+    ).imapN(Response.SampleInfoHashes)(v => (v.id, v.nodes, v.samples))
+
   val ResponseFormat: BencodeFormat[Response] =
     BencodeFormat(
       BencodeFormat.dictionaryFormat.read.flatMap {
         case Bencode.BDictionary(dictionary) if dictionary.contains("values") => PeersResponseFormat.read.widen
+        case Bencode.BDictionary(dictionary) if dictionary.contains("samples") => SampleInfoHashesResponseFormat.read.widen
         case Bencode.BDictionary(dictionary) if dictionary.contains("nodes") => NodesResponseFormat.read.widen
         case _ => PingResponseFormat.read.widen
       },
@@ -118,6 +140,7 @@ object Message {
         case value: Response.Peers => PeersResponseFormat.write(value)
         case value: Response.Nodes => NodesResponseFormat.write(value)
         case value: Response.Ping => PingResponseFormat.write(value)
+        case value: Response.SampleInfoHashes => SampleInfoHashesResponseFormat.write(value)
       }
     )
 
@@ -156,6 +179,7 @@ object Query {
   final case class FindNode(queryingNodeId: NodeId, target: NodeId) extends Query
   final case class GetPeers(queryingNodeId: NodeId, infoHash: InfoHash) extends Query
   final case class AnnouncePeer(queryingNodeId: NodeId, infoHash: InfoHash, port: Long) extends Query
+  final case class SampleInfoHashes(queryingNodeId: NodeId, target: NodeId) extends Query
 }
 
 sealed trait Response
@@ -163,4 +187,5 @@ object Response {
   final case class Ping(id: NodeId) extends Response
   final case class Nodes(id: NodeId, nodes: List[NodeInfo]) extends Response
   final case class Peers(id: NodeId, peers: List[PeerInfo]) extends Response
+  final case class SampleInfoHashes(id: NodeId, nodes: Option[List[NodeInfo]], samples: List[InfoHash]) extends Response
 }
