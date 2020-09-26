@@ -2,8 +2,7 @@ import cats.effect.{ContextShift, IO, Timer}
 import cats.effect.concurrent.{MVar, Ref}
 import cats.implicits._
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.dht.Query
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, QueryHandler, RoutingTable, RoutingTableBootstrap}
+import com.github.lavrov.bittorrent.dht.{Node, NodeId, NodeInfo, QueryHandler, RoutingTable}
 import fs2.io.udp.SocketGroup
 import fs2.Stream
 import fs2.concurrent.Queue
@@ -28,40 +27,31 @@ object DhtPool {
 
     def spawn(reportInfoHash: InfoHash => IO[Unit]): IO[Unit] =
       for {
-        mvar <- MVar.empty[IO, InfoHash]
         nodeId <- randomNodeId
         routingTable <- RoutingTable[IO](nodeId)
         queryHandler <- QueryHandler[IO](nodeId, routingTable).pure[IO]
-        queryHandler <-
-          QueryHandler
-            .fromFunction[IO] { (address, query) =>
-              val reportGetPeers = query match {
-                case Query.GetPeers(_, infoHash) =>
-                  mvar.put(infoHash)
-                case _ => IO.unit
-              }
-              reportGetPeers >> queryHandler(address, query)
-            }
-            .pure[IO]
         _ <- Node[IO](nodeId, 0, queryHandler).use { node =>
-          RoutingTableBootstrap
-            .search(
-              nodeId,
-              List(seedNode),
-              routingTable.insert,
-              nodeInfo =>
-                node.client
-                  .findNodes(nodeInfo, nodeId)
-                  .map(_.nodes)
-            )
-            .background
-            .use { _ =>
-              mvar.take
-                .timeout(1.hour)
-                .flatMap(reportInfoHash)
-                .foreverM
-                .attempt
-            }
+          def loop(nodes: List[NodeInfo], visited: Set[NodeInfo]): IO[Unit] = {
+            nodes
+              .traverse { nodeInfo =>
+                node.client.sampleInfoHashes(nodeInfo, nodeId)
+                  .flatMap {
+                    case Right(response) =>
+                      response.samples.traverse_(reportInfoHash).as(response.nodes.getOrElse(List.empty))
+                    case Left(response) =>
+                      response.nodes.pure[IO]
+                  }
+                  .handleErrorWith(_ => List.empty.pure[IO])
+              }
+              .map(_.flatten.filterNot(visited).take(10))
+              .flatMap {
+                case Nil => IO.unit
+                case nonEmpty => loop(nonEmpty, visited ++ nodes)
+              }
+          }
+          node.client.findNodes(seedNode, nodeId).flatMap { response =>
+            loop(response.nodes, Set.empty)
+          }
         }
       } yield ()
 
@@ -71,8 +61,8 @@ object DhtPool {
         queue.dequeue.concurrently {
           Stream
             .fixedRate(30.seconds)
-            .parEvalMapUnordered(1000) { _ =>
-              spawn(queue.enqueue1).attempt
+            .parEvalMapUnordered(1) { _ =>
+              spawn(queue.enqueue1).attempt.timeoutTo(10.minutes, IO.unit)
             }
         }
       }
