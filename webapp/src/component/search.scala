@@ -1,15 +1,15 @@
 package component
 
 import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.app.protocol.Event.SearchResults
 import component.Router.Route
 import logic.Dispatcher
 import logic.model.{Discovered, Root}
-import logic.SearchApi.SearchResults
 import material_ui.core._
 import material_ui.icons
 import material_ui.styles.makeStyles
 import org.scalajs.dom.Event
-import slinky.core.{FunctionalComponent}
+import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
 import slinky.core.facade.{Hooks, ReactElement}
 import slinky.web.html._
@@ -51,8 +51,8 @@ object Search {
         props.model match {
           case Some(search) =>
             search.results.map { results =>
-              val items = results.results.collect {
-                case SearchResults.Item(title, extractInfoHash(infoHash)) =>
+              val items = results.collect {
+                case SearchResults.Entry(title, infoHash, size) =>
                   (infoHash, title)
               }
 

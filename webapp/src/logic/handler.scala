@@ -31,17 +31,9 @@ object Handler {
           model.search match {
             case Some(Root.Search(`query`, _)) => model
             case _ =>
+              send(Command.Search(query))
               val search = Root.Search(query, None)
-              SearchApi(query).foreach { results =>
-                dispatcher(Action.UpdateSearchResults(query, results))
-              }
               model.copy(search = Some(search))
-          }
-
-        case Action.UpdateSearchResults(query, results) =>
-          model.search.filter(_.query == query).fold(model) { search =>
-            val updated = search.copy(results = Some(results))
-            model.copy(search = Some(updated))
           }
 
         case Action.ServerEvent(payload) =>
@@ -91,6 +83,14 @@ object Handler {
               model.copy(
                 torrent = model.torrent.map(_.copy(connected = connected, availability = availability))
               )
+
+            case Event.SearchResults(query, entries) =>
+              model.search
+                .filter(_.query == query)
+                .fold(model) { search =>
+                  val updated = search.copy(results = Some(entries))
+                  model.copy(search = Some(updated))
+                }
 
             case _ =>
               model

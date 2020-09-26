@@ -10,10 +10,13 @@ object Command {
 
   case class GetDiscovered() extends Command
 
+  case class Search(query: String) extends Command
+
   import CommonFormats._
   implicit val rw: ReadWriter[Command] = ReadWriter.merge(
     macroRW[GetTorrent],
-    macroRW[GetDiscovered]
+    macroRW[GetDiscovered],
+    macroRW[Search]
   )
 }
 
@@ -31,6 +34,15 @@ object Event {
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
+  case class SearchResults(query: String, entries: List[SearchResults.Entry]) extends Event
+  object SearchResults {
+    case class Entry(name: String, infoHash: InfoHash, size: Long)
+    object Entry {
+      import CommonFormats._
+      implicit val entryRW: ReadWriter[Entry] = macroRW
+    }
+  }
+
   import CommonFormats._
   implicit val fileRW: ReadWriter[File] = macroRW
   implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(
@@ -39,7 +51,8 @@ object Event {
     macroRW[TorrentMetadataReceived],
     macroRW[TorrentError],
     macroRW[TorrentStats],
-    macroRW[Discovered]
+    macroRW[Discovered],
+    macroRW[SearchResults]
   )
 }
 

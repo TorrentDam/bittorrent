@@ -75,6 +75,7 @@ object server extends Module with NativeImageModule {
     ivy"org.http4s::http4s-dsl:${Versions.http4s}",
     ivy"org.http4s::http4s-blaze-server:${Versions.http4s}",
     ivy"io.7mind.izumi::logstage-adapter-slf4j:${Versions.logstage}",
+    ivy"com.lihaoyi::requests:${Versions.requests}",
   )
 }
 
@@ -181,6 +182,7 @@ object Versions {
   val monix = "3.2.2"
   val slinky = "0.6.5"
   val bencode = "0.2.0"
+  val requests = "0.5.1"
 }
 
 object Deps {

@@ -1,7 +1,7 @@
 package logic.model
 
 import com.github.lavrov.bittorrent.InfoHash
-import logic.SearchApi.SearchResults
+import com.github.lavrov.bittorrent.app.protocol.Event.SearchResults
 import squants.Quantity
 import squants.information.Information
 import component.Router.Route
@@ -28,7 +28,7 @@ object Root {
   }
   case class Search(
     query: String,
-    results: Option[SearchResults]
+    results: Option[List[SearchResults.Entry]]
   )
 }
 

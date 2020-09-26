@@ -17,7 +17,8 @@ import scala.util.Try
 object SocketSession {
   def apply(
     makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
-    metadataRegistry: MetadataRegistry[IO]
+    metadataRegistry: MetadataRegistry[IO],
+    torrentIndex: TorrentIndex
   )(implicit
     F: Concurrent[IO],
     cs: ContextShift[IO],
@@ -29,7 +30,7 @@ object SocketSession {
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
       send = (e: Event) => output.enqueue1(WebSocketFrame.Text(upickle.default.write(e)))
-      handlerAndClose <- CommandHandler(send, makeTorrent, metadataRegistry).allocated
+      handlerAndClose <- CommandHandler(send, makeTorrent, metadataRegistry, torrentIndex).allocated
       (handler, closeHandler) = handlerAndClose
       fiber <- processor(input, send, handler).compile.drain.start
       pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
@@ -62,6 +63,7 @@ object SocketSession {
     send: Event => IO[Unit],
     getTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
     metadataRegistry: MetadataRegistry[IO],
+    torrentIndex: TorrentIndex,
     closed: IO[Unit]
   )(implicit
     F: Concurrent[IO],
@@ -104,6 +106,12 @@ object SocketSession {
                 .drain
                 .start
           } yield {}
+
+        case Command.Search(query) =>
+          val entries = torrentIndex
+            .byName(query)
+            .map(e => Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size))
+          send(Event.SearchResults(query, entries))
       }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
@@ -161,7 +169,8 @@ object SocketSession {
     def apply(
       send: Event => IO[Unit],
       makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
-      metadataRegistry: MetadataRegistry[IO]
+      metadataRegistry: MetadataRegistry[IO],
+      torrentIndex: TorrentIndex
     )(implicit
       F: Concurrent[IO],
       cs: ContextShift[IO],
@@ -176,6 +185,7 @@ object SocketSession {
             send,
             makeTorrent,
             metadataRegistry,
+            torrentIndex,
             closed.get
           )
           (impl, closed.complete(()))

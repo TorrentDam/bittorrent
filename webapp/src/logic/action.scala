@@ -8,5 +8,4 @@ object Action {
   case class UpdateConnectionStatus(connected: Boolean) extends Action
   case class Navigate(route: Router.Route) extends Action
   case class Search(query: String) extends Action
-  case class UpdateSearchResults(query: String, results: SearchApi.SearchResults) extends Action
 }
