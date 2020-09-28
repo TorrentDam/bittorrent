@@ -108,10 +108,12 @@ object SocketSession {
           } yield {}
 
         case Command.Search(query) =>
-          val entries = torrentIndex
+          torrentIndex
             .byName(query)
-            .map(e => Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size))
-          send(Event.SearchResults(query, entries))
+            .flatMap { entries =>
+              val result = entries.map(e => Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size))
+              send(Event.SearchResults(query, result))
+            }
       }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =

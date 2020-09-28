@@ -83,7 +83,7 @@ object Main extends IOApp {
       }
       createServerTorrent = new ServerTorrent.Create(createSwarm, metadataRegistry)
       torrentRegistry <- Resource.liftF { TorrentRegistry.make(createServerTorrent) }
-      torrentIndex <- TorrentIndex().to[Resource[IO, *]]
+      torrentIndex <- TorrentIndex()
       handleSocket = SocketSession(torrentRegistry.get, metadataRegistry, torrentIndex)
       handleGetTorrent =
         (infoHash: InfoHash) =>
