@@ -5,7 +5,6 @@ import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.{
   Node,
   NodeId,
-  NodeInfo,
   PeerDiscovery,
   QueryHandler,
   RoutingTable,
@@ -75,12 +74,6 @@ object Main extends IOApp {
       }
       peerDiscovery <- PeerDiscovery.make[IO](routingTable, dhtNode.client)
       metadataRegistry <- MetadataRegistry[IO]().to[Resource[IO, *]]
-      _ <- MetadataDiscovery(
-        DhtPool.fishForInfoHashes(seedNode),
-        peerDiscovery,
-        (infoHash, peerInfo) => Connection.connect[IO](selfId, peerInfo, infoHash),
-        metadataRegistry
-      ).background
       createSwarm = (infoHash: InfoHash) => {
         Swarm[IO](
           peerDiscovery.discover(infoHash),
@@ -192,24 +185,7 @@ object Main extends IOApp {
             case None => NotFound("Torrent not found")
           }
 
-      handleDiscoverTorrents = for {
-        torrents <- metadataRegistry.recent
-        json <-
-          ujson
-            .write(
-              torrents.map {
-                case (infoHash, metadata) =>
-                  ujson.Obj(
-                    "infoHash" -> infoHash.toString,
-                    "metadata" -> encode(metadata.raw).toBase64
-                  )
-              }
-            )
-            .pure[IO]
-        response <- Ok(json)
-      } yield response.withContentType(`Content-Type`(MediaType.application.json))
-
-    } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData, handleDiscoverTorrents)
+    } yield Routes.httpApp(handleSocket, handleGetTorrent, handleGetData)
   }
 
   def serve(bindPort: Int, app: HttpApp[IO]): IO[ExitCode] =
@@ -232,7 +208,6 @@ object Routes {
     handleSocket: IO[Response[IO]],
     handleGetTorrent: InfoHash => IO[Response[IO]],
     handleGetData: (InfoHash, FileIndex, Option[Range]) => IO[Response[IO]],
-    handleDiscovered: IO[Response[IO]]
   ): HttpApp[IO] = {
     import dsl._
     Kleisli {
@@ -242,8 +217,6 @@ object Routes {
         handleGetTorrent(infoHash)
       case req @ GET -> Root / "torrent" / InfoHash.fromString(infoHash) / "data" / FileIndexVar(index) =>
         handleGetData(infoHash, index, req.headers.get(Range))
-      case GET -> Root / "discover" / "torrents" =>
-        handleDiscovered
       case _ => NotFound()
     }
   }

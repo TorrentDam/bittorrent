@@ -1,3 +1,6 @@
+import $ivy.`com.lihaoyi::mill-contrib-bsp:$MILL_VERSION`
+import $ivy.`com.lihaoyi::mill-contrib-bintray:$MILL_VERSION`
+
 import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
@@ -5,9 +8,9 @@ import mill.eval.Result
 import $file.release
 import coursier.maven.MavenRepository
 import release.ReleaseModule
-import $ivy.`com.lihaoyi::mill-contrib-bsp:$MILL_VERSION`
+import mill.contrib.bintray.{BintrayPublishData, BintrayPublishModule}
 
-object common extends Module {
+object common extends Module with Publishing {
   def ivyDeps = Agg(
     Deps.`scodec-bits`,
   )
@@ -17,7 +20,7 @@ object common extends Module {
   }
 }
 
-object dht extends Module {
+object dht extends Module with Publishing {
   def moduleDeps = List(common)
   def ivyDeps = Agg(
     Deps.bencode,
@@ -29,7 +32,7 @@ object dht extends Module {
   object test extends TestModule
 }
 
-object bittorrent extends Module {
+object bittorrent extends Module with Publishing {
   def moduleDeps = List(common, dht)
   def ivyDeps = Agg(
     Deps.bencode,
@@ -167,6 +170,31 @@ trait NativeImageModule extends ScalaModule {
     )
     finalMainClass()
   }
+}
+
+trait Publishing extends BintrayPublishModule {
+  import mill.scalalib.publish._
+
+  def bintrayOwner = "lavrov"
+  def bintrayRepo = "maven"
+
+  def pomSettings = PomSettings(
+    description = "BitTorrent",
+    organization = "com.github.torrentdam",
+    url = "https://github.com/TorrentDam/bittorrent",
+    licenses = Seq(License.MIT),
+    versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+    developers = Seq(
+      Developer("lavrov", "Vitaly Lavrov","https://github.com/lavrov")
+    )
+  )
+
+  override def bintrayPublishArtifacts: T[BintrayPublishData] = T {
+    val original = super.bintrayPublishArtifacts()
+    original.copy(payload = original.payload.filterNot(_._2.contains("javadoc")))
+  }
+
+  def publishVersion = "0.1.0"
 }
 
 object Versions {
