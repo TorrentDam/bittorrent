@@ -29,19 +29,12 @@ jobs:
 
     - name: Deploy server
       run: |
-        docker login -u lavrov -p $DOCKERHUB_TOKEN
-        export VERSION=$(echo $GITHUB_SHA | head -c 7)
-        export IMAGE=lavrov/bittorrent-server:$VERSION
-        docker build . -t $IMAGE
-        docker push $IMAGE
-        curl -L -o nomad.gz https://releases.hashicorp.com/nomad/0.10.4/nomad_0.10.4_linux_amd64.zip
-        gunzip nomad.gz
-        chmod +x nomad
-        envsubst < bittorrent.nomad.template | ./nomad run -
+        curl https://cli-assets.heroku.com/install.sh | sh
+        heroku container:login
+        heroku container:push --app bittorrent-server web
+        heroku container:release --app bittorrent-server web
       env:
-        DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
-        NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
 
   webapp:
     runs-on: ubuntu-latest
