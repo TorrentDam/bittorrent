@@ -29,12 +29,14 @@ object Socket {
         }
       }
       onClose <- Deferred[IO, Option[ConnectionInterrupted]]
+      onDisconnected = { () =>
+        console.info(s"Disconnected from $url")
+        onClose.complete(ConnectionInterrupted().some).unsafeRunSync()
+      }
       channel <- MVar.empty[IO, String]
       _ <- IO.delay {
-        websocket.onerror = { _ =>
-          console.info(s"Disconnected from $url")
-          onClose.complete(ConnectionInterrupted().some).unsafeRunSync()
-        }
+        websocket.onclose = (_) => onDisconnected()
+        websocket.onerror = (_) => onDisconnected()
         websocket.onmessage = { msg =>
           channel.put(msg.data.toString()).unsafeRunSync()
         }
