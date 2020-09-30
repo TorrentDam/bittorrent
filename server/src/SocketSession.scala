@@ -29,8 +29,9 @@ object SocketSession {
       _ <- logger.info("Session started")
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
-      send = (e: Event) => output.enqueue1(WebSocketFrame.Text(upickle.default.write(e)))
-      handlerAndClose <- CommandHandler(send, makeTorrent, metadataRegistry, torrentIndex).allocated
+      send = (str: String) => output.enqueue1(WebSocketFrame.Text(str))
+      sendEvent = (e: Event) => send(upickle.default.write(e))
+      handlerAndClose <- CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
       (handler, closeHandler) = handlerAndClose
       fiber <- processor(input, send, handler).compile.drain.start
       pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
@@ -43,10 +44,12 @@ object SocketSession {
 
   private def processor(
     input: Queue[IO, WebSocketFrame],
-    send: Event => IO[Unit],
+    send: String => IO[Unit],
     commandHandler: CommandHandler
   )(implicit logger: LogIO[IO]): Stream[IO, Unit] = {
     input.dequeue.evalMap {
+      case WebSocketFrame.Text("ping", _) =>
+        send("pong")
       case WebSocketFrame.Text(Cmd(command), _) =>
         for {
           _ <- logger.debug(s"Received $command")

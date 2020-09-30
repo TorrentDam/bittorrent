@@ -14,7 +14,7 @@ case class Socket(
 )
 object Socket {
 
-  def connect(url: String)(implicit cs: ContextShift[IO]): IO[Socket] =
+  def connect(url: String)(implicit cs: ContextShift[IO], timer: Timer[IO]): IO[Socket] =
     for {
       websocket <- IO.async[WebSocket] { cont =>
         console.info(s"Connecting to $url")
@@ -37,10 +37,17 @@ object Socket {
       _ <- IO.delay {
         websocket.onclose = (_) => onDisconnected()
         websocket.onerror = (_) => onDisconnected()
-        websocket.onmessage = { msg =>
-          channel.put(msg.data.toString()).unsafeRunSync()
+        websocket.onmessage = { msgEvent =>
+          msgEvent.data.toString match {
+            case "pong" =>
+              ()
+            case msg =>
+              channel.put(msg).unsafeRunSync()
+          }
         }
       }
+      pingLoop: IO[Unit] = (IO { websocket.send("ping") } >> IO.sleep(10.seconds)).foreverM
+      _ <- IO.race(pingLoop, onClose.get).start
     } yield Socket(
       send = data => IO { websocket.send(data) },
       receive = channel.take,
