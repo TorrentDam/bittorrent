@@ -4,6 +4,7 @@ import cats.syntax.all._
 import logstage.LogIO
 
 import scala.concurrent.duration._
+import scala.util.chaining.scalaUtilChainingOps
 
 trait TorrentIndex {
   import TorrentIndex.Entry
@@ -32,11 +33,18 @@ object TorrentIndex {
         yield
           index.entries
             .view
-            .collect {
-              case (searchField, entry) if words.exists(searchField.contains) => entry
+            .map {
+              case (searchField, entry) =>
+                words.count(searchField.contains).pipe {
+                  case 0 => None
+                  case n => Some((n, entry))
+                }
             }
+            .collect { case Some(v) => v }
             .take(100)
             .toList
+            .sortBy(_._1)(Ordering[Int].reverse)
+            .map(_._2)
       }
     }
   }
