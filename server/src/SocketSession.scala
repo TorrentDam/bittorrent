@@ -1,7 +1,6 @@
 import cats.effect.concurrent.Deferred
 import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
 import cats.implicits._
-import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
@@ -112,7 +111,7 @@ object SocketSession {
 
         case Command.Search(query) =>
           torrentIndex
-            .byName(query)
+            .search(query)
             .flatMap { entries =>
               val result = entries.map(e => Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size))
               send(Event.SearchResults(query, result))

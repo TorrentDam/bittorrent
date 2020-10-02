@@ -3,13 +3,12 @@ import cats.effect.concurrent.Ref
 import cats.syntax.all._
 import logstage.LogIO
 
-import scala.util.chaining.scalaUtilChainingOps
 import scala.concurrent.duration._
 
 trait TorrentIndex {
   import TorrentIndex.Entry
 
-  def byName(name: String): IO[List[Entry]]
+  def search(text: String): IO[List[Entry]]
 }
 
 object TorrentIndex {
@@ -27,14 +26,18 @@ object TorrentIndex {
 
   private def impl(entries: IO[Index]): TorrentIndex = {
     new TorrentIndex {
-      def byName(name: String): IO[List[Entry]] =
-        name.toLowerCase.pipe { name =>
-          for (index <- entries)
-          yield
-            index.entries.collect {
-              case (searchField, entry) if searchField.contains(name) => entry
+      def search(text: String): IO[List[Entry]] = {
+        val words = text.toLowerCase.split(' ')
+        for (index <- entries)
+        yield
+          index.entries
+            .view
+            .collect {
+              case (searchField, entry) if words.exists(searchField.contains) => entry
             }
-        }
+            .take(100)
+            .toList
+      }
     }
   }
 
