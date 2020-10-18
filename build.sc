@@ -14,9 +14,10 @@ object common extends Module with Publishing {
   def ivyDeps = Agg(
     Deps.`scodec-bits`,
   )
-  object js extends JsModule {
+  object js extends JsModule with Publishing {
     def sources = common.sources
     def ivyDeps = common.ivyDeps
+    def artifactName = common.artifactName
   }
 }
 
@@ -58,21 +59,22 @@ object cli extends Module with NativeImageModule with ReleaseModule {
   )
 }
 
-object shared extends Module {
+object protocol extends Module with Publishing {
   def moduleDeps = List(common)
   def ivyDeps = Agg(
     Deps.upickle,
     Deps.`scodec-bits`,
   )
-  object js extends JsModule {
+  object js extends JsModule with Publishing {
     def moduleDeps = List(common.js)
-    def sources = shared.sources
-    def ivyDeps = shared.ivyDeps
+    def sources = protocol.sources
+    def ivyDeps = protocol.ivyDeps
+    def artifactName = protocol.artifactName
   }
 }
 
 object server extends Module with NativeImageModule {
-  def moduleDeps = List(bittorrent, shared)
+  def moduleDeps = List(bittorrent, protocol)
   def ivyDeps = Agg(
     ivy"org.http4s::http4s-core:${Versions.http4s}",
     ivy"org.http4s::http4s-dsl:${Versions.http4s}",
@@ -80,34 +82,6 @@ object server extends Module with NativeImageModule {
     ivy"io.7mind.izumi::logstage-adapter-slf4j:${Versions.logstage}",
     ivy"com.lihaoyi::requests:${Versions.requests}",
   )
-}
-
-object webapp extends JsModule {
-  def moduleDeps = List(shared.js)
-  def ivyDeps = Agg(
-    ivy"me.shadaj::slinky-web::${Versions.slinky}",
-    ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}",
-    ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}",
-    ivy"org.typelevel::squants::1.6.0",
-    ivy"io.monix::monix-reactive::${Versions.monix}",
-  )
-
-  def `package`: T[PathRef] = T {
-    val bundleFile = T.ctx().dest / "bundle.js"
-    fullOpt()
-    os
-      .proc("npm", "run", "package", "--", s"--output=$bundleFile")
-      .call(cwd = millSourcePath, stdout = os.Inherit)
-    PathRef(bundleFile)
-  }
-
-  /** fastOpt deletes whole dest directory which breaks webpack hot reload */
-  def compileJs: T[PathRef] = T {
-    val fastOptFile = fastOpt()
-    val outputFile = T.ctx.dest
-    os.copy.into(fastOptFile.path, outputFile, replaceExisting = true)
-    PathRef(outputFile)
-  }
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
@@ -194,7 +168,7 @@ trait Publishing extends BintrayPublishModule {
     original.copy(payload = original.payload.filterNot(_._2.contains("javadoc")))
   }
 
-  def publishVersion = "0.1.0"
+  def publishVersion = "0.2.0"
 }
 
 object Versions {
@@ -208,7 +182,6 @@ object Versions {
   val upickle = "1.0.0"
   val http4s = "0.21.1"
   val monix = "3.2.2"
-  val slinky = "0.6.5"
   val bencode = "0.2.0"
   val requests = "0.5.1"
 }
