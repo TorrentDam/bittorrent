@@ -2,12 +2,9 @@ package com.github.lavrov.bittorrent.wire
 
 import cats._
 import cats.data.ContT
-import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 import cats.effect.{Concurrent, Resource, Timer}
 import cats.implicits._
-import cats.tagless._
-import cats.tagless.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
@@ -132,7 +129,6 @@ object Swarm {
     } yield ()
   }
 
-  @autoFunctorK
   trait RoutineLogger[F[_]] {
 
     def gaveUp: F[Unit]
@@ -155,6 +151,19 @@ object Swarm {
         def disconnected: F[Unit] =
           logger.trace(s"Disconnected. Trying to reconnect.")
       }
+
+    implicit class Ops[F[_]](val self: RoutineLogger[F]) extends AnyVal {
+
+      def mapK[G[_]](f: F ~> G): RoutineLogger[G] =
+        new RoutineLogger[G] {
+          def gaveUp: G[Unit] =
+            f(self.gaveUp)
+          def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): G[Unit] =
+            f(self.connectionFailed(attempt, cause, waitDuration))
+          def disconnected: G[Unit] =
+            f(self.disconnected)
+        }
+    }
   }
 
   trait Connected[F[_]] {

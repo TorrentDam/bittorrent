@@ -39,7 +39,6 @@ object bittorrent extends Module with Publishing {
     Deps.bencode,
     Deps.`cats-core`,
     Deps.`cats-effect`,
-    Deps.`cats-tagless-macros`,
     Deps.`fs2-io`,
     Deps.`monocle-core`,
     Deps.`monocle-macro`,
@@ -187,7 +186,6 @@ object Deps {
 
   val `cats-core` = ivy"org.typelevel::cats-core::${Versions.cats}"
   val `cats-effect` = ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}"
-  val `cats-tagless-macros` = ivy"org.typelevel::cats-tagless-macros::0.11"
 
   val `fs2-io` = ivy"co.fs2::fs2-io::${Versions.fs2}"
 
