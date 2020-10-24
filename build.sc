@@ -39,7 +39,6 @@ object bittorrent extends Module with Publishing {
     Deps.bencode,
     Deps.`cats-core`,
     Deps.`cats-effect`,
-    Deps.`cats-mtl`,
     Deps.`cats-tagless-macros`,
     Deps.`fs2-io`,
     Deps.`monocle-core`,
@@ -173,7 +172,6 @@ trait Publishing extends BintrayPublishModule {
 object Versions {
   val cats = "2.2.0"
   val `cats-effect` = "2.2.0"
-  val `cats-mtl` = "1.0.0"
   val fs2 = "2.4.2"
   val monocle = "2.0.0"
   val logstage = "0.10.2"
@@ -190,7 +188,6 @@ object Deps {
   val `cats-core` = ivy"org.typelevel::cats-core::${Versions.cats}"
   val `cats-effect` = ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}"
   val `cats-tagless-macros` = ivy"org.typelevel::cats-tagless-macros::0.11"
-  val `cats-mtl` = ivy"org.typelevel::cats-mtl::${Versions.`cats-mtl`}"
 
   val `fs2-io` = ivy"co.fs2::fs2-io::${Versions.fs2}"
 
