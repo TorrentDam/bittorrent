@@ -26,7 +26,7 @@ object dht extends Module with Publishing {
   def ivyDeps = Agg(
     Deps.bencode,
     Deps.`cats-core`,
-    Deps.`cats-stm`,
+    Deps.`cats-effect`,
     Deps.`fs2-io`,
     Deps.logstage,
   )
@@ -41,7 +41,6 @@ object bittorrent extends Module with Publishing {
     Deps.`cats-effect`,
     Deps.`cats-mtl`,
     Deps.`cats-tagless-macros`,
-    Deps.`cats-stm`,
     Deps.`fs2-io`,
     Deps.`monocle-core`,
     Deps.`monocle-macro`,
@@ -192,7 +191,6 @@ object Deps {
   val `cats-effect` = ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}"
   val `cats-tagless-macros` = ivy"org.typelevel::cats-tagless-macros::0.11"
   val `cats-mtl` = ivy"org.typelevel::cats-mtl::${Versions.`cats-mtl`}"
-  val `cats-stm` = ivy"io.github.timwspence::cats-stm:0.5.0"
 
   val `fs2-io` = ivy"co.fs2::fs2-io::${Versions.fs2}"
 
