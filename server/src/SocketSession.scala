@@ -113,7 +113,9 @@ object SocketSession {
           torrentIndex
             .search(query)
             .flatMap { entries =>
-              val result = entries.map(e => Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size))
+              val result = entries.map(e =>
+                Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size, e.ext)
+              )
               send(Event.SearchResults(query, result))
             }
       }

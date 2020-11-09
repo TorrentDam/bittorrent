@@ -36,7 +36,7 @@ object Event {
 
   case class SearchResults(query: String, entries: List[SearchResults.Entry]) extends Event
   object SearchResults {
-    case class Entry(name: String, infoHash: InfoHash, size: Long)
+    case class Entry(name: String, infoHash: InfoHash, size: Long, ext: List[String])
     object Entry {
       import CommonFormats._
       implicit val entryRW: ReadWriter[Entry] = macroRW
