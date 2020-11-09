@@ -1,7 +1,7 @@
 import mill._, scalalib._
 
 trait ReleaseModule extends ScalaModule {
-    def releaseVersion = "0.1"
+    def releaseVersion = "0.3"
     def githubRelease(authToken: String) = T.command {
         val jar = assembly()
         upload(

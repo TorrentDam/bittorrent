@@ -165,7 +165,7 @@ trait Publishing extends BintrayPublishModule {
     original.copy(payload = original.payload.filterNot(_._2.contains("javadoc")))
   }
 
-  def publishVersion = "0.2.0"
+  def publishVersion = "0.3.0"
 }
 
 object Versions {
