@@ -35,16 +35,14 @@ object TorrentIndex {
             .view
             .map {
               case (searchField, entry) =>
-                words.count(searchField.contains).pipe {
-                  case 0 => None
-                  case n => Some((n, entry))
-                }
+                val score = words.map(word => if (searchField.contains(word)) word.length else 0).sum
+                (entry, score)
             }
-            .collect { case Some(v) => v }
-            .take(100)
+            .filter(_._2 > 0)
             .toList
-            .sortBy(_._1)(Ordering[Int].reverse)
-            .map(_._2)
+            .sortBy(_._2)(Ordering[Int].reverse)
+            .take(100)
+            .map(_._1)
       }
     }
   }
