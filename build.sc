@@ -47,15 +47,6 @@ object bittorrent extends Module with Publishing {
   object test extends TestModule
 }
 
-object cli extends Module with NativeImageModule with ReleaseModule {
-  def moduleDeps = List(bittorrent)
-  def ivyDeps = Agg(
-    ivy"com.monovore::decline:1.0.0",
-    ivy"ch.qos.logback:logback-classic:1.2.3",
-    ivy"com.lihaoyi::pprint:0.5.5",
-  )
-}
-
 object protocol extends Module with Publishing {
   def moduleDeps = List(common)
   def ivyDeps = Agg(
@@ -137,7 +128,11 @@ trait NativeImageModule extends ScalaModule {
       "--no-fallback",
       "--initialize-at-build-time=scala",
       "--initialize-at-build-time=scala.runtime.Statics",
+      "--initialize-at-build-time=izumi.logstage.api.Log$Level$",
+      "--enable-all-security-services",
+      "--enable-http",
       "--enable-https",
+      "--report-unsupported-elements-at-runtime",
     )
     finalMainClass()
   }
@@ -176,7 +171,7 @@ object Versions {
   val logstage = "1.0.0-M1"
   val `scodec-bits` = "1.1.14"
   val upickle = "1.0.0"
-  val http4s = "0.21.9"
+  val http4s = "0.21.11"
   val monix = "3.2.2"
   val bencode = "0.2.0"
   val requests = "0.5.1"
