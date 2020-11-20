@@ -1,4 +1,3 @@
-import $ivy.`com.lihaoyi::mill-contrib-bsp:$MILL_VERSION`
 import $ivy.`com.lihaoyi::mill-contrib-bintray:$MILL_VERSION`
 
 import mill._

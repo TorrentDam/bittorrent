@@ -4,10 +4,7 @@ BitTorrent Client
 Development
 -----------
 
-Generate idea project:
-```sh
-$ ./mill mill.scalalib.GenIdea/idea
-```
+Open in Intellij IDEA.
 
 Run tests:
 ```sh
