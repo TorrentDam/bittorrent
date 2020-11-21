@@ -72,7 +72,7 @@ object server extends Module with NativeImageModule {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.3"
+  def scalaVersion = "2.13.4"
   def scalacOptions = List(
     "-language:higherKinds",
     "-Ymacro-annotations",
@@ -81,7 +81,7 @@ trait Module extends ScalaModule with ScalafmtModule {
       MavenRepository("https://dl.bintray.com/lavrov/maven")
   )
   def scalacPluginIvyDeps = Agg(
-    ivy"org.typelevel:::kind-projector:0.11.0",
+    ivy"org.typelevel:::kind-projector:0.11.1",
     ivy"com.olegpy::better-monadic-for:0.3.1",
   )
   trait TestModule extends Tests {
@@ -127,11 +127,9 @@ trait NativeImageModule extends ScalaModule {
       "--no-fallback",
       "--initialize-at-build-time=scala",
       "--initialize-at-build-time=scala.runtime.Statics",
-      "--initialize-at-build-time=izumi.logstage.api.Log$Level$",
       "--enable-all-security-services",
       "--enable-http",
       "--enable-https",
-      "--report-unsupported-elements-at-runtime",
     )
     finalMainClass()
   }
