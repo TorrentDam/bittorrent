@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
 
-  server:
+  build:
     runs-on: ubuntu-latest
     steps:
 
@@ -19,19 +19,8 @@ jobs:
       with:
         java-version: graalvm-ce-java11@20.1.0
 
-    - name: Build jar
-      run: ./mill server.assembly
+    - name: Build
+      run: ./mill _.compile
 
-    - name: Build binary (GraalVM native-image)
-      run: |
-        gu install native-image
-        ./mill server.nativeImage
-
-    - name: Deploy server
-      run: |
-        curl https://cli-assets.heroku.com/install.sh | sh
-        heroku container:login
-        heroku container:push --app bittorrent-server web
-        heroku container:release --app bittorrent-server web
-      env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+    - name: Test
+      run: ./mill _.test

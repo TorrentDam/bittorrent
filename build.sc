@@ -4,9 +4,7 @@ import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
 import mill.eval.Result
-import $file.release
 import coursier.maven.MavenRepository
-import release.ReleaseModule
 import mill.contrib.bintray.{BintrayPublishData, BintrayPublishModule}
 
 object common extends Module with Publishing {
@@ -44,31 +42,6 @@ object bittorrent extends Module with Publishing {
     Deps.logstage,
   )
   object test extends TestModule
-}
-
-object protocol extends Module with Publishing {
-  def moduleDeps = List(common)
-  def ivyDeps = Agg(
-    Deps.upickle,
-    Deps.`scodec-bits`,
-  )
-  object js extends JsModule with Publishing {
-    def moduleDeps = List(common.js)
-    def sources = protocol.sources
-    def ivyDeps = protocol.ivyDeps
-    def artifactName = protocol.artifactName
-  }
-}
-
-object server extends Module with NativeImageModule {
-  def moduleDeps = List(bittorrent, protocol)
-  def ivyDeps = Agg(
-    ivy"org.http4s::http4s-core:${Versions.http4s}",
-    ivy"org.http4s::http4s-dsl:${Versions.http4s}",
-    ivy"org.http4s::http4s-blaze-server:${Versions.http4s}",
-    ivy"io.7mind.izumi::logstage-adapter-slf4j:${Versions.logstage}",
-    ivy"com.lihaoyi::requests:${Versions.requests}",
-  )
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
@@ -168,7 +141,6 @@ object Versions {
   val logstage = "1.0.0-M1"
   val `scodec-bits` = "1.1.14"
   val upickle = "1.0.0"
-  val http4s = "0.21.11"
   val monix = "3.2.2"
   val bencode = "0.2.0"
   val requests = "0.5.1"
