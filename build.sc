@@ -47,7 +47,7 @@ object bittorrent extends Module with Publishing {
 
 trait Module extends ScalaModule with ScalafmtModule {
   def scalaVersion = "2.13.4"
-  def scalacOptions = List(
+  def scalacOptions = Seq(
     "-language:higherKinds",
     "-Ymacro-annotations",
   )
@@ -69,7 +69,7 @@ trait Module extends ScalaModule with ScalafmtModule {
 }
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
-  def scalaJSVersion = "1.2.0"
+  def scalaJSVersion = "1.5.1"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
