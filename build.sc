@@ -136,7 +136,7 @@ object Versions {
   val fs2 = "2.4.2"
   val monocle = "2.0.0"
   val logstage = "1.0.0-M1"
-  val `scodec-bits` = "1.1.14"
+  val `scodec-bits` = "1.1.25"
   val upickle = "1.0.0"
   val monix = "3.2.2"
   val bencode = "0.2.0"
