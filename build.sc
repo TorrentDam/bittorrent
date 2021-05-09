@@ -46,21 +46,23 @@ object bittorrent extends Module with Publishing {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.4"
+  def scalaVersion = "2.13.5"
   def scalacOptions = Seq(
     "-language:higherKinds",
     "-Ymacro-annotations",
   )
-  def repositories = super.repositories ++ Seq(
+  def repositoriesTask = T.task {
+    super.repositoriesTask() ++ Seq(
       MavenRepository("https://dl.bintray.com/lavrov/maven")
-  )
+    )
+  }
   def scalacPluginIvyDeps = Agg(
-    ivy"org.typelevel:::kind-projector:0.11.1",
+    ivy"org.typelevel:::kind-projector:0.11.3",
     ivy"com.olegpy::better-monadic-for:0.3.1",
   )
   trait TestModule extends Tests {
     def ivyDeps = Agg(
-      ivy"org.scalameta::munit:0.7.12",
+      ivy"org.scalameta::munit:0.7.23",
     )
     def testFrameworks = Seq(
       "munit.Framework"
