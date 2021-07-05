@@ -133,9 +133,9 @@ trait Publishing extends ArtifactoryPublishModule {
 }
 
 object Versions {
-  val cats = "2.2.0"
-  val `cats-effect` = "2.2.0"
-  val fs2 = "2.4.2"
+  val cats = "2.6.1"
+  val `cats-effect` = "2.5.1"
+  val fs2 = "2.5.8"
   val monocle = "2.0.0"
   val logstage = "1.0.0-M1"
   val `scodec-bits` = "1.1.25"
