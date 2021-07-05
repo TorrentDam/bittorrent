@@ -17,6 +17,7 @@ jobs:
 
     - uses: olafurpg/setup-scala@v10
       with:
+        distribution: 'adopt'
         java-version: graalvm-ce-java11@20.1.0
 
     - name: Build
@@ -25,4 +26,6 @@ jobs:
       run: ./mill _.compile
 
     - name: Test
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./mill _.test
