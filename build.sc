@@ -53,7 +53,12 @@ trait Module extends ScalaModule with ScalafmtModule {
   )
   def repositoriesTask = T.task {
     super.repositoriesTask() ++ Seq(
-      MavenRepository("https://dl.bintray.com/lavrov/maven")
+      MavenRepository(
+        "https://maven.pkg.github.com/TorrentDam/bencode",
+        T.env.get("GITHUB_TOKEN").map { token =>
+          coursier.core.Authentication("lavrov", token)
+        }
+      )
     )
   }
   def scalacPluginIvyDeps = Agg(
