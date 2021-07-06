@@ -1,11 +1,10 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
-
 import cats.implicits._
 import cats.MonadError
 import cats.effect.Timer
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 
 import scala.concurrent.duration._
 
@@ -16,7 +15,7 @@ object RoutingTableBootstrap {
   )(implicit
     F: MonadError[F, Throwable],
     timer: Timer[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   ): F[NodeInfo] = {
     def loop: F[NodeInfo] =
       client
@@ -24,7 +23,7 @@ object RoutingTableBootstrap {
         .map(pong => NodeInfo(pong.id, SeedNodeAddress))
         .recoverWith {
           case e =>
-            val msg = e.getMessage()
+            val msg = e.getMessage
             logger.info(s"Bootstrap failed $msg $e") >> timer.sleep(5.seconds) >> loop
         }
     logger.info("Boostrapping") *> loop <* logger.info("Bootstrap complete")

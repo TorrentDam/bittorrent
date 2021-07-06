@@ -8,7 +8,7 @@ import cats.effect.{Concurrent, ContextShift, Resource, Timer}
 import com.github.lavrov.bittorrent.InfoHash
 import fs2.concurrent.Queue
 import fs2.io.udp.SocketGroup
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 
 trait Node[F[_]] {
 
@@ -26,7 +26,7 @@ object Node {
     timer: Timer[F],
     cs: ContextShift[F],
     socketGroup: SocketGroup,
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, Node[F]] = {
     for {
       messageSocket <- MessageSocket(port)

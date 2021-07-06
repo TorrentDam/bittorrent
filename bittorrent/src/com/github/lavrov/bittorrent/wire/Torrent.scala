@@ -5,7 +5,7 @@ import cats.effect.implicits._
 import cats.effect.{Concurrent, Resource, Timer}
 import cats.implicits._
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
-import logstage.LogIO
+import org.typelevel.log4cats.{Logger, StructuredLogger}
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
@@ -21,7 +21,7 @@ object Torrent {
   def make[F[_]](
     metaInfo: Lossless,
     swarm: Swarm[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, Torrent[F]] =
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
     Resource {
       for {
         piecePicker <- PiecePicker(metaInfo.parsed)

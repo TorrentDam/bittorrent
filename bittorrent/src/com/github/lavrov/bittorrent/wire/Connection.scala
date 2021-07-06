@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
 import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.io.tcp.SocketGroup
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 import monocle.Lens
 import monocle.macros.GenLens
 import scodec.bits.ByteVector
@@ -83,7 +83,7 @@ object Connection {
     cs: ContextShift[F],
     timer: Timer[F],
     socketGroup: SocketGroup,
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, Connection[F]] =
     MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
       Resource {

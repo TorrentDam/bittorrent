@@ -9,7 +9,7 @@ import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
 import fs2.concurrent.{Queue, Signal, SignallingRef}
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 
 import scala.concurrent.duration._
 
@@ -26,7 +26,7 @@ object Swarm {
   )(implicit
     F: Concurrent[F],
     timer: Timer[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, Swarm[F]] =
     Resource {
       for {
@@ -76,7 +76,7 @@ object Swarm {
     implicit
     F: Concurrent[F],
     timer: Timer[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   ): F[Unit] =
     for {
       continuation <- reconnects.tryDequeue1.flatMap {
@@ -140,7 +140,7 @@ object Swarm {
 
   object RoutineLogger {
 
-    def apply[F[_]](logger: LogIO[F]): RoutineLogger[F] =
+    def apply[F[_]](logger: Logger[F]): RoutineLogger[F] =
       new RoutineLogger[F] {
 
         def gaveUp: F[Unit] = logger.trace(s"Gave up")

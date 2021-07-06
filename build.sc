@@ -26,7 +26,7 @@ object dht extends Module with Publishing {
     Deps.`cats-core`,
     Deps.`cats-effect`,
     Deps.`fs2-io`,
-    Deps.logstage,
+    Deps.log4cats,
   )
   object test extends TestModule
 }
@@ -40,7 +40,7 @@ object bittorrent extends Module with Publishing {
     Deps.`fs2-io`,
     Deps.`monocle-core`,
     Deps.`monocle-macro`,
-    Deps.logstage,
+    Deps.log4cats,
   )
   object test extends TestModule
 }
@@ -142,10 +142,9 @@ object Versions {
   val `cats-effect` = "2.5.1"
   val fs2 = "2.5.8"
   val monocle = "2.0.0"
-  val logstage = "1.0.0-M1"
+  val log4cats = "1.3.1"
   val `scodec-bits` = "1.1.25"
   val upickle = "1.0.0"
-  val monix = "3.2.2"
   val bencode = "0.2.0"
   val requests = "0.5.1"
 }
@@ -159,7 +158,7 @@ object Deps {
 
   val `scodec-bits` = ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
 
-  val logstage = ivy"io.7mind.izumi::logstage-core::${Versions.logstage}"
+  val log4cats = ivy"org.typelevel::log4cats-slf4j::${Versions.log4cats}"
 
   val `monocle-core` = ivy"com.github.julien-truffaut::monocle-core::${Versions.monocle}"
   val `monocle-macro` = ivy"com.github.julien-truffaut::monocle-macro::${Versions.monocle}"

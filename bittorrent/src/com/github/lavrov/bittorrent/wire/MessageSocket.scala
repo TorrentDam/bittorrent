@@ -11,7 +11,7 @@ import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import com.github.lavrov.bittorrent.wire.MessageSocket.{MaxMessageSize, OversizedMessage}
 import fs2.Chunk
 import fs2.io.tcp.Socket
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
 
 import scala.concurrent.duration._
@@ -21,7 +21,7 @@ class MessageSocket[F[_]](
   val peerInfo: PeerInfo,
   socket: Socket[F],
   writeMutex: Semaphore[F],
-  logger: LogIO[F]
+  logger: Logger[F]
 )(implicit F: MonadError[F, Throwable]) {
 
   def send(message: Message): F[Unit] =
@@ -77,7 +77,7 @@ object MessageSocket {
     F: Concurrent[F],
     cs: ContextShift[F],
     socketGroup: SocketGroup,
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, MessageSocket[F]] = {
     for {
       socket <- socketGroup.client(to = peerInfo.address)

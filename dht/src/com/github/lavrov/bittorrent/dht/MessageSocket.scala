@@ -8,9 +8,9 @@ import cats.syntax.all._
 import com.github.torrentdam.bencode.{decode, encode}
 import fs2.Chunk
 import fs2.io.udp.{Packet, Socket, SocketGroup}
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 
-class MessageSocket[F[_]](socket: Socket[F], logger: LogIO[F])(implicit
+class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(implicit
   F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
@@ -44,7 +44,7 @@ object MessageSocket {
     F: Concurrent[F],
     cs: ContextShift[F],
     socketGroup: SocketGroup,
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, MessageSocket[F]] =
     socketGroup
       .open[F](address = new InetSocketAddress(port))

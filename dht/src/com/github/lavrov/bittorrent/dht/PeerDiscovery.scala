@@ -1,12 +1,13 @@
 package com.github.lavrov.bittorrent.dht
 
+import cats.Show.Shown
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ExitCase, Resource, Timer}
 import cats.instances.all._
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import fs2.Stream
-import logstage.LogIO
+import org.typelevel.log4cats.{Logger, StructuredLogger}
 
 trait PeerDiscovery[F[_]] {
 
@@ -18,7 +19,7 @@ object PeerDiscovery {
   def make[F[_]](
     routingTable: RoutingTable[F],
     dhtClient: Client[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): Resource[F, PeerDiscovery[F]] =
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): Resource[F, PeerDiscovery[F]] =
     Resource.pure[F, PeerDiscovery[F]] {
 
       val logger0 = logger
@@ -26,7 +27,7 @@ object PeerDiscovery {
       new PeerDiscovery[F] {
 
         def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
-          val logger = logger0.withCustomContext(("infoHash", infoHash.toString))
+          val logger = logger0.addContext(("infoHash", infoHash.toString: Shown))
           Stream
             .eval {
               for {
@@ -64,7 +65,7 @@ object PeerDiscovery {
     infoHash: InfoHash,
     getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
     stateOps: StateOps[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   )(implicit F: Concurrent[F]): Stream[F, PeerInfo] = {
     Stream
       .repeatEval(stateOps.next)

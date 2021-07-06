@@ -1,5 +1,6 @@
 package com.github.lavrov.bittorrent.wire
 
+import cats.Show.Shown
 import cats.effect.implicits._
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.effect.{Concurrent, Timer}
@@ -7,7 +8,7 @@ import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.{Queue, SignallingRef}
-import logstage.LogIO
+import org.typelevel.log4cats.{Logger, StructuredLogger}
 
 import scala.collection.BitSet
 import scala.concurrent.duration._
@@ -20,10 +21,10 @@ object Download {
   def download[F[_]](
     swarm: Swarm[F],
     piecePicker: PiecePicker[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: LogIO[F]): F[Unit] =
+  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): F[Unit] =
     swarm.connected.stream
       .parEvalMapUnordered(Int.MaxValue) { connection =>
-        logger.withCustomContext(("address", connection.info.address.toString)).pipe { implicit logger =>
+        logger.addContext(("address", connection.info.address.toString: Shown)).pipe { implicit logger =>
           connection.interested >>
           whenUnchoked(connection)(download(connection, piecePicker))
             .recoverWith {
@@ -43,7 +44,7 @@ object Download {
   private def download[F[_]](
     connection: Connection[F],
     pieces: PiecePicker[F]
-  )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[Unit] = {
+  )(implicit F: Concurrent[F], logger: Logger[F], timer: Timer[F]): F[Unit] = {
     for {
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
@@ -108,7 +109,7 @@ object Download {
   private def whenUnchoked[F[_]](connection: Connection[F])(f: F[Unit])(implicit
     F: Concurrent[F],
     timer: Timer[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   ): F[Unit] = {
     def unchoked = connection.choked.map(!_)
     def asString(choked: Boolean) = if (choked) "Choked" else "Unchoked"

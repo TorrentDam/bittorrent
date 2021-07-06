@@ -10,7 +10,7 @@ import fs2.concurrent.Queue
 import scodec.bits.ByteVector
 
 import scala.util.Random
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 
 trait Client[F[_]] {
 
@@ -38,7 +38,7 @@ object Client {
     F: Concurrent[F],
     timer: Timer[F],
     cs: ContextShift[F],
-    logger: LogIO[F]
+    logger: Logger[F]
   ): Resource[F, Client[F]] = {
     for {
       requestResponse <- RequestResponse.make(

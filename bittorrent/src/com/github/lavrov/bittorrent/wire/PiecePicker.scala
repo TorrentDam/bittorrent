@@ -11,7 +11,7 @@ import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
 
 import scala.collection.BitSet
@@ -28,7 +28,7 @@ trait PiecePicker[F[_]] {
 object PiecePicker {
   def apply[F[_]](
     metadata: TorrentMetadata
-  )(implicit F: Concurrent[F], logger: LogIO[F], timer: Timer[F]): F[PiecePicker[F]] =
+  )(implicit F: Concurrent[F], logger: Logger[F], timer: Timer[F]): F[PiecePicker[F]] =
     for {
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
@@ -47,7 +47,7 @@ object PiecePicker {
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
     incompletePieces: List[IncompletePiece]
-  )(implicit F: Concurrent[F], logger: LogIO[F])
+  )(implicit F: Concurrent[F], logger: Logger[F])
       extends PiecePicker[F] {
 
     private def synchronized[A](fa: F[A]): F[A] =
