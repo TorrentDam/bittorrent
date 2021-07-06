@@ -3,7 +3,6 @@ import $ivy.`com.lihaoyi::mill-contrib-artifactory:$MILL_VERSION`
 import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
-import mill.api.Result
 import coursier.maven.MavenRepository
 import mill.contrib.artifactory.ArtifactoryPublishModule
 
@@ -76,41 +75,6 @@ trait JsModule extends Module with scalajslib.ScalaJSModule {
   def scalaJSVersion = "1.5.1"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
-}
-
-trait NativeImageModule extends ScalaModule {
-  private def javaHome = T.input {
-    T.ctx().env.get("JAVA_HOME") match {
-      case Some(homePath) => Result.Success(os.Path(homePath))
-      case None => Result.Failure("JAVA_HOME env variable is undefined")
-    }
-  }
-
-  private def nativeImagePath = T.input {
-    val path = javaHome()/"bin"/"native-image"
-    if (os exists path) Result.Success(path)
-    else Result.Failure(
-      "native-image is not found in java home directory.\n" +
-        "Make sure JAVA_HOME points to GraalVM JDK and " +
-        "native-image is set up (https://www.graalvm.org/docs/reference-manual/native-image/)"
-    )
-  }
-
-  def nativeImage = T {
-    import ammonite.ops._
-    implicit val workingDirectory = T.ctx().dest
-    %%(
-      nativeImagePath(),
-      "-jar", assembly().path,
-      "--no-fallback",
-      "--initialize-at-build-time=scala",
-      "--initialize-at-build-time=scala.runtime.Statics",
-      "--enable-all-security-services",
-      "--enable-http",
-      "--enable-https",
-    )
-    finalMainClass()
-  }
 }
 
 trait Publishing extends ArtifactoryPublishModule {
