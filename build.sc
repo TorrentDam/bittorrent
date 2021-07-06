@@ -3,7 +3,7 @@ import $ivy.`com.lihaoyi::mill-contrib-artifactory:$MILL_VERSION`
 import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
-import mill.eval.Result
+import mill.api.Result
 import coursier.maven.MavenRepository
 import mill.contrib.artifactory.ArtifactoryPublishModule
 
@@ -65,12 +65,9 @@ trait Module extends ScalaModule with ScalafmtModule {
     ivy"org.typelevel:::kind-projector:0.11.3",
     ivy"com.olegpy::better-monadic-for:0.3.1",
   )
-  trait TestModule extends Tests {
+  trait TestModule extends Tests with mill.scalalib.TestModule.Munit {
     def ivyDeps = Agg(
       ivy"org.scalameta::munit:0.7.23",
-    )
-    def testFrameworks = Seq(
-      "munit.Framework"
     )
   }
 }
