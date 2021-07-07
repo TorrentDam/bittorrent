@@ -1,13 +1,12 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
-
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
+import com.comcast.ip4s._
 
 import scala.util.Random
 
-final case class NodeInfo(id: NodeId, address: InetSocketAddress)
+final case class NodeInfo(id: NodeId, address: SocketAddress[IpAddress])
 
 final case class NodeId(bytes: ByteVector) {
   val int = BigInt(1, bytes.toArray)

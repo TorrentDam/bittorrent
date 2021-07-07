@@ -1,14 +1,15 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
-
 import cats.implicits._
 import cats.effect.implicits._
-import cats.effect.{Concurrent, ContextShift, Resource, Timer}
-import com.github.lavrov.bittorrent.InfoHash
-import fs2.concurrent.Queue
-import fs2.io.udp.SocketGroup
+import cats.effect.{Async, Resource, Sync}
+import cats.effect.std.Queue
+import fs2.io.net.DatagramSocketGroup
+import com.comcast.ip4s._
 import org.typelevel.log4cats.Logger
+import scodec.bits.ByteVector
+import scala.util.Random
 
 trait Node[F[_]] {
 
@@ -19,22 +20,26 @@ object Node {
 
   def apply[F[_]](
     selfId: NodeId,
-    port: Int,
     queryHandler: QueryHandler[F]
   )(implicit
-    F: Concurrent[F],
-    timer: Timer[F],
-    cs: ContextShift[F],
-    socketGroup: SocketGroup,
+    F: Async[F],
+    socketGroup: DatagramSocketGroup[F],
     logger: Logger[F]
   ): Resource[F, Node[F]] = {
+
+
+    def generateTransactionId: F[ByteVector] = {
+      val nextChar = F.delay(Random.nextPrintableChar())
+      (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).right.get)
+    }
+
     for {
-      messageSocket <- MessageSocket(port)
-      responses <- Resource.liftF {
+      messageSocket <- MessageSocket[F]
+      responses <- Resource.eval {
         Queue
-          .unbounded[F, (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])]
+          .unbounded[F, (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
-      client0 <- Client(selfId, messageSocket.writeMessage, responses.dequeue1)
+      client0 <- Client(selfId, messageSocket.writeMessage, responses.take, generateTransactionId)
       _ <-
         Resource
           .make(
@@ -47,8 +52,8 @@ object Node {
                     logger.debug(s"Responding with $responseMessage") >>
                     messageSocket.writeMessage(a, responseMessage)
                   }
-                case (a, m: Message.ResponseMessage) => responses.enqueue1((a, m.asRight))
-                case (a, m: Message.ErrorMessage) => responses.enqueue1((a, m.asLeft))
+                case (a, m: Message.ResponseMessage) => responses.offer((a, m.asRight))
+                case (a, m: Message.ErrorMessage) => responses.offer((a, m.asLeft))
               }
               .recoverWith {
                 case e: Throwable =>

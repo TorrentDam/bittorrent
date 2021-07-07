@@ -1,8 +1,8 @@
 package com.github.lavrov.bittorrent.dht
 
 import cats.Show.Shown
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{Concurrent, ExitCase, Resource, Timer}
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.{Concurrent, Resource}
 import cats.instances.all._
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
@@ -19,7 +19,7 @@ object PeerDiscovery {
   def make[F[_]](
     routingTable: RoutingTable[F],
     dhtClient: Client[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): Resource[F, PeerDiscovery[F]] =
+  )(implicit F: Concurrent[F], logger: StructuredLogger[F]): Resource[F, PeerDiscovery[F]] =
     Resource.pure[F, PeerDiscovery[F]] {
 
       val logger0 = logger
@@ -27,7 +27,10 @@ object PeerDiscovery {
       new PeerDiscovery[F] {
 
         def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
-          val logger = logger0.addContext(("infoHash", infoHash.toString: Shown))
+
+          implicit val logger: Logger[F] =
+            logger0.addContext(("infoHash", infoHash.toString: Shown))
+
           Stream
             .eval {
               for {
@@ -35,87 +38,81 @@ object PeerDiscovery {
                 initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
                 initialNodes <- initialNodes.take(100).toList.pure[F]
                 _ <- logger.info(s"Got ${initialNodes.size} from routing table")
-                stateOps <- StateOps(initialNodes, infoHash)
+                state <- DiscoveryState(initialNodes, infoHash)
               } yield {
                 start(
                   infoHash,
                   dhtClient.getPeers,
-                  stateOps,
-                  logger
+                  state
                 )
               }
             }
             .flatten
             .onFinalizeCase {
-              case ExitCase.Error(e) => logger.error(s"Discovery failed with ${e.getMessage}")
+              case Resource.ExitCase.Errored(e) => logger.error(s"Discovery failed with ${e.getMessage}")
               case _ => F.unit
             }
         }
       }
     }
 
-  private case class State[F[_]](
-    nodesToTry: List[NodeInfo],
-    seenNodes: Set[NodeInfo],
-    seenPeers: Set[PeerInfo] = Set.empty,
-    waiters: List[Deferred[F, NodeInfo]] = List.empty
-  )
-
   private[dht] def start[F[_]](
     infoHash: InfoHash,
     getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
-    stateOps: StateOps[F],
+    state: DiscoveryState[F]
+  )(
+    implicit
+    F: Concurrent[F],
     logger: Logger[F]
-  )(implicit F: Concurrent[F]): Stream[F, PeerInfo] = {
+  ): Stream[F, PeerInfo] = {
+
     Stream
-      .repeatEval(stateOps.next)
+      .repeatEval(state.next)
       .parEvalMapUnordered(10) { nodeInfo =>
-        logger.trace(s"Get peers $nodeInfo") >> getPeers(nodeInfo, infoHash).attempt
+         getPeers(nodeInfo, infoHash).attempt <* logger.trace(s"Get peers $nodeInfo")
       }
       .flatMap {
         case Right(response) =>
           response match {
             case Left(Response.Nodes(_, nodes)) =>
               Stream
-                .eval(stateOps.updateNodeList(nodes)) >> Stream.empty
+                .eval(state.addNodes(nodes)) >> Stream.empty
             case Right(Response.Peers(_, peers)) =>
               Stream
-                .eval(stateOps.filterNewPeers(peers))
-                .flatMap(Stream.emits)
+                .eval(state.addPeers(peers))
+                .flatMap(newPeers => Stream.emits(newPeers))
           }
         case Left(_) =>
           Stream.empty
       }
   }
 
-  class StateOps[F[_]: Concurrent](ref: Ref[F, State[F]], infoHash: InfoHash) {
+  class DiscoveryState[F[_]: Concurrent](ref: Ref[F, DiscoveryState.Data[F]], infoHash: InfoHash) {
 
     def next: F[NodeInfo] =
-      ref
-        .modify { state =>
+    Concurrent[F].deferred[NodeInfo]
+      .flatMap { deferred =>
+        ref.modify { state =>
           state.nodesToTry match {
             case x :: xs => (state.copy(nodesToTry = xs), x.pure[F])
             case _ =>
-              val deferred = Deferred.unsafe[F, NodeInfo]
               (state.copy(waiters = deferred :: state.waiters), deferred.get)
           }
-        }
-        .flatten
+        }.flatten
+    }
 
-    def updateNodeList(nodes: List[NodeInfo]): F[Unit] = {
+    def addNodes(nodes: List[NodeInfo]): F[Unit] = {
       ref
         .modify { state =>
           val (seenNodes, newNodes) = {
             val newNodes = nodes.filterNot(state.seenNodes)
             (state.seenNodes ++ newNodes, newNodes)
           }
-          val nodesToTry = (newNodes ++ state.nodesToTry)
-            .sortBy(n => NodeId.distance(n.id, infoHash))
-            .drop(state.waiters.size)
+          val nodesToTry = (newNodes ++ state.nodesToTry).sortBy(n => NodeId.distance(n.id, infoHash))
           val waiters = state.waiters.drop(nodesToTry.size)
           val newState =
             state.copy(
-              nodesToTry = nodesToTry,
+              nodesToTry = nodesToTry.drop(state.waiters.size),
               seenNodes = seenNodes,
               waiters = waiters
             )
@@ -127,8 +124,9 @@ object PeerDiscovery {
         .flatten
     }
 
+    type NewPeers = List[PeerInfo]
 
-    def filterNewPeers(peers: List[PeerInfo]): F[List[PeerInfo]] = {
+    def addPeers(peers: List[PeerInfo]): F[NewPeers] = {
       ref
         .modify { state =>
           val newPeers = peers.filterNot(state.seenPeers)
@@ -140,13 +138,20 @@ object PeerDiscovery {
     }
   }
 
-  object StateOps {
+  object DiscoveryState {
 
-    def apply[F[_]: Concurrent](initialNodes: List[NodeInfo], infoHash: InfoHash): F[StateOps[F]] =
+    case class Data[F[_]](
+      nodesToTry: List[NodeInfo],
+      seenNodes: Set[NodeInfo],
+      seenPeers: Set[PeerInfo] = Set.empty,
+      waiters: List[Deferred[F, NodeInfo]] = List.empty
+    )
+
+    def apply[F[_]: Concurrent](initialNodes: List[NodeInfo], infoHash: InfoHash): F[DiscoveryState[F]] =
       for {
-        ref <- Ref.of(State[F](initialNodes, initialNodes.toSet))
+        ref <- Ref.of(Data[F](initialNodes, initialNodes.toSet))
       } yield {
-        new StateOps(ref, infoHash)
+        new DiscoveryState(ref, infoHash)
       }
   }
 

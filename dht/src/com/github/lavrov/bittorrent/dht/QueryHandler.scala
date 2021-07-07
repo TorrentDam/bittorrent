@@ -1,13 +1,12 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
-
 import cats.Monad
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
+import com.comcast.ip4s._
 
 trait QueryHandler[F[_]] {
-  def apply(address: InetSocketAddress, query: Query): F[Response]
+  def apply(address: SocketAddress[IpAddress], query: Query): F[Response]
 }
 
 object QueryHandler {
@@ -38,7 +37,7 @@ object QueryHandler {
         }
       case Query.AnnouncePeer(nodeId, infoHash, port) =>
         routingTable.insert(NodeInfo(nodeId, address)) >>
-        routingTable.addPeer(infoHash, PeerInfo(new InetSocketAddress(address.getAddress, port.toInt))).as {
+        routingTable.addPeer(infoHash, PeerInfo(SocketAddress(address.host, Port.fromInt(port.toInt).get))).as {
           Response.Ping(selfId): Response
         }
       case Query.SampleInfoHashes(_, _) =>
@@ -46,5 +45,5 @@ object QueryHandler {
     }
   }
 
-  def fromFunction[F[_]](f: (InetSocketAddress, Query) => F[Response]): QueryHandler[F] = f(_, _)
+  def fromFunction[F[_]](f: (SocketAddress[IpAddress], Query) => F[Response]): QueryHandler[F] = f(_, _)
 }

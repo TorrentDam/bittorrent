@@ -10,6 +10,7 @@ import mill.contrib.artifactory.ArtifactoryPublishModule
 object common extends Module with Publishing {
   def ivyDeps = Agg(
     Deps.`scodec-bits`,
+    Deps.ip4s,
   )
   object js extends JsModule with Publishing {
     def sources = common.sources
@@ -22,6 +23,7 @@ object dht extends Module with Publishing {
   def moduleDeps = List(common)
   def ivyDeps = Agg(
     Deps.bencode,
+    Deps.`scodec-bits`,
     Deps.`cats-core`,
     Deps.`cats-effect`,
     Deps.`fs2-io`,
@@ -42,6 +44,14 @@ object bittorrent extends Module with Publishing {
     Deps.log4cats,
   )
   object test extends TestModule
+}
+
+object cmd extends Module {
+  def moduleDeps = List(dht)
+  def ivyDeps = Agg(
+    Deps.decline,
+    Deps.`logback-classic`,
+  )
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
@@ -66,7 +76,8 @@ trait Module extends ScalaModule with ScalafmtModule {
   )
   trait TestModule extends Tests with mill.scalalib.TestModule.Munit {
     def ivyDeps = Agg(
-      ivy"org.scalameta::munit:0.7.23",
+      Deps.`munit-cats-effect`,
+      Deps.`log4cats-noop`
     )
   }
 }
@@ -100,14 +111,16 @@ trait Publishing extends ArtifactoryPublishModule {
 
 object Versions {
   val cats = "2.6.1"
-  val `cats-effect` = "2.5.1"
-  val fs2 = "2.5.8"
+  val `cats-effect` = "3.1.1"
+  val ip4s = "3.0.3"
+  val fs2 = "3.0.6"
   val monocle = "2.0.0"
-  val log4cats = "1.3.1"
+  val log4cats = "2.1.1"
   val `scodec-bits` = "1.1.25"
   val upickle = "1.0.0"
   val bencode = "0.2.0"
   val requests = "0.5.1"
+  val decline = "2.1.0"
 }
 
 object Deps {
@@ -115,11 +128,15 @@ object Deps {
   val `cats-core` = ivy"org.typelevel::cats-core::${Versions.cats}"
   val `cats-effect` = ivy"org.typelevel::cats-effect::${Versions.`cats-effect`}"
 
+  val ip4s = ivy"com.comcast::ip4s-core::${Versions.ip4s}"
+
   val `fs2-io` = ivy"co.fs2::fs2-io::${Versions.fs2}"
 
   val `scodec-bits` = ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
 
   val log4cats = ivy"org.typelevel::log4cats-slf4j::${Versions.log4cats}"
+  val `log4cats-noop` = ivy"org.typelevel::log4cats-noop::${Versions.log4cats}"
+  val `logback-classic` = ivy"ch.qos.logback:logback-classic:1.2.3"
 
   val `monocle-core` = ivy"com.github.julien-truffaut::monocle-core::${Versions.monocle}"
   val `monocle-macro` = ivy"com.github.julien-truffaut::monocle-macro::${Versions.monocle}"
@@ -127,5 +144,9 @@ object Deps {
   val upickle = ivy"com.lihaoyi::upickle::${Versions.upickle}"
 
   val bencode = ivy"com.github.torrentdam::bencode::${Versions.bencode}"
+
+  val `munit-cats-effect` = ivy"org.typelevel::munit-cats-effect-3::1.0.5"
+
+  val decline = ivy"com.monovore::decline-effect:${Versions.decline}"
 }
 

@@ -1,20 +1,17 @@
 package com.github.lavrov.bittorrent.wire
 
 import java.nio.channels.InterruptedByTimeoutException
-
-import cats._
-import cats.effect.concurrent.Semaphore
-import cats.effect.{Concurrent, ContextShift, Resource}
+import cats.effect.std.Semaphore
+import cats.effect.{Async, Concurrent, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent._
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import com.github.lavrov.bittorrent.wire.MessageSocket.{MaxMessageSize, OversizedMessage}
 import fs2.Chunk
-import fs2.io.tcp.Socket
+import fs2.io.net.{Socket, SocketGroup}
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
 
-import scala.concurrent.duration._
 
 class MessageSocket[F[_]](
   val handshake: Handshake,
@@ -22,11 +19,11 @@ class MessageSocket[F[_]](
   socket: Socket[F],
   writeMutex: Semaphore[F],
   logger: Logger[F]
-)(implicit F: MonadError[F, Throwable]) {
+)(implicit F: Concurrent[F]) {
 
   def send(message: Message): F[Unit] =
     for {
-      _ <- writeMutex.withPermit {
+      _ <- writeMutex.permit.use { _ =>
         socket.write(
           Chunk.byteVector(
             Message.MessageCodec.encode(message).require.toByteVector
@@ -59,38 +56,33 @@ class MessageSocket[F[_]](
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
     for {
-      maybeChunk <- socket.readN(numBytes)
-      chunk <- F.fromOption(
-        maybeChunk.filter(_.size == numBytes),
-        new Exception("Connection was interrupted by peer")
-      )
+      chunk <- socket.readN(numBytes)
+      _ <- if (chunk.size == numBytes) F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
     } yield chunk.toByteVector
 
 }
 
 object MessageSocket {
-  import fs2.io.tcp.SocketGroup
 
   val MaxMessageSize: Long = 1024 * 1024 // 1MB
 
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
-    F: Concurrent[F],
-    cs: ContextShift[F],
-    socketGroup: SocketGroup,
+    F: Async[F],
+    socketGroup: SocketGroup[F],
     logger: Logger[F]
   ): Resource[F, MessageSocket[F]] = {
     for {
       socket <- socketGroup.client(to = peerInfo.address)
-      socket <- Resource.make(socket.pure[F])(
-        _.close *> logger.trace(s"Closed socket $peerInfo")
+      _ <- Resource.make(F.unit)(
+        _ => logger.trace(s"Closed socket $peerInfo")
       )
-      _ <- Resource.liftF(logger.trace(s"Opened socket $peerInfo"))
-      handshakeResponse <- Resource.liftF(
+      _ <- Resource.eval(logger.trace(s"Opened socket $peerInfo"))
+      handshakeResponse <- Resource.eval(
         logger.trace(s"Initiate handshake with ${peerInfo.address}") *>
         handshake(selfId, infoHash, socket) <*
         logger.trace(s"Successful handshake with ${peerInfo.address}")
       )
-      writeMutex <- Resource.liftF(Semaphore(1))
+      writeMutex <- Resource.eval(Semaphore(1))
     } yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
   }
 
@@ -104,21 +96,17 @@ object MessageSocket {
       _ <- socket.write(
         bytes = Chunk.byteVector(
           Handshake.HandshakeCodec.encode(message).require.toByteVector
-        ),
-        timeout = Some(5.seconds)
+        )
       )
       handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
-      maybeBytes <-
+      bytes <-
         socket
-          .readN(handshakeMessageSize, timeout = Some(5.seconds))
+          .readN(handshakeMessageSize)
           .adaptError {
             case e: InterruptedByTimeoutException =>
               Error("Timeout waiting for handshake", e)
           }
-      bytes <- F.fromOption(
-        maybeBytes.filter(_.size == handshakeMessageSize),
-        Error("Unsuccessful handshake: connection prematurely closed")
-      )
+      _ <- if (bytes.size == handshakeMessageSize) F.unit else F.raiseError(Error("Unsuccessful handshake: connection prematurely closed"))
       response <- F.fromEither(
         Handshake.HandshakeCodec
           .decodeValue(bytes.toBitVector)

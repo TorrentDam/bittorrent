@@ -1,39 +1,29 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.effect.SyncIO
-import cats.effect.concurrent.Ref
+import cats.effect.{IO, SyncIO}
+import cats.effect.kernel.Ref
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import java.net.InetSocketAddress
+import com.comcast.ip4s._
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.noop.NoOpLogger
 
-class PeerDiscoverySpec extends munit.FunSuite {
+class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
   test("discover new peers") {
-    type F[A] = SyncIO[A]
 
-    def nodeId(id: String) = NodeId(ByteVector.encodeUtf8(id).right.get)
+    val infoHash = InfoHash(ByteVector.encodeUtf8("c").toOption.get)
 
-    val nodesToTry = Ref
-      .of[F, List[NodeInfo]](
-        List(
-          NodeInfo(
-            nodeId("a"),
-            InetSocketAddress.createUnresolved("1.1.1.1", 1)
-          )
-        )
-      )
-      .unsafeRunSync()
-    val seenNodes = Ref.of[F, Set[NodeInfo]](Set.empty).unsafeRunSync()
-    val seenPeers = Ref.of[F, Set[PeerInfo]](Set.empty).unsafeRunSync()
+    def nodeId(id: String) = NodeId(ByteVector.encodeUtf8(id).toOption.get)
 
-    val infoHash = InfoHash(ByteVector.encodeUtf8("c").right.get)
+    implicit val logger: Logger[IO] = NoOpLogger[IO]
 
     def getPeers(
-        nodeInfo: NodeInfo,
-        infoHash: InfoHash
-    ): F[Either[Response.Nodes, Response.Peers]] = SyncIO {
-      nodeInfo.address.getPort() match {
+      nodeInfo: NodeInfo,
+      infoHash: InfoHash
+    ): IO[Either[Response.Nodes, Response.Peers]] = IO {
+      nodeInfo.address.port.value match {
         case 1 =>
           Left(
             Response.Nodes(
@@ -41,11 +31,11 @@ class PeerDiscoverySpec extends munit.FunSuite {
               List(
                 NodeInfo(
                   nodeId("b"),
-                  InetSocketAddress.createUnresolved("1.1.1.1", 2)
+                  SocketAddress(ip"1.1.1.1", port"2")
                 ),
                 NodeInfo(
                   nodeId("c"),
-                  InetSocketAddress.createUnresolved("1.1.1.1", 3)
+                  SocketAddress(ip"1.1.1.1", port"3")
                 )
               )
             )
@@ -56,7 +46,7 @@ class PeerDiscoverySpec extends munit.FunSuite {
               nodeId("b"),
               List(
                 PeerInfo(
-                  InetSocketAddress.createUnresolved("2.2.2.2", 2)
+                  SocketAddress(ip"2.2.2.2", port"2")
                 )
               )
             )
@@ -67,7 +57,7 @@ class PeerDiscoverySpec extends munit.FunSuite {
               nodeId("c"),
               List(
                 PeerInfo(
-                  InetSocketAddress.createUnresolved("2.2.2.2", 3)
+                  SocketAddress(ip"2.2.2.2", port"3")
                 )
               )
             )
@@ -75,11 +65,25 @@ class PeerDiscoverySpec extends munit.FunSuite {
       }
     }
 
-//    val stream = PeerDiscovery.start(infoHash, nodesToTry, seenNodes, seenPeers, getPeers)
-//
-//    stream.take(1).compile.toList.unsafeRunSync shouldBe List(
-//      PeerInfo(InetSocketAddress.createUnresolved("2.2.2.2", 3))
-//    )
-    ()
+    for {
+      state <- PeerDiscovery.DiscoveryState[IO](
+        initialNodes =
+          List(
+            NodeInfo(
+              nodeId("a"),
+              SocketAddress(ip"1.1.1.1", port"1")
+            )
+          ),
+        infoHash = infoHash
+      )
+      list <- PeerDiscovery.start(infoHash, getPeers, state).take(1).compile.toList
+    } yield {
+      assertEquals(
+        list,
+        List(
+          PeerInfo(SocketAddress(ip"2.2.2.2", port"3"))
+        )
+      )
+    }
   }
 }

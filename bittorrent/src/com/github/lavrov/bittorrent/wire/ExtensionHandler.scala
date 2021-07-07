@@ -2,8 +2,9 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.implicits._
 import cats.{Applicative, Monad, MonadError}
-import cats.effect.{Concurrent, Sync}
-import cats.effect.concurrent.{Deferred, MVar, Ref}
+import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.std.Queue
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
@@ -39,8 +40,8 @@ object ExtensionHandler {
       utMetadata: UtMetadata.Create[F]
     )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
       for {
-        apiDeferred <- Deferred[F, ExtensionApi[F]]
-        handlerRef <- Ref.of[F, ExtensionHandler[F]](ExtensionHandler.noop)
+        apiDeferred <- F.deferred[ExtensionApi[F]]
+        handlerRef <- F.ref[ExtensionHandler[F]](ExtensionHandler.noop)
         _ <- handlerRef.set(
           {
             case Message.Extended(MessageId.Handshake, payload) =>
@@ -126,7 +127,7 @@ object ExtensionHandler {
       def unit[F[_]](implicit F: Applicative[F]): Handler[F] = _ => F.unit
     }
 
-    class Create[F[_]](implicit F: Concurrent[F]) {
+    class Create[F[_]](implicit F: Async[F]) {
 
       def apply(
         infoHash: InfoHash,
@@ -137,7 +138,7 @@ object ExtensionHandler {
         (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled match {
           case Some((messageId, size)) =>
             for {
-              receiveQueue <- MVar.empty[F, UtMessage]
+              receiveQueue <- Queue.bounded[F, UtMessage](1)
             } yield {
               def sendUtMessage(utMessage: UtMessage) = {
                 val message = Message.Extended(messageId, UtMessage.encode(utMessage))
@@ -146,7 +147,7 @@ object ExtensionHandler {
 
               def receiveUtMessage: F[UtMessage] = receiveQueue.take
 
-              (receiveQueue.put _, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
+              (receiveQueue.offer _, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
             }
 
           case None =>
