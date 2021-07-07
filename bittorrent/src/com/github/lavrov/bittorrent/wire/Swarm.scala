@@ -3,12 +3,13 @@ package com.github.lavrov.bittorrent.wire
 import cats._
 import cats.data.ContT
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Resource, Timer}
+import cats.effect.kernel.{Resource, Temporal}
+import cats.effect.std.Queue
 import cats.implicits._
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
-import fs2.concurrent.{Queue, Signal, SignallingRef}
+import fs2.concurrent.{Signal, SignallingRef}
 import org.typelevel.log4cats.Logger
 
 import scala.concurrent.duration._
@@ -24,21 +25,21 @@ object Swarm {
     connect: PeerInfo => Resource[F, Connection[F]],
     maxConnections: Int = 10
   )(implicit
-    F: Concurrent[F],
-    timer: Timer[F],
+    F: Temporal[F],
+    defer: Defer[F],
     logger: Logger[F]
   ): Resource[F, Swarm[F]] =
     Resource {
       for {
         stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
         lastConnected <- SignallingRef[F, Connection[F]](null)
-        peerBuffer <- Queue.in[F].bounded[F, PeerInfo](10)
-        reconnects <- Queue.in[F].unbounded[F, F[Unit]]
-        fiber1 <- dhtPeers.through(peerBuffer.enqueue).compile.drain.start
+        peerBuffer <- Queue.bounded[F, PeerInfo](10)
+        reconnects <- Queue.unbounded[F, F[Unit]]
+        fiber1 <- dhtPeers.evalTap(peerBuffer.offer).compile.drain.start
         connectionFibers <- F.replicateA(
           maxConnections,
           openConnections[F](
-            peerBuffer.dequeue1,
+            peerBuffer.take,
             reconnects,
             peerInfo =>
               for {
@@ -74,17 +75,17 @@ object Swarm {
 
   private def openConnections[F[_]](discover: F[PeerInfo], reconnects: Queue[F, F[Unit]], connect: PeerInfo => F[Unit])(
     implicit
-    F: Concurrent[F],
-    timer: Timer[F],
+    F: Temporal[F],
+    defer: Defer[F],
     logger: Logger[F]
   ): F[Unit] =
     for {
-      continuation <- reconnects.tryDequeue1.flatMap {
+      continuation <- reconnects.tryTake.flatMap {
         case Some(c) => c.pure[F]
         case None =>
           type Cont[A] = ContT[F, Unit, A]
           implicit val logger1: RoutineLogger[Cont] = RoutineLogger(logger).mapK(ContT.liftK)
-          F.race(discover, reconnects.dequeue1).map {
+          F.race(discover, reconnects.take).map {
             _.leftMap { discovered =>
               connectRoutine[Cont](discovered)(
                 connect = ContT.liftF {
@@ -93,7 +94,7 @@ object Swarm {
                 coolDown = duration =>
                   ContT { k0 =>
                     val k = k0(())
-                    (timer.sleep(duration) >> reconnects.enqueue1(k)).start.void
+                    (F.sleep(duration) >> reconnects.offer(k)).start.void
                   }
               ).run(_ => F.unit)
             }.merge

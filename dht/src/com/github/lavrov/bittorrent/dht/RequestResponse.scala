@@ -1,33 +1,32 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
-
 import cats._
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.kernel.Temporal
 import cats.effect.syntax.all._
-import cats.effect.{Async, Concurrent, Resource, Timer}
+import cats.effect.{Concurrent, Resource}
 import cats.syntax.all._
 import com.github.lavrov.bittorrent.dht.RequestResponse.Timeout
 import com.github.torrentdam.bencode.Bencode
 import scodec.bits.ByteVector
+import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 
 trait RequestResponse[F[_]] {
-  def sendQuery(address: InetSocketAddress, query: Query): F[Response]
+  def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response]
 }
 
 object RequestResponse {
 
   def make[F[_]](
     generateTransactionId: F[ByteVector],
-    sendQuery: (InetSocketAddress, Message.QueryMessage) => F[Unit],
+    sendQuery: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
     receiveMessage: F[
-      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+      (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ]
   )(implicit
-    F: Concurrent[F],
-    timer: Timer[F]
+    F: Temporal[F],
   ): Resource[F, RequestResponse[F]] =
     Resource {
       for {
@@ -40,11 +39,11 @@ object RequestResponse {
 
   private class Impl[F[_]](
     generateTransactionId: F[ByteVector],
-    sendQueryMessage: (InetSocketAddress, Message.QueryMessage) => F[Unit],
+    sendQueryMessage: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
     receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
   )(implicit F: MonadError[F, Throwable])
       extends RequestResponse[F] {
-    def sendQuery(address: InetSocketAddress, query: Query): F[Response] = {
+    def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response] = {
       generateTransactionId.flatMap { transactionId =>
         val message = Message.QueryMessage(transactionId, query)
         val send = sendQueryMessage(address, message)
@@ -55,7 +54,7 @@ object RequestResponse {
 
   private def receiveLoop[F[_]](
     receive: F[
-      (InetSocketAddress, Either[Message.ErrorMessage, Message.ResponseMessage])
+      (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ],
     continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
   )(implicit
@@ -82,7 +81,7 @@ trait CallbackRegistry[F[_]] {
 }
 
 object CallbackRegistry {
-  def make[F[_]: Concurrent: Timer]: F[CallbackRegistry[F]] = {
+  def make[F[_]: Temporal]: F[CallbackRegistry[F]] = {
     for {
       ref <-
         Ref
@@ -94,11 +93,11 @@ object CallbackRegistry {
     }
   }
 
-  private class Impl[F[_]: Concurrent: Timer](
+  private class Impl[F[_]](
     ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
-  ) extends CallbackRegistry[F] {
-    def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] =
-      Deferred.uncancelable[F, Either[Throwable, Response]].flatMap { deferred =>
+  )(implicit F: Temporal[F]) extends CallbackRegistry[F] {
+    def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] ={
+      F.deferred[Either[Throwable, Response]].flatMap { deferred =>
         val update =
           ref.update { map =>
             map.updated(
@@ -107,7 +106,7 @@ object CallbackRegistry {
             )
           }
         val scheduleTimeout =
-          (Timer[F].sleep(timeout) >> complete(
+          (F.sleep(timeout) >> complete(
             transactionId,
             Timeout().asLeft
           )).start
@@ -117,6 +116,7 @@ object CallbackRegistry {
           }
         update *> scheduleTimeout *> deferred.get <* delete
       }
+    }
 
     def complete(transactionId: ByteVector, result: Either[Throwable, Response]): F[Boolean] =
       ref.get.flatMap { map =>

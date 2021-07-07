@@ -1,34 +1,34 @@
 package com.github.lavrov.bittorrent.wire
 
-import java.net.InetSocketAddress
-
 import cats.Eval
 import cats.data.Chain
 import cats.implicits._
-import cats.effect.{Concurrent, Sync, Timer}
-import cats.effect.concurrent.{Deferred, Semaphore}
+import cats.effect.{Async, Concurrent, Sync, Temporal}
+import cats.effect.kernel.Deferred
+import cats.effect.std.Semaphore
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
+import com.comcast.ip4s._
 
 import scala.collection.BitSet
 import scala.collection.immutable.TreeMap
 
 trait PiecePicker[F[_]] {
   def download(index: Int): F[ByteVector]
-  def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]]
+  def pick(availability: BitSet, address: SocketAddress[IpAddress]): F[Option[Message.Request]]
   def unpick(request: Message.Request): F[Unit]
   def complete(request: Message.Request, bytes: ByteVector): F[Unit]
   def updates: Signal[F, Unit]
-  def pending: F[Map[Message.Request, InetSocketAddress]]
+  def pending: F[Map[Message.Request, SocketAddress[IpAddress]]]
 }
 object PiecePicker {
   def apply[F[_]](
     metadata: TorrentMetadata
-  )(implicit F: Concurrent[F], logger: Logger[F], timer: Timer[F]): F[PiecePicker[F]] =
+  )(implicit F: Async[F], logger: Logger[F]): F[PiecePicker[F]] =
     for {
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
@@ -37,7 +37,7 @@ object PiecePicker {
 
   private case class State[F[_]](
     queue: collection.mutable.TreeMap[Int, InProgressPiece] = collection.mutable.TreeMap.empty,
-    pending: collection.mutable.Map[Message.Request, InetSocketAddress] = collection.mutable.Map.empty,
+    pending: collection.mutable.Map[Message.Request, SocketAddress[IpAddress]] = collection.mutable.Map.empty,
     completions: collection.mutable.Map[Int, ByteVector => F[Unit]] =
       collection.mutable.Map.empty[Int, ByteVector => F[Unit]]
   )
@@ -47,18 +47,18 @@ object PiecePicker {
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
     incompletePieces: List[IncompletePiece]
-  )(implicit F: Concurrent[F], logger: Logger[F])
+  )(implicit F: Async[F], logger: Logger[F])
       extends PiecePicker[F] {
 
     private def synchronized[A](fa: F[A]): F[A] =
-      mutex.withPermit(F.uncancelable(fa))
+      mutex.permit.use( _ => F.uncancelable(poll => fa))
 
     def download(index: Int): F[ByteVector] =
       synchronized {
         for {
           deferred <- Deferred[F, ByteVector]
           _ <- Sync[F].delay {
-            state.completions.update(index, deferred.complete)
+            state.completions.update(index, deferred.complete(_).void)
             val incompletePiece = incompletePieces(index)
             val inProgress = new InProgressPiece(
               incompletePiece,
@@ -70,7 +70,7 @@ object PiecePicker {
         } yield deferred.get
       }.flatten
 
-    def pick(availability: BitSet, address: InetSocketAddress): F[Option[Message.Request]] =
+    def pick(availability: BitSet, address: SocketAddress[IpAddress]): F[Option[Message.Request]] =
       synchronized {
         for {
           piece <- Sync[F].delay {
@@ -132,7 +132,7 @@ object PiecePicker {
 
     def updates: Signal[F, Unit] = notifyRef
 
-    def pending: F[Map[Message.Request, InetSocketAddress]] =
+    def pending: F[Map[Message.Request, SocketAddress[IpAddress]]] =
       synchronized {
         state.pending.toMap.pure[F]
       }

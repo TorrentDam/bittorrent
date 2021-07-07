@@ -1,53 +1,52 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
-
 import cats._
-import cats.effect.{Concurrent, ContextShift, Resource}
+import cats.effect.{Async, Concurrent, Resource}
 import cats.syntax.all._
 import com.github.torrentdam.bencode.{decode, encode}
 import fs2.Chunk
-import fs2.io.udp.{Packet, Socket, SocketGroup}
+import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
 import org.typelevel.log4cats.Logger
+import com.comcast.ip4s._
 
-class MessageSocket[F[_]](socket: Socket[F], logger: Logger[F])(implicit
+class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
   F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
 
-  def readMessage: F[(InetSocketAddress, Message)] =
+  def readMessage: F[(SocketAddress[IpAddress], Message)] =
     for {
-      packet <- socket.read()
+      datagram <- socket.read
       bc <- F.fromEither(
-        decode(packet.bytes.toBitVector).leftMap(Error.BecodeSerialization)
+        decode(datagram.bytes.toBitVector).leftMap(Error.BecodeSerialization)
       )
       message <- F.fromEither(
         Message.MessageFormat
           .read(bc)
           .leftMap(e => Error.MessageFormat(s"Filed to read message from bencode: $bc", e))
       )
-      _ <- logger.trace(s"<<< ${packet.remote} $message")
-    } yield (packet.remote, message)
+      _ <- logger.trace(s"<<< ${datagram.remote} $message")
+    } yield (datagram.remote, message)
 
-  def writeMessage(address: InetSocketAddress, message: Message): F[Unit] = {
+  def writeMessage(address: SocketAddress[IpAddress], message: Message): F[Unit] = {
     val bc = Message.MessageFormat.write(message).right.get
     val bytes = encode(bc)
-    val packet = Packet(address, Chunk.byteVector(bytes.bytes))
+    val packet = Datagram(address, Chunk.byteVector(bytes.bytes))
     socket.write(packet) >> logger.trace(s">>> $address $message")
   }
 }
 
 object MessageSocket {
-  def apply[F[_]](
-    port: Int
-  )(implicit
-    F: Concurrent[F],
-    cs: ContextShift[F],
-    socketGroup: SocketGroup,
+
+  def apply[F[_]]()(
+    implicit
+    F: Async[F],
+    socketGroup: DatagramSocketGroup[F],
     logger: Logger[F]
   ): Resource[F, MessageSocket[F]] =
     socketGroup
-      .open[F](address = new InetSocketAddress(port))
+      .openDatagramSocket()
       .map(socket => new MessageSocket(socket, logger))
 
   object Error {

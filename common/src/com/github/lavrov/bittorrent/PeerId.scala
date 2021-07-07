@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent
-import scodec.bits.ByteVector
 
+import scodec.bits.ByteVector
 import scala.util.Random
 
 final case class PeerId(bytes: ByteVector) {

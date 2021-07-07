@@ -1,15 +1,15 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats._
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.syntax.all._
-import cats.effect.{Concurrent, ContextShift, Resource, Timer}
 import cats.implicits._
+import cats.effect.kernel.{Clock, Deferred, Ref, Temporal}
+import cats.effect.syntax.all._
+import cats.effect.{Async, Concurrent, Resource}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
-import fs2.concurrent.{Queue, Signal, SignallingRef}
-import fs2.io.tcp.SocketGroup
+import fs2.concurrent.{Signal, SignallingRef}
+import fs2.io.net.SocketGroup
 import org.typelevel.log4cats.Logger
 import monocle.Lens
 import monocle.macros.GenLens
@@ -54,8 +54,8 @@ object Connection {
         def register(request: Message.Request): F[ByteVector] = {
           for {
             deferred <- Deferred[F, Either[Throwable, ByteVector]]
-            _ <- stateRef.update(_.updated(request, deferred.complete))
-            result <- Concurrent[F].guarantee(deferred.get)(
+            _ <- stateRef.update(_.updated(request, deferred.complete(_).void))
+            result <- deferred.get.guarantee(
               stateRef.update(_ - request)
             )
             result <- Concurrent[F].fromEither(result)
@@ -79,10 +79,8 @@ object Connection {
   }
 
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
-    F: Concurrent[F],
-    cs: ContextShift[F],
-    timer: Timer[F],
-    socketGroup: SocketGroup,
+    F: Async[F],
+    socketGroup: SocketGroup[F],
     logger: Logger[F]
   ): Resource[F, Connection[F]] =
     MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
@@ -110,7 +108,7 @@ object Connection {
                   socket,
                   extensionHandler
                 ),
-                backgroundLoop(stateRef, timer, socket)
+                backgroundLoop(stateRef, socket)
               )
               .void
               .attempt
@@ -122,7 +120,7 @@ object Connection {
               requestRegistry.failAll(ConnectionClosed()) >>
               logger.debug(s"Disconnected ${peerInfo.address}") >>
               closed.complete(reason).attempt.void
-          _ <- fiber.join.flatMap(doClose).start
+          _ <- fiber.join.flatMap(_ => doClose(().asRight)).start
         } yield {
           val impl: Connection[F] = new Connection[F] {
             def info: PeerInfo = peerInfo
@@ -167,7 +165,7 @@ object Connection {
     updateLastMessageAt: Long => F[Unit],
     socket: MessageSocket[F],
     extensionHandler: ExtensionHandler[F]
-  )(implicit timer: Timer[F]): F[Nothing] =
+  )(implicit clock: Clock[F]): F[Nothing] =
     socket.receive
       .flatMap {
         case Message.Unchoke =>
@@ -190,23 +188,22 @@ object Connection {
           Monad[F].unit
       }
       .flatTap { _ =>
-        timer.clock.monotonic(MILLISECONDS).flatMap { currentTime =>
-          updateLastMessageAt(currentTime)
+        clock.realTime.flatMap { currentTime =>
+          updateLastMessageAt(currentTime.toMillis)
         }
       }
       .foreverM
 
   private def backgroundLoop[F[_]](
     stateRef: Ref[F, State],
-    timer: Timer[F],
     socket: MessageSocket[F]
-  )(implicit F: MonadError[F, Throwable]): F[Nothing] =
-    timer
+  )(implicit F: Temporal[F]): F[Nothing] =
+    F
       .sleep(10.seconds)
       .flatMap { _ =>
         for {
-          currentTime <- timer.clock.monotonic(MILLISECONDS)
-          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt).millis > 1.minute)
+          currentTime <- F.realTime
+          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 1.minute)
           _ <- F.whenA(timedOut) {
             F.raiseError(Error("Connection timed out"))
           }

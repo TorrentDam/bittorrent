@@ -1,13 +1,12 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.{InetAddress, InetSocketAddress}
-
 import cats.implicits._
 import com.github.torrentdam.bencode.Bencode
 import com.github.torrentdam.bencode.format._
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.Codec
 import scodec.bits.ByteVector
+import com.comcast.ip4s._
 
 sealed trait Message {
   def transactionId: ByteVector
@@ -73,17 +72,17 @@ object Message {
     QueryFormat
   ).imapN((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
 
-  val InetSocketAddressCodec: Codec[InetSocketAddress] = {
+  val InetSocketAddressCodec: Codec[SocketAddress[IpAddress]] = {
     import scodec.codecs._
     (bytes(4) ~ bytes(2)).xmap(
       {
         case (address, port) =>
-          new InetSocketAddress(
-            InetAddress.getByAddress(address.toArray),
-            port.toInt(signed = false)
+          SocketAddress(
+            IpAddress.fromBytes(address.toArray).get,
+            Port.fromInt(port.toInt(signed = false)).get
           )
       },
-      v => (ByteVector(v.getAddress.getAddress), ByteVector.fromInt(v.getPort, 2))
+      v => (ByteVector(v.host.toBytes), ByteVector.fromInt(v.port.value, 2))
     )
   }
 

@@ -1,12 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
-
 import cats.implicits._
 import cats.effect.Sync
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.{Concurrent, Ref}
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.bits.ByteVector
+import com.comcast.ip4s._
 
 import scala.collection.immutable.ListMap
 
@@ -30,7 +29,7 @@ object RoutingTable {
   object TreeNode {
 
     final case class Split(center: BigInt, lower: TreeNode, higher: TreeNode) extends TreeNode
-    final case class Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, InetSocketAddress]) extends TreeNode
+    final case class Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, SocketAddress[IpAddress]]) extends TreeNode
 
     def empty: TreeNode =
       TreeNode.Bucket(
@@ -113,7 +112,7 @@ object RoutingTable {
 
   }
 
-  def apply[F[_]: Sync](selfId: NodeId): F[RoutingTable[F]] =
+  def apply[F[_]: Concurrent](selfId: NodeId): F[RoutingTable[F]] =
     for {
       treeNodeRef <- Ref.of(TreeNode.empty)
       peers <- Ref.of(Map.empty[InfoHash, Set[PeerInfo]])

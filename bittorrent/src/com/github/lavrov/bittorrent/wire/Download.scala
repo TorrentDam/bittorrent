@@ -1,13 +1,14 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.Show.Shown
+import cats.effect.std.{Queue, Semaphore}
 import cats.effect.implicits._
-import cats.effect.concurrent.{Ref, Semaphore}
-import cats.effect.{Concurrent, Timer}
+import cats.effect.kernel.Ref
+import cats.effect.Temporal
 import cats.implicits._
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.SignallingRef
 import org.typelevel.log4cats.{Logger, StructuredLogger}
 
 import scala.collection.BitSet
@@ -18,10 +19,10 @@ object Download {
 
   private val MaxParallelRequests = 10
 
-  def download[F[_]](
+  def apply[F[_]](
     swarm: Swarm[F],
     piecePicker: PiecePicker[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): F[Unit] =
+  )(implicit F: Temporal[F], logger: StructuredLogger[F]): F[Unit] =
     swarm.connected.stream
       .parEvalMapUnordered(Int.MaxValue) { connection =>
         logger.addContext(("address", connection.info.address.toString: Shown)).pipe { implicit logger =>
@@ -44,7 +45,7 @@ object Download {
   private def download[F[_]](
     connection: Connection[F],
     pieces: PiecePicker[F]
-  )(implicit F: Concurrent[F], logger: Logger[F], timer: Timer[F]): F[Unit] = {
+  )(implicit F: Temporal[F], logger: Logger[F]): F[Unit] = {
     for {
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
@@ -53,21 +54,21 @@ object Download {
           (incompleteRequests, connection.availability, pieces.updates).tupled.discrete
             .evalTap {
               case (requests: Set[Message.Request], availability: BitSet, _) if requests.size < MaxParallelRequests =>
-                F.uncancelable {
-                  pickMutex.withPermit {
+                F.uncancelable { poll =>
+                  pickMutex.permit.use { _ =>
                     for {
                       request <- pieces.pick(availability, connection.info.address)
                       _ <- request match {
                         case Some(request) =>
                           logger.trace(s"Picked $request") >>
                           incompleteRequests.update(_ + request) >>
-                          requestQueue.enqueue1(request)
+                          requestQueue.offer(request)
                         case None =>
                           logger.trace(s"No pieces dispatched for ${connection.info.address}")
                       }
                     } yield ()
                   }
-                }
+                }.void
               case _ =>
                 F.unit
             }
@@ -80,8 +81,8 @@ object Download {
           .request(request)
           .timeoutTo(5.seconds, F.raiseError(Error.TimeoutWaitingForPiece(5.seconds)))
           .flatMap { bytes =>
-            F.uncancelable {
-              pickMutex.withPermit {
+            F.uncancelable { poll =>
+              pickMutex.permit.use { _ =>
                 logger.trace(s"Complete $request") >>
                 pieces.complete(request, bytes) >>
                 incompleteRequests.update(_ - request)
@@ -90,7 +91,7 @@ object Download {
           }
       }
       drainQueue =
-        requestQueue.dequeue
+        Stream.fromQueueUnterminated(requestQueue)
           .parEvalMapUnordered(Int.MaxValue)(sendRequest)
           .compile
           .drain
@@ -107,36 +108,37 @@ object Download {
   }
 
   private def whenUnchoked[F[_]](connection: Connection[F])(f: F[Unit])(implicit
-    F: Concurrent[F],
-    timer: Timer[F],
+    F: Temporal[F],
     logger: Logger[F]
   ): F[Unit] = {
     def unchoked = connection.choked.map(!_)
     def asString(choked: Boolean) = if (choked) "Choked" else "Unchoked"
-    val current = Ref.unsafe[F, Option[Boolean]](None)
-    connection.choked.discrete
-      .evalTap { choked =>
-        current.getAndSet(choked.some).flatMap { previous =>
-          val from = previous.map(asString)
-          val to = asString(choked)
-          logger.debug(s"$from $to")
-        }
-      }
-      .flatMap { choked =>
-        if (choked)
-          Stream
-            .fixedDelay(30.seconds)
-            .interruptWhen(unchoked)
-            .flatMap { _ =>
-              Stream.raiseError[F](Error.TimeoutWaitingForUnchoke(30.seconds))
+    F.ref[Option[Boolean]](None)
+      .flatMap { current =>
+        connection.choked.discrete
+          .evalTap { choked =>
+            current.getAndSet(choked.some).flatMap { previous =>
+              val from = previous.map(asString)
+              val to = asString(choked)
+              logger.debug(s"$from $to")
             }
-        else
-          Stream
-            .eval(f)
-            .interruptWhen(connection.choked)
-      }
-      .compile
-      .drain
+          }
+          .flatMap { choked =>
+            if (choked)
+              Stream
+                .fixedDelay(30.seconds)
+                .interruptWhen(unchoked)
+                .flatMap { _ =>
+                  Stream.raiseError[F](Error.TimeoutWaitingForUnchoke(30.seconds))
+                }
+            else
+              Stream
+                .eval(f)
+                .interruptWhen(connection.choked)
+          }
+          .compile
+          .drain
+    }
   }
 
   sealed class Error(message: String) extends Throwable(message)

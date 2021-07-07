@@ -1,4 +1,5 @@
 package com.github.lavrov.bittorrent
-import java.net.InetSocketAddress
 
-final case class PeerInfo(address: InetSocketAddress)
+import com.comcast.ip4s._
+
+final case class PeerInfo(address: SocketAddress[IpAddress])

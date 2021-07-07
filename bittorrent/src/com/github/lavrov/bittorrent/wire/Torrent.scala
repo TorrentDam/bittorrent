@@ -1,9 +1,10 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.concurrent.MVar
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Resource, Timer}
+import cats.effect.kernel.{Async, Resource}
+import cats.effect.kernel.syntax.all._
 import cats.implicits._
+import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import org.typelevel.log4cats.{Logger, StructuredLogger}
 import scodec.bits.ByteVector
@@ -11,7 +12,7 @@ import scodec.bits.ByteVector
 import scala.collection.immutable.BitSet
 
 trait Torrent[F[_]] {
-  def getMetaInfo: Lossless
+  def metadata: TorrentMetadata.Lossless
   def stats: F[Torrent.Stats]
   def piece(index: Int): F[ByteVector]
 }
@@ -19,30 +20,26 @@ trait Torrent[F[_]] {
 object Torrent {
 
   def make[F[_]](
-    metaInfo: Lossless,
+    metadata: TorrentMetadata.Lossless,
     swarm: Swarm[F]
-  )(implicit F: Concurrent[F], timer: Timer[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
-    Resource {
+  )(implicit F: Async[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
       for {
-        piecePicker <- PiecePicker(metaInfo.parsed)
-        downloadFiber <- Download.download(swarm, piecePicker).start
+        piecePicker <- Resource.eval { PiecePicker(metadata.parsed) }
+        _ <- F.background(Download(swarm, piecePicker))
       } yield {
-        val impl =
-          new Torrent[F] {
-            def getMetaInfo = metaInfo
-            def stats: F[Stats] =
-              for {
-                connected <- swarm.connected.list
-                availability <- connected.traverse(_.availability.get)
-                availability <- availability.foldMap(identity).pure[F]
-              } yield Stats(connected.size, availability)
-            def piece(index: Int): F[ByteVector] =
-              piecePicker.download(index)
-          }
-        val close = downloadFiber.cancel
-        (impl, close)
+        val metadata0 = metadata
+        new Torrent[F] {
+          def metadata: TorrentMetadata.Lossless = metadata0
+          def stats: F[Stats] =
+            for {
+              connected <- swarm.connected.list
+              availability <- connected.traverse(_.availability.get)
+              availability <- availability.foldMap(identity).pure[F]
+            } yield Stats(connected.size, availability)
+          def piece(index: Int): F[ByteVector] =
+            piecePicker.download(index)
+        }
       }
-    }
 
   case class Stats(
     connected: Int,
