@@ -55,7 +55,7 @@ object cmd extends Module {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.5"
+  def scalaVersion = "2.13.6"
   def scalacOptions = Seq(
     "-language:higherKinds",
     "-Ymacro-annotations",
@@ -71,7 +71,7 @@ trait Module extends ScalaModule with ScalafmtModule {
     )
   }
   def scalacPluginIvyDeps = Agg(
-    ivy"org.typelevel:::kind-projector:0.11.3",
+    ivy"org.typelevel:::kind-projector:0.13.0",
     ivy"com.olegpy::better-monadic-for:0.3.1",
   )
   trait TestModule extends Tests with mill.scalalib.TestModule.Munit {
