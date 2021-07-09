@@ -47,7 +47,7 @@ object bittorrent extends Module with Publishing {
 }
 
 object cmd extends Module {
-  def moduleDeps = List(dht)
+  def moduleDeps = List(dht, bittorrent)
   def ivyDeps = Agg(
     Deps.decline,
     Deps.`logback-classic`,

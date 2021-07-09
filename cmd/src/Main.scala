@@ -1,8 +1,10 @@
 import cats.syntax.all._
 import cats.effect.{ExitCode, IO}
+import cats.effect.std.Console
 import cats.effect.kernel.Resource
-import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
+import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata, Swarm}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
 import fs2.io.net.Network
@@ -21,32 +23,76 @@ object Main extends CommandIOApp(
 
     implicit val logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromClass(classOf[Main.type])
 
-    Opts.subcommand("dht", "discover peers"){
-      Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
-        val selfId = NodeId.generate(Random)
-        val resources =
-          for {
-            table <- Resource.eval { RoutingTable[IO](selfId) }
-            node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
-              Node(selfId, QueryHandler(selfId, table))
+    val discoverCommand =
+      Opts.subcommand("dht", "discover peers"){
+        Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
+          val selfId = NodeId.generate(Random)
+          val resources =
+            for {
+              infoHash <- Resource.eval {
+                InfoHash.fromString
+                  .unapply(infoHash)
+                  .liftTo[IO](new Exception("Malformed info-hash"))
+              }
+              table <- Resource.eval { RoutingTable[IO](selfId) }
+              node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
+                Node(selfId, QueryHandler(selfId, table))
+              }
+              _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
+              discovery <- PeerDiscovery.make(table, node.client)
+            } yield {
+              discovery.discover(infoHash)
             }
-            _ <- Resource.eval {
-              RoutingTableBootstrap(table, node.client)
-            }
-            discovery <- PeerDiscovery.make(table, node.client)
-          } yield {
-            discovery.discover(InfoHash.fromString(infoHash))
+          resources.use { stream =>
+            stream
+              .evalTap { peerInfo =>
+                logger.info(s"Discovered peer ${peerInfo.address}")
+              }
+              .compile
+              .drain
+              .as(ExitCode.Success)
           }
-        resources.use { stream =>
-          stream
-            .evalTap { peerInfo =>
-              logger.info(s"Discovered peer ${peerInfo.address}")
-            }
-            .compile
-            .drain
-            .as(ExitCode.Success)
         }
       }
-    }
+
+    val metadataCommand =
+      Opts.subcommand("metadata", "download metadata"){
+        Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
+
+          val selfId = NodeId.generate(Random)
+          val selfPeerId = PeerId.generate(Random)
+
+          val resources =
+            for {
+              infoHash <- Resource.eval {
+                InfoHash.fromString
+                  .unapply(infoHash)
+                  .liftTo[IO](new Exception("Malformed info-hash"))
+              }
+              table <- Resource.eval { RoutingTable[IO](selfId) }
+              node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
+                Node(selfId, QueryHandler(selfId, table))
+              }
+              _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
+              discovery <- PeerDiscovery.make(table, node.client)
+              swarm <- Network[IO].socketGroup().flatMap { implicit group =>
+                Swarm(
+                  discovery.discover(infoHash),
+                  Connection.connect(selfPeerId, _, infoHash)
+                )
+              }
+            } yield {
+              DownloadMetadata(swarm.connected.stream)
+            }
+
+          resources.use { getMetadata =>
+            getMetadata
+              .flatMap(Console[IO].println(_))
+              .as(ExitCode.Success)
+          }
+        }
+      }
+
+    discoverCommand <+> metadataCommand
   }
 }

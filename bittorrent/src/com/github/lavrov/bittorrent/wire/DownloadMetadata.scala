@@ -13,7 +13,7 @@ object DownloadMetadata {
 
   def apply[F[_]](connections: Stream[F, Connection[F]])(implicit F: Temporal[F]): F[Lossless] =
     connections
-      .evalMap(connection =>
+      .parEvalMapUnordered(10)(connection =>
         DownloadMetadata(connection)
           .timeout(1.minute)
           .attempt
