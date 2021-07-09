@@ -1,10 +1,9 @@
 import cats.syntax.all._
 import cats.effect.{ExitCode, IO}
-import cats.effect.std.Console
 import cats.effect.kernel.Resource
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
-import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata, Swarm}
+import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, Swarm}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
 import fs2.io.net.Network
@@ -87,12 +86,62 @@ object Main extends CommandIOApp(
 
           resources.use { getMetadata =>
             getMetadata
-              .flatMap(Console[IO].println(_))
+              .flatMap(metadata => logger.info(s"Downloaded metadata $metadata"))
               .as(ExitCode.Success)
           }
         }
       }
 
-    discoverCommand <+> metadataCommand
+    val downloadCommand =
+      Opts.subcommand("download", "download torrent"){
+        Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
+
+          val selfId = NodeId.generate(Random)
+          val selfPeerId = PeerId.generate(Random)
+
+          val resources =
+            for {
+              infoHash <- Resource.eval {
+                InfoHash.fromString
+                  .unapply(infoHash)
+                  .liftTo[IO](new Exception("Malformed info-hash"))
+              }
+              table <- Resource.eval { RoutingTable[IO](selfId) }
+              node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
+                Node(selfId, QueryHandler(selfId, table))
+              }
+              _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
+              discovery <- PeerDiscovery.make(table, node.client)
+              swarm <- Network[IO].socketGroup().flatMap { implicit group =>
+                Swarm(
+                  discovery.discover(infoHash),
+                  peerInfo =>
+                    Connection
+                      .connect[IO](selfPeerId, peerInfo, infoHash)
+                      .evalTap(connection => logger.info(s"Connected to ${connection.info.address}"))
+                )
+              }
+            } yield {
+              swarm
+            }
+
+          resources.use { swarm =>
+            for {
+              metadata <- DownloadMetadata(swarm.connected.stream)
+              _ <- Download(swarm, metadata.parsed).use { picker =>
+                picker.pieces.flatMap { pieces =>
+                  pieces.traverse { index =>
+                    picker.download(index) >> logger.info(s"Downloaded piece $index")
+                  }
+                }
+              }
+            } yield {
+              ExitCode.Success
+            }
+          }
+        }
+      }
+
+    discoverCommand <+> metadataCommand <+> downloadCommand
   }
 }

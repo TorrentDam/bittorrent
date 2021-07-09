@@ -24,6 +24,7 @@ trait PiecePicker[F[_]] {
   def complete(request: Message.Request, bytes: ByteVector): F[Unit]
   def updates: Signal[F, Unit]
   def pending: F[Map[Message.Request, SocketAddress[IpAddress]]]
+  def pieces: F[List[Int]]
 }
 object PiecePicker {
   def apply[F[_]](
@@ -136,6 +137,8 @@ object PiecePicker {
       synchronized {
         state.pending.toMap.pure[F]
       }
+
+    def pieces: F[List[Int]] = incompletePieces.map(_.index.toInt).pure[F]
   }
 
   def buildQueue(metadata: TorrentMetadata): Chain[IncompletePiece] = {

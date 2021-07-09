@@ -4,8 +4,9 @@ import cats.Show.Shown
 import cats.effect.std.{Queue, Semaphore}
 import cats.effect.implicits._
 import cats.effect.kernel.Ref
-import cats.effect.Temporal
+import cats.effect.{Async, Resource, Temporal}
 import cats.implicits._
+import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.SignallingRef
@@ -21,8 +22,28 @@ object Download {
 
   def apply[F[_]](
     swarm: Swarm[F],
+    metadata: TorrentMetadata
+  )(
+    implicit
+    F: Async[F],
+    logger: StructuredLogger[F]
+  ): Resource[F, PiecePicker[F]] = {
+    for {
+      picker <- Resource.eval { PiecePicker(metadata) }
+      _ <- apply(swarm, picker).background
+    } yield {
+      picker
+    }
+  }
+
+  def apply[F[_]](
+    swarm: Swarm[F],
     piecePicker: PiecePicker[F]
-  )(implicit F: Temporal[F], logger: StructuredLogger[F]): F[Unit] =
+  )(
+    implicit
+    F: Temporal[F],
+    logger: StructuredLogger[F]
+  ): F[Unit] =
     swarm.connected.stream
       .parEvalMapUnordered(Int.MaxValue) { connection =>
         logger.addContext(("address", connection.info.address.toString: Shown)).pipe { implicit logger =>
