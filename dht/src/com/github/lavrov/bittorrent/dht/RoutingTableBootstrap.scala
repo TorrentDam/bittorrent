@@ -17,7 +17,13 @@ object RoutingTableBootstrap {
     dns: Dns[F],
     logger: Logger[F]
   ): F[Unit] =
-    resolveSeedNode(client) >>= table.insert
+    for {
+      _ <- logger.info("Bootstrapping")
+      seedInfo <- resolveSeedNode(client)
+      response <- client.findNodes(seedInfo, seedInfo.id)
+      _ <- response.nodes.traverse(table.insert)
+      _ <- logger.info(s"Bootstrap completed with ${response.nodes.size} nodes")
+    } yield {}
 
   def resolveSeedNode[F[_]](
     client: Client[F]
@@ -36,7 +42,10 @@ object RoutingTableBootstrap {
               val msg = e.getMessage
               logger.info(s"Bootstrap failed $msg $e") >> F.sleep(5.seconds) >> loop
           }
-      logger.info("Boostrapping") *> loop <* logger.info("Bootstrap complete")
+      logger.info(s"Resolve seed node $seedAddress") >>
+        loop.flatTap { nodeInfo =>
+          logger.info(s"Resolved as ${nodeInfo.id}")
+        }
     }
 
   private val SeedNodeAddress = SocketAddress(host"router.bittorrent.com", port"6881")
