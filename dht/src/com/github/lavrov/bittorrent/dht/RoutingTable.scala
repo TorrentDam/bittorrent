@@ -41,8 +41,9 @@ object RoutingTable {
 
   val MaxNodes = 8
 
-  implicit class TreeNodeOps(bucket: TreeNode) {
-    import TreeNode.*
+  import TreeNode.*
+
+  extension (bucket: TreeNode) {
 
     def insert(node: NodeInfo, selfId: NodeId): TreeNode =
       bucket match {

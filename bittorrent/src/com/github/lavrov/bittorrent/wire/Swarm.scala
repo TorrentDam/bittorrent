@@ -155,18 +155,16 @@ object Swarm {
           logger.trace(s"Disconnected. Trying to reconnect.")
       }
 
-    implicit class Ops[F[_]](val self: RoutineLogger[F]) extends AnyVal {
+    extension [F[_]](self: RoutineLogger[F])
 
       def mapK[G[_]](f: F ~> G): RoutineLogger[G] =
-        new RoutineLogger[G] {
+        new RoutineLogger[G]:
           def gaveUp: G[Unit] =
             f(self.gaveUp)
           def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): G[Unit] =
             f(self.connectionFailed(attempt, cause, waitDuration))
           def disconnected: G[Unit] =
             f(self.disconnected)
-        }
-    }
   }
 
   trait Connected[F[_]] {

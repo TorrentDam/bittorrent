@@ -11,7 +11,8 @@ import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
 import org.typelevel.log4cats.Logger
 import com.comcast.ip4s.*
 
-class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
+class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(
+  using
   F: MonadError[F, Throwable]
 ) {
   import MessageSocket.Error
@@ -41,7 +42,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
 object MessageSocket {
 
   def apply[F[_]]()(
-    implicit
+    using
     F: Async[F],
     socketGroup: DatagramSocketGroup[F],
     logger: Logger[F]

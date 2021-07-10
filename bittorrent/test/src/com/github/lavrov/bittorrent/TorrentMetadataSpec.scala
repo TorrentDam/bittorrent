@@ -3,7 +3,6 @@ package com.github.lavrov.bittorrent
 import com.github.torrentdam.bencode.*
 import com.github.torrentdam.bencode.format.BencodeFormat
 import scodec.bits.{Bases, BitVector, ByteVector}
-import TestUtils.InputStreamExtensions
 
 class TorrentMetadataSpec extends munit.FunSuite {
 
