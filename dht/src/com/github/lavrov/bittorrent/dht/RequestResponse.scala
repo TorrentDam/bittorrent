@@ -25,7 +25,8 @@ object RequestResponse {
     receiveMessage: F[
       (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ]
-  )(implicit
+  )(
+    using
     F: Temporal[F],
   ): Resource[F, RequestResponse[F]] =
     Resource {
@@ -41,7 +42,7 @@ object RequestResponse {
     generateTransactionId: F[ByteVector],
     sendQueryMessage: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
     receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
-  )(implicit F: MonadError[F, Throwable])
+  )(using F: MonadError[F, Throwable])
       extends RequestResponse[F] {
     def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response] = {
       generateTransactionId.flatMap { transactionId =>
@@ -57,7 +58,8 @@ object RequestResponse {
       (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ],
     continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
-  )(implicit
+  )(
+    using
     F: Monad[F]
   ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
@@ -95,7 +97,7 @@ object CallbackRegistry {
 
   private class Impl[F[_]](
     ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
-  )(implicit F: Temporal[F]) extends CallbackRegistry[F] {
+  )(using F: Temporal[F]) extends CallbackRegistry[F] {
     def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] ={
       F.deferred[Either[Throwable, Response]].flatMap { deferred =>
         val update =

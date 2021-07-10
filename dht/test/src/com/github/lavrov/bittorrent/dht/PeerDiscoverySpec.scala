@@ -17,7 +17,7 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
     def nodeId(id: String) = NodeId(ByteVector.encodeUtf8(id).toOption.get)
 
-    implicit val logger: Logger[IO] = NoOpLogger[IO]
+    given logger: Logger[IO] = NoOpLogger[IO]
 
     def getPeers(
       nodeInfo: NodeInfo,

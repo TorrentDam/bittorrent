@@ -16,7 +16,7 @@ object Message {
   final case class ResponseMessage(transactionId: ByteVector, response: Response) extends Message
   final case class ErrorMessage(transactionId: ByteVector, details: Bencode) extends Message
 
-  implicit val NodeIdFormat: BencodeFormat[NodeId] =
+  given BencodeFormat[NodeId] =
     BencodeFormat.ByteVectorFormat.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
@@ -29,7 +29,7 @@ object Message {
     )
   ).imap(tpl => Query.FindNode.apply.tupled(tpl))(v => (v.queryingNodeId, v.target))
 
-  implicit val InfoHashFormat: BencodeFormat[InfoHash] = BencodeFormat.ByteVectorFormat.imap(InfoHash(_))(_.bytes)
+  given BencodeFormat[InfoHash] = BencodeFormat.ByteVectorFormat.imap(InfoHash(_))(_.bytes)
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
     field[(NodeId, InfoHash)]("a")(
@@ -155,7 +155,7 @@ object Message {
     (v.transactionId.some, v.details)
   )
 
-  implicit val MessageFormat: BencodeFormat[Message] =
+  given BencodeFormat[Message] =
     field[String]("y").choose(
       {
         case "q" => QueryMessageFormat.upcast

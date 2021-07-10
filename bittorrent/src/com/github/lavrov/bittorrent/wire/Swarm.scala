@@ -85,7 +85,7 @@ object Swarm {
         case Some(c) => c.pure[F]
         case None =>
           type Cont[A] = ContT[F, Unit, A]
-          implicit val logger1: RoutineLogger[Cont] = RoutineLogger(logger).mapK(ContT.liftK)
+          given logger1: RoutineLogger[Cont] = RoutineLogger(logger).mapK(ContT.liftK)
           F.race(discover, reconnects.take).map {
             _.leftMap { discovered =>
               connectRoutine[Cont](discovered)(

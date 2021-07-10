@@ -5,6 +5,7 @@ import cats.*
 import cats.effect.{Async, Concurrent, Resource}
 import cats.syntax.all.*
 import com.github.torrentdam.bencode.{decode, encode}
+import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Chunk
 import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
 import org.typelevel.log4cats.Logger
@@ -22,7 +23,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
         decode(datagram.bytes.toBitVector).leftMap(Error.BecodeSerialization.apply)
       )
       message <- F.fromEither(
-        Message.MessageFormat
+        summon[BencodeFormat[Message]]
           .read(bc)
           .leftMap(e => Error.MessageFormat(s"Filed to read message from bencode: $bc", e))
       )
@@ -30,7 +31,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
     } yield (datagram.remote, message)
 
   def writeMessage(address: SocketAddress[IpAddress], message: Message): F[Unit] = {
-    val bc = Message.MessageFormat.write(message).toOption.get
+    val bc = summon[BencodeFormat[Message]].write(message).toOption.get
     val bytes = encode(bc)
     val packet = Datagram(address, Chunk.byteVector(bytes.bytes))
     socket.write(packet) >> logger.trace(s">>> $address $message")

@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent.dht
 
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.torrentdam.bencode.Bencode
+import com.github.torrentdam.bencode.format.BencodeFormat
 import scodec.bits.ByteVector
 
 class MessageFormatSpec extends munit.FunSuite {
@@ -17,7 +18,7 @@ class MessageFormatSpec extends munit.FunSuite {
       "q" -> Bencode.BString("ping")
     )
 
-    val result = Message.MessageFormat.read(input)
+    val result = summon[BencodeFormat[Message]].read(input)
     val expectation = Right(
       Message.QueryMessage(
         ByteVector.fromValidHex("6a76679c"),
@@ -39,7 +40,7 @@ class MessageFormatSpec extends munit.FunSuite {
         "port" -> Bencode.BInteger(9999)
       )
     )
-    val result = Message.MessageFormat.read(input)
+    val result = summon[BencodeFormat[Message]].read(input)
     val expectation = Right(
       Message.QueryMessage(
         ByteVector.fromValidHex("6a76679c"),

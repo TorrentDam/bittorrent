@@ -21,7 +21,8 @@ object Node {
   def apply[F[_]](
     selfId: NodeId,
     queryHandler: QueryHandler[F]
-  )(implicit
+  )(
+    using
     F: Async[F],
     socketGroup: DatagramSocketGroup[F],
     logger: Logger[F]

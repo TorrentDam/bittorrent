@@ -20,7 +20,7 @@ object Main extends CommandIOApp(
 
   def main: Opts[IO[ExitCode]] = {
 
-    implicit val logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromClass(classOf[Main.type])
+    given logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromClass(classOf[Main.type])
 
     val discoverCommand =
       Opts.subcommand("dht", "discover peers"){

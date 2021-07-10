@@ -19,7 +19,11 @@ object PeerDiscovery {
   def make[F[_]](
     routingTable: RoutingTable[F],
     dhtClient: Client[F]
-  )(implicit F: Concurrent[F], logger: StructuredLogger[F]): Resource[F, PeerDiscovery[F]] =
+  )(
+    using
+    F: Concurrent[F],
+    logger: StructuredLogger[F]
+  ): Resource[F, PeerDiscovery[F]] =
     Resource.pure[F, PeerDiscovery[F]] {
 
       val logger0 = logger
@@ -28,7 +32,7 @@ object PeerDiscovery {
 
         def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
 
-          implicit val logger: Logger[F] =
+          given logger: Logger[F] =
             logger0.addContext(("infoHash", infoHash.toString: Shown))
 
           Stream
@@ -61,7 +65,7 @@ object PeerDiscovery {
     getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
     state: DiscoveryState[F]
   )(
-    implicit
+    using
     F: Concurrent[F],
     logger: Logger[F]
   ): Stream[F, PeerInfo] = {

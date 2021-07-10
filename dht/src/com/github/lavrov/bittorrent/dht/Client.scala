@@ -29,7 +29,8 @@ object Client {
     sendQueryMessage: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
     receiveResponse: F[(SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])],
     generateTransactionId: F[ByteVector],
-  )(implicit
+  )(
+    using
     F: Temporal[F],
     logger: Logger[F]
   ): Resource[F, Client[F]] = {

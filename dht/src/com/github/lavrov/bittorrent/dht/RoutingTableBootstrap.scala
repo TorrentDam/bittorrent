@@ -12,7 +12,8 @@ object RoutingTableBootstrap {
   def apply[F[_]](
     table: RoutingTable[F],
     client: Client[F]
-  )(implicit
+  )(
+    using
     F: Temporal[F],
     dns: Dns[F],
     logger: Logger[F]
@@ -27,7 +28,8 @@ object RoutingTableBootstrap {
 
   def resolveSeedNode[F[_]](
     client: Client[F]
-  )(implicit
+  )(
+    using
     F: Temporal[F],
     dns: Dns[F],
     logger: Logger[F]

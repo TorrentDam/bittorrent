@@ -1,13 +1,14 @@
 package com.github.lavrov.bittorrent
 
 import com.github.torrentdam.bencode.*
+import com.github.torrentdam.bencode.format.BencodeFormat
 import scodec.bits.{Bases, BitVector, ByteVector}
 import TestUtils.InputStreamExtensions
 
 class TorrentMetadataSpec extends munit.FunSuite {
 
   test("encode file class") {
-    val result = TorrentMetadata.FileFormat.write(TorrentMetadata.File(77, "abc" :: Nil))
+    val result = summon[BencodeFormat[TorrentMetadata.File]].write(TorrentMetadata.File(77, "abc" :: Nil))
     val expectation = Right(
       Bencode.BDictionary(
         "length" -> Bencode.BInteger(77),
@@ -22,7 +23,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(bc) = decode(source): @unchecked
-    val decodedResult = TorrentFile.TorrentFileFormat.read(bc)
+    val decodedResult = summon[BencodeFormat[TorrentFile]].read(bc)
     val result = decodedResult
       .map(_.info.raw)
       .map(encode(_).digest("SHA-1"))
@@ -40,7 +41,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
     )
 
     assert(
-      TorrentMetadata.TorrentMetadataFormat.read(input) == Right(
+      summon[BencodeFormat[TorrentMetadata]].read(input) == Right(
         TorrentMetadata("file_name", 10, ByteVector.empty, List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
@@ -58,7 +59,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
     )
 
     assert(
-      TorrentMetadata.TorrentMetadataFormat.read(input1) == Right(
+      summon[BencodeFormat[TorrentMetadata]].read(input1) == Right(
         TorrentMetadata("test", 10, ByteVector.empty, TorrentMetadata.File(10, "/root" :: Nil) :: Nil)
       )
     )
@@ -73,7 +74,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
     )
 
     assert(
-      TorrentMetadata.TorrentMetadataFormat.read(input) == Right(
+      summon[BencodeFormat[TorrentMetadata]].read(input) == Right(
         TorrentMetadata("file_name", 10, ByteVector(10), List(TorrentMetadata.File(10, List("file_name"))))
       )
     )
@@ -96,7 +97,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
     val Right(result) = decode(source): @unchecked
-    val decodeResult = TorrentFile.TorrentFileFormat.read(result)
+    val decodeResult = summon[BencodeFormat[TorrentFile]].read(result)
     assert(decodeResult.isRight)
   }
 
