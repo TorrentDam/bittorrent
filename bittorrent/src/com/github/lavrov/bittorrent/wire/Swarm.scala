@@ -116,11 +116,11 @@ object Swarm {
           case Right(_) => F.unit
           case Left(e) =>
             val cause = e.getMessage
-            if (attempt == maxAttempts) logger.gaveUp
-            else {
+            if attempt == maxAttempts
+            then logger.gaveUp
+            else
               val duration = (10 * attempt).seconds
               logger.connectionFailed(attempt, cause, duration) >> coolDown(duration) >> connectWithRetry(attempt + 1)
-            }
         }
     }
     for

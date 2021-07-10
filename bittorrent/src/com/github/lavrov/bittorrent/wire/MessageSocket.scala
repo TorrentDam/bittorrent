@@ -57,7 +57,7 @@ class MessageSocket[F[_]](
   private def readExactlyN(numBytes: Int): F[ByteVector] =
     for
       chunk <- socket.readN(numBytes)
-      _ <- if (chunk.size == numBytes) F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
+      _ <- if chunk.size == numBytes then F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
     yield chunk.toByteVector
 
 }
@@ -106,7 +106,9 @@ object MessageSocket {
             case e: InterruptedByTimeoutException =>
               Error("Timeout waiting for handshake", e)
           }
-      _ <- if (bytes.size == handshakeMessageSize) F.unit else F.raiseError(Error("Unsuccessful handshake: connection prematurely closed"))
+      _ <- if bytes.size == handshakeMessageSize
+           then F.unit
+           else F.raiseError(Error("Unsuccessful handshake: connection prematurely closed"))
       response <- F.fromEither(
         Handshake.HandshakeCodec
           .decodeValue(bytes.toBitVector)

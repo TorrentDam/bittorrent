@@ -132,7 +132,7 @@ object Download {
     logger: Logger[F]
   ): F[Unit] = {
     def unchoked = connection.choked.map(!_)
-    def asString(choked: Boolean) = if (choked) "Choked" else "Unchoked"
+    def asString(choked: Boolean) = if choked then "Choked" else "Unchoked"
     F.ref[Option[Boolean]](None)
       .flatMap { current =>
         connection.choked.discrete
@@ -144,7 +144,7 @@ object Download {
             }
           }
           .flatMap { choked =>
-            if (choked)
+            if choked then
               Stream
                 .fixedDelay(30.seconds)
                 .interruptWhen(unchoked)

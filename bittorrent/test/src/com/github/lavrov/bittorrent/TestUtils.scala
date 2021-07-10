@@ -11,7 +11,7 @@ object TestUtils {
       val buffer = Array.ofDim[Byte](1024)
       def recur(acc: ByteVector): ByteVector = {
         val bytesRead = is.read(buffer)
-        if (bytesRead != -1)
+        if bytesRead != -1 then
           recur(acc ++ ByteVector(buffer, 0, bytesRead))
         else
           acc

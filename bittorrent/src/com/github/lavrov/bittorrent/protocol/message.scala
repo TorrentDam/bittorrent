@@ -25,8 +25,7 @@ object Handshake {
         .fill(8)(0)
         .toBitVector
         .pipe(v =>
-          if (supported) v.set(43)
-          else v
+          if supported then v.set(43) else v
         )
   )
   val InfoHashCodec: Codec[InfoHash] = bytes(20).xmap(InfoHash(_), _.bytes)

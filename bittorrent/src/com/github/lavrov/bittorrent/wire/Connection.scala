@@ -135,7 +135,8 @@ object Connection {
             def request(request: Message.Request): F[ByteVector] =
               socket.send(request) >>
               requestRegistry.register(request).flatMap { bytes =>
-                if (bytes.length == request.length)
+                if bytes.length == request.length
+                then
                   bytes.pure[F]
                 else
                   InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]

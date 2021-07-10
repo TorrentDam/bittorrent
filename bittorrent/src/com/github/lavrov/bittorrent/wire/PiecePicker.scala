@@ -115,7 +115,7 @@ object PiecePicker {
           }
           _ <- piece.bytes.traverse_ { bytes =>
             val verified = piece.verify(bytes)
-            if (verified)
+            if verified then
               for
                 complete <- Sync[F].delay {
                   val index = piece.piece.index.toInt
@@ -155,7 +155,7 @@ object PiecePicker {
       def loop(index: Long): Unit = {
         val thisPieceLength =
           math.min(pieceLength, totalLength - index * pieceLength)
-        if (thisPieceLength > 0) {
+        if thisPieceLength > 0 then
           result = result.append(
             IncompletePiece(
               index,
@@ -167,7 +167,6 @@ object PiecePicker {
             )
           )
           loop(index + 1)
-        }
       }
       loop(0)
       result
@@ -178,7 +177,7 @@ object PiecePicker {
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
         val thisChunkSize = math.min(chunkSize, length - index * chunkSize)
-        if (thisChunkSize > 0) {
+        if thisChunkSize > 0 then
           val begin = index * chunkSize
           result = result.append(
             Message.Request(
@@ -188,7 +187,6 @@ object PiecePicker {
             )
           )
           loop(index + 1)
-        }
       }
       loop(0)
       result
@@ -218,11 +216,12 @@ object PiecePicker {
     def isComplete: Boolean = piece.size == downloadedSize
 
     def bytes: Option[ByteVector] = {
-      if (isComplete) {
+      if isComplete
+      then
         val joined = downloaded.values.reduce(_ ++ _)
         Some(joined)
-      }
-      else None
+      else
+        None
     }
 
     def verify(bytes: ByteVector): Boolean = {
