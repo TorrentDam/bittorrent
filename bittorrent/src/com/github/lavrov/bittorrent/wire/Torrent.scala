@@ -22,7 +22,7 @@ object Torrent {
   def make[F[_]](
     metadata: TorrentMetadata.Lossless,
     swarm: Swarm[F]
-  )(implicit F: Async[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
+  )(using F: Async[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
       for
         piecePicker <- Resource.eval { PiecePicker(metadata.parsed) }
         _ <- F.background(Download(swarm, piecePicker))

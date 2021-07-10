@@ -78,7 +78,8 @@ object Connection {
       }
   }
 
-  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
+  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
+    using
     F: Async[F],
     socketGroup: SocketGroup[F],
     logger: Logger[F]
@@ -166,7 +167,7 @@ object Connection {
     updateLastMessageAt: Long => F[Unit],
     socket: MessageSocket[F],
     extensionHandler: ExtensionHandler[F]
-  )(implicit clock: Clock[F]): F[Nothing] =
+  )(using clock: Clock[F]): F[Nothing] =
     socket.receive
       .flatMap {
         case Message.Unchoke =>
@@ -198,7 +199,7 @@ object Connection {
   private def backgroundLoop[F[_]](
     stateRef: Ref[F, State],
     socket: MessageSocket[F]
-  )(implicit F: Temporal[F]): F[Nothing] =
+  )(using F: Temporal[F]): F[Nothing] =
     F
       .sleep(10.seconds)
       .flatMap { _ =>

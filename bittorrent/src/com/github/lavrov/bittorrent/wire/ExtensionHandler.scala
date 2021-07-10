@@ -21,7 +21,7 @@ trait ExtensionHandler[F[_]] {
 
 object ExtensionHandler {
 
-  def noop[F[_]](implicit F: Applicative[F]): ExtensionHandler[F] = _ => F.unit
+  def noop[F[_]](using F: Applicative[F]): ExtensionHandler[F] = _ => F.unit
 
   def dynamic[F[_]: Monad](get: F[ExtensionHandler[F]]): ExtensionHandler[F] = message => get.flatMap(_(message))
 
@@ -38,7 +38,7 @@ object ExtensionHandler {
       infoHash: InfoHash,
       send: Send[F],
       utMetadata: UtMetadata.Create[F]
-    )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
+    )(using F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
       for
         apiDeferred <- F.deferred[ExtensionApi[F]]
         handlerRef <- F.ref[ExtensionHandler[F]](ExtensionHandler.noop)
@@ -87,7 +87,7 @@ object ExtensionHandler {
       send: Send[F],
       utMetadata: UtMetadata.Create[F],
       handshake: ExtensionHandshake
-    )(implicit F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
+    )(using F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
       for
         (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
       yield
@@ -123,10 +123,10 @@ object ExtensionHandler {
 
     object Handler {
 
-      def unit[F[_]](implicit F: Applicative[F]): Handler[F] = _ => F.unit
+      def unit[F[_]](using F: Applicative[F]): Handler[F] = _ => F.unit
     }
 
-    class Create[F[_]](implicit F: Async[F]) {
+    class Create[F[_]](using F: Async[F]) {
 
       def apply(
         infoHash: InfoHash,
@@ -162,7 +162,7 @@ object ExtensionHandler {
       receive: F[UtMessage],
       size: Long,
       infoHash: InfoHash
-    )(implicit F: Sync[F])
+    )(using F: Sync[F])
         extends UtMetadata[F] {
 
       def fetch: F[Lossless] =

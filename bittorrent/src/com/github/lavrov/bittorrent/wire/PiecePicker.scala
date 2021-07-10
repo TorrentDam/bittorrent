@@ -29,7 +29,7 @@ trait PiecePicker[F[_]] {
 object PiecePicker {
   def apply[F[_]](
     metadata: TorrentMetadata
-  )(implicit F: Async[F], logger: Logger[F]): F[PiecePicker[F]] =
+  )(using F: Async[F], logger: Logger[F]): F[PiecePicker[F]] =
     for
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
@@ -49,7 +49,7 @@ object PiecePicker {
     mutex: Semaphore[F],
     notifyRef: SignallingRef[F, Unit],
     incompletePieces: List[IncompletePiece]
-  )(implicit F: Async[F], logger: Logger[F])
+  )(using F: Async[F], logger: Logger[F])
       extends PiecePicker[F] {
 
     private def synchronized[A](fa: F[A]): F[A] =

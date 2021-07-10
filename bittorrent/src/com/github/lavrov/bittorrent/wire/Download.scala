@@ -24,7 +24,7 @@ object Download {
     swarm: Swarm[F],
     metadata: TorrentMetadata
   )(
-    implicit
+    using
     F: Async[F],
     logger: StructuredLogger[F]
   ): Resource[F, PiecePicker[F]] = {
@@ -39,13 +39,13 @@ object Download {
     swarm: Swarm[F],
     piecePicker: PiecePicker[F]
   )(
-    implicit
+    using
     F: Temporal[F],
     logger: StructuredLogger[F]
   ): F[Unit] =
     swarm.connected.stream
       .parEvalMapUnordered(Int.MaxValue) { connection =>
-        logger.addContext(("address", connection.info.address.toString: Shown)).pipe { implicit logger =>
+        logger.addContext(("address", connection.info.address.toString: Shown)).pipe { logger =>
           connection.interested >>
           whenUnchoked(connection)(download(connection, piecePicker))
             .recoverWith {
@@ -65,7 +65,7 @@ object Download {
   private def download[F[_]](
     connection: Connection[F],
     pieces: PiecePicker[F]
-  )(implicit F: Temporal[F], logger: Logger[F]): F[Unit] = {
+  )(using F: Temporal[F], logger: Logger[F]): F[Unit] = {
     for
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
@@ -127,7 +127,8 @@ object Download {
     yield ()
   }
 
-  private def whenUnchoked[F[_]](connection: Connection[F])(f: F[Unit])(implicit
+  private def whenUnchoked[F[_]](connection: Connection[F])(f: F[Unit])(
+    using
     F: Temporal[F],
     logger: Logger[F]
   ): F[Unit] = {

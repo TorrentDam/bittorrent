@@ -19,7 +19,7 @@ class MessageSocket[F[_]](
   socket: Socket[F],
   writeMutex: Semaphore[F],
   logger: Logger[F]
-)(implicit F: Concurrent[F]) {
+)(using F: Concurrent[F]) {
 
   def send(message: Message): F[Unit] =
     for
@@ -66,7 +66,8 @@ object MessageSocket {
 
   val MaxMessageSize: Long = 1024 * 1024 // 1MB
 
-  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(implicit
+  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
+    using
     F: Async[F],
     socketGroup: SocketGroup[F],
     logger: Logger[F]
@@ -90,7 +91,7 @@ object MessageSocket {
     selfId: PeerId,
     infoHash: InfoHash,
     socket: Socket[F]
-  )(implicit F: Concurrent[F]): F[Handshake] = {
+  )(using F: Concurrent[F]): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
     for
       _ <- socket.write(

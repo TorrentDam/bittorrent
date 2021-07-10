@@ -24,7 +24,8 @@ object Swarm {
     dhtPeers: Stream[F, PeerInfo],
     connect: PeerInfo => Resource[F, Connection[F]],
     maxConnections: Int = 10
-  )(implicit
+  )(
+    using
     F: Temporal[F],
     defer: Defer[F],
     logger: Logger[F]
@@ -63,7 +64,7 @@ object Swarm {
   private class Impl[F[_]](
     stateRef: SignallingRef[F, Map[PeerInfo, Connection[F]]],
     lastConnected: SignallingRef[F, Connection[F]]
-  )(implicit F: Monad[F])
+  )(using F: Monad[F])
       extends Swarm[F] {
     val connected: Connected[F] = new Connected[F] {
       def count: Signal[F, Int] = stateRef.map(_.size)
@@ -74,7 +75,7 @@ object Swarm {
   }
 
   private def openConnections[F[_]](discover: F[PeerInfo], reconnects: Queue[F, F[Unit]], connect: PeerInfo => F[Unit])(
-    implicit
+    using
     F: Temporal[F],
     defer: Defer[F],
     logger: Logger[F]
@@ -105,7 +106,8 @@ object Swarm {
 
   private def connectRoutine[F[_]](
     peerInfo: PeerInfo
-  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(implicit
+  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(
+    using
     F: Monad[F],
     logger: RoutineLogger[F]
   ): F[Unit] = {

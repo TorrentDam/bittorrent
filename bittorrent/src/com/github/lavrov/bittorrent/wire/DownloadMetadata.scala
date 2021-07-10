@@ -11,7 +11,7 @@ import scala.concurrent.duration.*
 
 object DownloadMetadata {
 
-  def apply[F[_]](connections: Stream[F, Connection[F]])(implicit F: Temporal[F]): F[Lossless] =
+  def apply[F[_]](connections: Stream[F, Connection[F]])(using F: Temporal[F]): F[Lossless] =
     connections
       .parEvalMapUnordered(10)(connection =>
         DownloadMetadata(connection)
@@ -24,7 +24,7 @@ object DownloadMetadata {
       .compile
       .lastOrError
 
-  def apply[F[_]](connection: Connection[F])(implicit F: MonadThrow[F]): F[Lossless] =
+  def apply[F[_]](connection: Connection[F])(using F: MonadThrow[F]): F[Lossless] =
     connection.extensionApi
       .flatMap(_.utMetadata.liftTo[F](UtMetadataNotSupported()))
       .flatMap(_.fetch)
