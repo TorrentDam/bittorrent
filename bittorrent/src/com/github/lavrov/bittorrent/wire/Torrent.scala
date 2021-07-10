@@ -23,23 +23,24 @@ object Torrent {
     metadata: TorrentMetadata.Lossless,
     swarm: Swarm[F]
   )(implicit F: Async[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
-      for {
+      for
         piecePicker <- Resource.eval { PiecePicker(metadata.parsed) }
         _ <- F.background(Download(swarm, piecePicker))
-      } yield {
+      yield
         val metadata0 = metadata
         new Torrent[F] {
           def metadata: TorrentMetadata.Lossless = metadata0
           def stats: F[Stats] =
-            for {
+            for
               connected <- swarm.connected.list
               availability <- connected.traverse(_.availability.get)
               availability <- availability.foldMap(identity).pure[F]
-            } yield Stats(connected.size, availability)
+            yield
+              Stats(connected.size, availability)
           def piece(index: Int): F[ByteVector] =
             piecePicker.download(index)
         }
-      }
+      end for
 
   case class Stats(
     connected: Int,

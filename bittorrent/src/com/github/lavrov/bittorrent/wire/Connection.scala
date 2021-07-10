@@ -45,36 +45,36 @@ object Connection {
   }
   object RequestRegistry {
     def apply[F[_]: Concurrent]: F[RequestRegistry[F]] =
-      for {
+      for
         stateRef <- Ref.of(
           Map.empty[Message.Request, Either[Throwable, ByteVector] => F[Unit]]
         )
-      } yield new RequestRegistry[F] {
+      yield new RequestRegistry[F] {
 
         def register(request: Message.Request): F[ByteVector] = {
-          for {
+          for
             deferred <- Deferred[F, Either[Throwable, ByteVector]]
             _ <- stateRef.update(_.updated(request, deferred.complete(_).void))
             result <- deferred.get.guarantee(
               stateRef.update(_ - request)
             )
             result <- Concurrent[F].fromEither(result)
-          } yield result
+          yield result
         }
 
         def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
-          for {
+          for
             callback <- stateRef.get.map(_.get(request))
             _ <- callback.traverse(cb => cb(bytes.asRight))
-          } yield ()
+          yield ()
 
         def failAll(t: Throwable): F[Unit] =
-          for {
+          for
             state <- stateRef.get
             _ <- state.values.toList.traverse { cb =>
               cb(t.asLeft)
             }
-          } yield ()
+          yield ()
       }
   }
 
@@ -85,7 +85,7 @@ object Connection {
   ): Resource[F, Connection[F]] =
     MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
       Resource {
-        for {
+        for
           stateRef <- Ref.of[F, State](State())
           chokedStatusRef <- SignallingRef(true)
           bitfieldRef <- SignallingRef(BitSet.empty)
@@ -121,16 +121,16 @@ object Connection {
               logger.debug(s"Disconnected ${peerInfo.address}") >>
               closed.complete(reason).attempt.void
           _ <- fiber.join.flatMap(_ => doClose(().asRight)).start
-        } yield {
+        yield
           val impl: Connection[F] = new Connection[F] {
             def info: PeerInfo = peerInfo
             def extensionProtocol: Boolean = socket.handshake.extensionProtocol
 
             def interested: F[Unit] =
-              for {
+              for
                 interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
                 _ <- F.whenA(!interested)(socket.send(Message.Interested))
-              } yield ()
+              yield ()
 
             def request(request: Message.Request): F[ByteVector] =
               socket.send(request) >>
@@ -152,7 +152,7 @@ object Connection {
             def extensionApi: F[ExtensionApi[F]] = initExtension.init
           }
           (impl, doClose(Right(())))
-        }
+        end for
       }
     }
 
@@ -201,14 +201,14 @@ object Connection {
     F
       .sleep(10.seconds)
       .flatMap { _ =>
-        for {
+        for
           currentTime <- F.realTime
           timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 1.minute)
           _ <- F.whenA(timedOut) {
             F.raiseError(Error("Connection timed out"))
           }
           _ <- socket.send(Message.KeepAlive)
-        } yield ()
+        yield ()
       }
       .foreverM
 

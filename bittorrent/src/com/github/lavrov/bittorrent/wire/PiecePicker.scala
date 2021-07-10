@@ -30,11 +30,12 @@ object PiecePicker {
   def apply[F[_]](
     metadata: TorrentMetadata
   )(implicit F: Async[F], logger: Logger[F]): F[PiecePicker[F]] =
-    for {
+    for
       pickMutex <- Semaphore(1)
       notifyRef <- SignallingRef(())
       incompletePieces = buildQueue(metadata).toList
-    } yield new Impl(State[F](), pickMutex, notifyRef, incompletePieces)
+    yield
+      new Impl(State[F](), pickMutex, notifyRef, incompletePieces)
 
   private case class State[F[_]](
     queue: collection.mutable.TreeMap[Int, InProgressPiece] = collection.mutable.TreeMap.empty,
@@ -56,7 +57,7 @@ object PiecePicker {
 
     def download(index: Int): F[ByteVector] =
       synchronized {
-        for {
+        for
           deferred <- Deferred[F, ByteVector]
           _ <- Sync[F].delay {
             state.completions.update(index, deferred.complete(_).void)
@@ -68,12 +69,13 @@ object PiecePicker {
             state.queue.update(index, inProgress)
           }
           _ <- notifyRef.set(())
-        } yield deferred.get
+        yield
+          deferred.get
       }.flatten
 
     def pick(availability: BitSet, address: SocketAddress[IpAddress]): F[Option[Message.Request]] =
       synchronized {
-        for {
+        for
           piece <- Sync[F].delay {
             state.queue.find { case (i, p) => availability(i) && p.requests.nonEmpty }.map(_._2)
           }
@@ -86,7 +88,8 @@ object PiecePicker {
             }
           }
           _ <- logger.trace(s"Picking $request")
-        } yield request
+        yield
+          request
       }
 
     def unpick(request: Message.Request): F[Unit] =
@@ -102,7 +105,7 @@ object PiecePicker {
 
     def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
       synchronized {
-        for {
+        for
           piece <- Sync[F].delay {
             val index = request.index.toInt
             val piece = state.queue(index)
@@ -113,14 +116,14 @@ object PiecePicker {
           _ <- piece.bytes.traverse_ { bytes =>
             val verified = piece.verify(bytes)
             if (verified)
-              for {
+              for
                 complete <- Sync[F].delay {
                   val index = piece.piece.index.toInt
                   state.queue.remove(index)
                   state.completions.remove(index)
                 }
                 _ <- complete.traverse_(_(bytes))
-              } yield ()
+              yield ()
             else
               logger.info(s"Piece ${piece.piece.index} data is invalid") >>
               Sync[F].delay {
@@ -128,7 +131,7 @@ object PiecePicker {
               } >>
               notifyRef.set(())
           }
-        } yield ()
+        yield ()
       }
 
     def updates: Signal[F, Unit] = notifyRef

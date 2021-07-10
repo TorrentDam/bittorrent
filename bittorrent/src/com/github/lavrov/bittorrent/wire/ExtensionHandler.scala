@@ -39,23 +39,23 @@ object ExtensionHandler {
       send: Send[F],
       utMetadata: UtMetadata.Create[F]
     )(implicit F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
-      for {
+      for
         apiDeferred <- F.deferred[ExtensionApi[F]]
         handlerRef <- F.ref[ExtensionHandler[F]](ExtensionHandler.noop)
         _ <- handlerRef.set(
           {
             case Message.Extended(MessageId.Handshake, payload) =>
-              for {
+              for
                 handshake <- F.fromEither(ExtensionHandshake.decode(payload))
                 (handler, extensionApi) <- ExtensionApi[F](infoHash, send, utMetadata, handshake)
                 _ <- handlerRef.set(handler)
                 _ <- apiDeferred.complete(extensionApi)
-              } yield ()
+              yield ()
             case message =>
               F.raiseError(InvalidMessage(s"Expected Handshake but received ${message.getClass.getSimpleName}"))
           }
         )
-      } yield {
+      yield
 
         val handler = dynamic(handlerRef.get)
 
@@ -72,7 +72,7 @@ object ExtensionHandler {
         }
 
         (handler, api)
-      }
+      end for
   }
 
   trait ExtensionApi[F[_]] {
@@ -88,9 +88,9 @@ object ExtensionHandler {
       utMetadata: UtMetadata.Create[F],
       handshake: ExtensionHandshake
     )(implicit F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
-      for {
+      for
         (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
-      } yield {
+      yield
 
         val handler: ExtensionHandler[F] = {
           case Message.Extended(Extensions.MessageId.Metadata, messageBytes) =>
@@ -104,8 +104,7 @@ object ExtensionHandler {
         }
 
         (handler, api)
-      }
-
+      end for
     }
 
   }
@@ -137,9 +136,9 @@ object ExtensionHandler {
 
         (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled match {
           case Some((messageId, size)) =>
-            for {
+            for
               receiveQueue <- Queue.bounded[F, UtMessage](1)
-            } yield {
+            yield
               def sendUtMessage(utMessage: UtMessage) = {
                 val message = Message.Extended(messageId, UtMessage.encode(utMessage))
                 send(message)
@@ -148,7 +147,7 @@ object ExtensionHandler {
               def receiveUtMessage: F[UtMessage] = receiveQueue.take
 
               (receiveQueue.offer, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
-            }
+            end for
 
           case None =>
             (Handler.unit[F], Option.empty[UtMetadata[F]]).pure[F]

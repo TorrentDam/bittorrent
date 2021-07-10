@@ -30,7 +30,7 @@ object Swarm {
     logger: Logger[F]
   ): Resource[F, Swarm[F]] =
     Resource {
-      for {
+      for
         stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
         lastConnected <- SignallingRef[F, Connection[F]](null)
         peerBuffer <- Queue.bounded[F, PeerInfo](10)
@@ -42,7 +42,7 @@ object Swarm {
             peerBuffer.take,
             reconnects,
             peerInfo =>
-              for {
+              for
                 _ <- logger.trace(s"Connecting to ${peerInfo.address}")
                 _ <- connect(peerInfo).use { connection =>
                   stateRef.update(_.updated(peerInfo, connection)) >>
@@ -50,14 +50,14 @@ object Swarm {
                   connection.disconnected >>
                   stateRef.update(_ - peerInfo)
                 }
-              } yield ()
+              yield ()
           ).foreverM[Unit].start
         )
-      } yield {
+      yield
         val impl = new Impl(stateRef, lastConnected)
         val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
         (impl, close)
-      }
+      end for
     }
 
   private class Impl[F[_]](
@@ -79,7 +79,7 @@ object Swarm {
     defer: Defer[F],
     logger: Logger[F]
   ): F[Unit] =
-    for {
+    for
       continuation <- reconnects.tryTake.flatMap {
         case Some(c) => c.pure[F]
         case None =>
@@ -101,7 +101,7 @@ object Swarm {
           }
       }
       _ <- continuation
-    } yield ()
+    yield ()
 
   private def connectRoutine[F[_]](
     peerInfo: PeerInfo
@@ -123,11 +123,11 @@ object Swarm {
             }
         }
     }
-    for {
+    for
       _ <- connectWithRetry(1)
       _ <- logger.disconnected
       _ <- connectRoutine(peerInfo)(connect, coolDown)
-    } yield ()
+    yield ()
   }
 
   trait RoutineLogger[F[_]] {

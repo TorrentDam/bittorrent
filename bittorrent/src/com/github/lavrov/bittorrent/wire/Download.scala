@@ -28,12 +28,11 @@ object Download {
     F: Async[F],
     logger: StructuredLogger[F]
   ): Resource[F, PiecePicker[F]] = {
-    for {
+    for
       picker <- Resource.eval { PiecePicker(metadata) }
       _ <- apply(swarm, picker).background
-    } yield {
+    yield
       picker
-    }
   }
 
   def apply[F[_]](
@@ -67,7 +66,7 @@ object Download {
     connection: Connection[F],
     pieces: PiecePicker[F]
   )(implicit F: Temporal[F], logger: Logger[F]): F[Unit] = {
-    for {
+    for
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
       pickMutex <- Semaphore(1)
@@ -77,7 +76,7 @@ object Download {
               case (requests: Set[Message.Request], availability: BitSet, _) if requests.size < MaxParallelRequests =>
                 F.uncancelable { poll =>
                   pickMutex.permit.use { _ =>
-                    for {
+                    for
                       request <- pieces.pick(availability, connection.info.address)
                       _ <- request match {
                         case Some(request) =>
@@ -87,7 +86,7 @@ object Download {
                         case None =>
                           logger.trace(s"No pieces dispatched for ${connection.info.address}")
                       }
-                    } yield ()
+                    yield ()
                   }
                 }.void
               case _ =>
@@ -125,7 +124,7 @@ object Download {
               requests.toList.traverse_(pieces.unpick)
             }
           }
-    } yield ()
+    yield ()
   }
 
   private def whenUnchoked[F[_]](connection: Connection[F])(f: F[Unit])(implicit

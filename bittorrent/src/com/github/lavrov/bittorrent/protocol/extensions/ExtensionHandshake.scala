@@ -24,7 +24,7 @@ object ExtensionHandshake {
       .toByteVector
 
   def decode(bytes: ByteVector): Either[Throwable, ExtensionHandshake] =
-    for {
+    for
       bc <-
         bencode
           .decode(bytes.bits)
@@ -33,7 +33,8 @@ object ExtensionHandshake {
         ExtensionHandshake.format
           .read(bc)
           .leftMap(Error.HandshakeFormatError("Unable to parse handshake response", _))
-    } yield handshakeResponse
+    yield
+      handshakeResponse
 
   object Error {
     case class BencodeError(cause: Throwable) extends Error(cause)

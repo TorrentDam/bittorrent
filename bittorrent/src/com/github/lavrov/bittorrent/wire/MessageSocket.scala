@@ -22,7 +22,7 @@ class MessageSocket[F[_]](
 )(implicit F: Concurrent[F]) {
 
   def send(message: Message): F[Unit] =
-    for {
+    for
       _ <- writeMutex.permit.use { _ =>
         socket.write(
           Chunk.byteVector(
@@ -31,10 +31,10 @@ class MessageSocket[F[_]](
         )
       }
       _ <- logger.trace(s">>> ${peerInfo.address} $message")
-    } yield ()
+    yield ()
 
   def receive: F[Message] =
-    for {
+    for
       bytes <- readExactlyN(4)
       size <-
         Message.MessageSizeCodec
@@ -52,13 +52,13 @@ class MessageSocket[F[_]](
           .toTry
       )
       _ <- logger.trace(s"<<< ${peerInfo.address} $message")
-    } yield message
+    yield message
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
-    for {
+    for
       chunk <- socket.readN(numBytes)
       _ <- if (chunk.size == numBytes) F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
-    } yield chunk.toByteVector
+    yield chunk.toByteVector
 
 }
 
@@ -71,7 +71,7 @@ object MessageSocket {
     socketGroup: SocketGroup[F],
     logger: Logger[F]
   ): Resource[F, MessageSocket[F]] = {
-    for {
+    for
       socket <- socketGroup.client(to = peerInfo.address)
       _ <- Resource.make(F.unit)(
         _ => logger.trace(s"Closed socket $peerInfo")
@@ -83,7 +83,7 @@ object MessageSocket {
         logger.trace(s"Successful handshake with ${peerInfo.address}")
       )
       writeMutex <- Resource.eval(Semaphore(1))
-    } yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
+    yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
   }
 
   def handshake[F[_]](
@@ -92,7 +92,7 @@ object MessageSocket {
     socket: Socket[F]
   )(implicit F: Concurrent[F]): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
-    for {
+    for
       _ <- socket.write(
         bytes = Chunk.byteVector(
           Handshake.HandshakeCodec.encode(message).require.toByteVector
@@ -115,7 +115,7 @@ object MessageSocket {
             Error("Unable to decode handhshake reponse")
           }
       )
-    } yield response
+    yield response
   }
 
   case class Error(message: String, cause: Throwable = null) extends Exception(message, cause)
