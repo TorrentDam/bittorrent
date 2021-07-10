@@ -173,9 +173,6 @@ object Swarm {
     def stream: Stream[F, Connection[F]]
   }
 
-  sealed abstract class Error(message: String) extends Throwable(message)
-
-  object Error {
-    case class ConnectTimeout(duration: FiniteDuration) extends Error(s"Connect timeout after $duration")
-  }
+  enum Error(message: String) extends Throwable(message):
+    case ConnectTimeout(duration: FiniteDuration) extends Error(s"Connect timeout after $duration")
 }

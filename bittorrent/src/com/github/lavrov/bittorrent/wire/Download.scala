@@ -161,10 +161,8 @@ object Download {
     }
   }
 
-  sealed abstract class Error(message: String) extends Throwable(message)
-  object Error {
-    case class TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
-    case class TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")
-    case class InvalidChecksum() extends Error("Invalid checksum")
-  }
+  enum Error(message: String) extends Throwable(message):
+    case TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
+    case TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")
+    case InvalidChecksum() extends Error("Invalid checksum")
 }

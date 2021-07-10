@@ -62,7 +62,7 @@ object ExtensionHandler {
         val api = new InitExtension[F] {
 
           def init: F[ExtensionApi[F]] = {
-            val message =
+            val message: Message.Extended =
               Message.Extended(
                 MessageId.Handshake,
                 ExtensionHandshake.encode(Extensions.handshake)
@@ -140,7 +140,7 @@ object ExtensionHandler {
               receiveQueue <- Queue.bounded[F, UtMessage](1)
             yield
               def sendUtMessage(utMessage: UtMessage) = {
-                val message = Message.Extended(messageId, UtMessage.encode(utMessage))
+                val message: Message.Extended = Message.Extended(messageId, UtMessage.encode(utMessage))
                 send(message)
               }
 

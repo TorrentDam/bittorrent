@@ -34,21 +34,21 @@ object Handshake {
     (ProtocolStringCodec ~> ReserveCodec :: InfoHashCodec :: PeerIdCodec).as
 }
 
-sealed trait Message
+enum Message:
+  case KeepAlive
+  case Choke
+  case Unchoke
+  case Interested
+  case NotInterested
+  case Have(pieceIndex: Long)
+  case Bitfield(bytes: ByteVector)
+  case Request(index: Long, begin: Long, length: Long)
+  case Piece(index: Long, begin: Long, bytes: ByteVector)
+  case Cancel(index: Long, begin: Long, length: Long)
+  case Port(port: Int)
+  case Extended(id: Long, payload: ByteVector)
 
 object Message {
-  case object KeepAlive extends Message
-  case object Choke extends Message
-  case object Unchoke extends Message
-  case object Interested extends Message
-  case object NotInterested extends Message
-  final case class Have(pieceIndex: Long) extends Message
-  final case class Bitfield(bytes: ByteVector) extends Message
-  final case class Request(index: Long, begin: Long, length: Long) extends Message
-  final case class Piece(index: Long, begin: Long, bytes: ByteVector) extends Message
-  final case class Cancel(index: Long, begin: Long, length: Long) extends Message
-  final case class Port(port: Int) extends Message
-  final case class Extended(id: Long, payload: ByteVector) extends Message
 
   val MessageSizeCodec: Codec[Long] = uint32
 

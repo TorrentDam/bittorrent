@@ -47,8 +47,6 @@ object Torrent {
     availability: BitSet
   )
 
-  sealed trait Error extends Exception
-  object Error {
-    case class EmptyMetadata() extends Error
-  }
+  enum Error extends Exception:
+    case EmptyMetadata()
 }

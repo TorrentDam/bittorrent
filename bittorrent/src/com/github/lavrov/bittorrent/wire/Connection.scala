@@ -174,7 +174,7 @@ object Connection {
         case Message.Choke =>
           updateChokeStatus(true)
         case Message.Piece(index: Long, begin: Long, bytes: ByteVector) =>
-          val request = Message.Request(index, begin, bytes.length)
+          val request: Message.Request = Message.Request(index, begin, bytes.length)
           requestRegistry.complete(request, bytes)
         case Message.Have(index) =>
           updateBitfield(_ incl index.toInt)

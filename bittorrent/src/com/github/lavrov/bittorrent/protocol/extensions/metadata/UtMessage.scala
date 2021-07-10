@@ -5,12 +5,12 @@ import cats.syntax.all.*
 import com.github.torrentdam.bencode
 import com.github.torrentdam.bencode.format.*
 
-sealed trait UtMessage
+enum UtMessage:
+  case Request(piece: Long)
+  case Data(piece: Long, byteVector: ByteVector)
+  case Reject(piece: Long)
 
 object UtMessage {
-  case class Request(piece: Long) extends UtMessage
-  case class Data(piece: Long, byteVector: ByteVector) extends UtMessage
-  case class Reject(piece: Long) extends UtMessage
 
   val MessageFormat: BencodeFormat[(Long, Long)] =
     (
