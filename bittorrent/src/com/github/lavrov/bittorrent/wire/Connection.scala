@@ -140,7 +140,7 @@ object Connection {
                 then
                   bytes.pure[F]
                 else
-                  InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
+                  Error.InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
               }
 
             def choked: Signal[F, Boolean] = chokedStatusRef
@@ -207,13 +207,14 @@ object Connection {
           currentTime <- F.realTime
           timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 1.minute)
           _ <- F.whenA(timedOut) {
-            F.raiseError(Error("Connection timed out"))
+            F.raiseError(Error.ConnectionTimeout())
           }
           _ <- socket.send(Message.KeepAlive)
         yield ()
       }
       .foreverM
 
-  case class Error(message: String) extends Exception(message)
-  case class InvalidBlockLength(request: Message.Request, responseLength: Long) extends Exception
+  enum Error(message: String) extends Exception(message):
+    case ConnectionTimeout() extends Error("Connection timed out")
+    case InvalidBlockLength(request: Message.Request, responseLength: Long) extends Error("Invalid block length")
 }
