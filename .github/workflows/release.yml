@@ -21,6 +21,8 @@ jobs:
         java-package: jre
 
     - name: Publish
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         ./mill common.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
         ./mill common.js.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
