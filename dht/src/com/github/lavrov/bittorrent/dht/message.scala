@@ -8,26 +8,28 @@ import scodec.Codec
 import scodec.bits.ByteVector
 import com.comcast.ip4s.*
 
-sealed trait Message {
+enum Message:
+  case QueryMessage(transactionId: ByteVector, query: Query)
+  case ResponseMessage(transactionId: ByteVector, response: Response)
+  case ErrorMessage(transactionId: ByteVector, details: Bencode)
+
   def transactionId: ByteVector
-}
+end Message
+
 object Message {
-  final case class QueryMessage(transactionId: ByteVector, query: Query) extends Message
-  final case class ResponseMessage(transactionId: ByteVector, response: Response) extends Message
-  final case class ErrorMessage(transactionId: ByteVector, details: Bencode) extends Message
 
   given BencodeFormat[NodeId] =
     BencodeFormat.ByteVectorFormat.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
     field[NodeId]("a")(field[NodeId]("id"))
-  ).imap(qni => Query.Ping(qni))(v => v.queryingNodeId)
+  ).imap[Query.Ping](qni => Query.Ping(qni))(v => v.queryingNodeId)
 
   val FindNodeQueryFormat: BencodeFormat[Query.FindNode] = (
     field[(NodeId, NodeId)]("a")(
       (field[NodeId]("id"), field[NodeId]("target")).tupled
     )
-  ).imap(tpl => Query.FindNode.apply.tupled(tpl))(v => (v.queryingNodeId, v.target))
+  ).imap[Query.FindNode](Query.FindNode.apply)(v => (v.queryingNodeId, v.target))
 
   given BencodeFormat[InfoHash] = BencodeFormat.ByteVectorFormat.imap(InfoHash(_))(_.bytes)
 
@@ -35,19 +37,19 @@ object Message {
     field[(NodeId, InfoHash)]("a")(
       (field[NodeId]("id"), field[InfoHash]("info_hash")).tupled
     )
-  ).imap(Query.GetPeers.apply.tupled)(v => (v.queryingNodeId, v.infoHash))
+  ).imap[Query.GetPeers](Query.GetPeers.apply)(v => (v.queryingNodeId, v.infoHash))
 
   val AnnouncePeerQueryFormat: BencodeFormat[Query.AnnouncePeer] = (
     field[(NodeId, InfoHash, Long)]("a")(
       (field[NodeId]("id"), field[InfoHash]("info_hash"), field[Long]("port")).tupled
     )
-  ).imap(Query.AnnouncePeer.apply.tupled)(v => (v.queryingNodeId, v.infoHash, v.port))
+  ).imap[Query.AnnouncePeer](Query.AnnouncePeer.apply)(v => (v.queryingNodeId, v.infoHash, v.port))
 
   val SampleInfoHashesQueryFormat: BencodeFormat[Query.SampleInfoHashes] = (
     field[(NodeId, NodeId)]("a")(
       (field[NodeId]("id"), field[NodeId]("target")).tupled
     )
-    ).imap(Query.SampleInfoHashes.apply.tupled)(v => (v.queryingNodeId, v.target))
+    ).imap[Query.SampleInfoHashes](Query.SampleInfoHashes.apply)(v => (v.queryingNodeId, v.target))
 
   val QueryFormat: BencodeFormat[Query] =
     field[String]("q").choose(
@@ -70,7 +72,7 @@ object Message {
   val QueryMessageFormat: BencodeFormat[Message.QueryMessage] = (
     field[ByteVector]("t"),
     QueryFormat
-  ).imapN((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
+  ).imapN[QueryMessage]((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
 
   val InetSocketAddressCodec: Codec[SocketAddress[IpAddress]] = {
     import scodec.codecs.*
@@ -109,23 +111,23 @@ object Message {
   }
 
   val PingResponseFormat: BencodeFormat[Response.Ping] =
-    field[NodeId]("id").imap(Response.Ping.apply)(_.id)
+    field[NodeId]("id").imap[Response.Ping](Response.Ping.apply)(_.id)
 
   val NodesResponseFormat: BencodeFormat[Response.Nodes] = (
     field[NodeId]("id"),
     field[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec))
-  ).imapN(Response.Nodes.apply)(v => (v.id, v.nodes))
+  ).imapN[Response.Nodes](Response.Nodes.apply)(v => (v.id, v.nodes))
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
     field[NodeId]("id"),
     field[List[PeerInfo]]("values")(BencodeFormat.listFormat(encodedString(CompactPeerInfoCodec)))
-  ).imapN(Response.Peers.apply)(v => (v.id, v.peers))
+  ).imapN[Response.Peers](Response.Peers.apply)(v => (v.id, v.peers))
 
   val SampleInfoHashesResponseFormat: BencodeFormat[Response.SampleInfoHashes] = (
     field[NodeId]("id"),
     fieldOptional[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec)),
     field[List[InfoHash]]("samples")(encodedString(CompactInfoHashCodec))
-    ).imapN(Response.SampleInfoHashes.apply)(v => (v.id, v.nodes, v.samples))
+    ).imapN[Response.SampleInfoHashes](Response.SampleInfoHashes.apply)(v => (v.id, v.nodes, v.samples))
 
   val ResponseFormat: BencodeFormat[Response] =
     BencodeFormat(
@@ -146,12 +148,12 @@ object Message {
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     field[ByteVector]("t"),
     field[Response]("r")(ResponseFormat)
-  ).imapN((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
+  ).imapN[ResponseMessage]((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
     fieldOptional[ByteVector]("t"),
     field[Bencode]("e")
-  ).imapN((tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details))(v =>
+  ).imapN[ErrorMessage]((tid, details) => ErrorMessage(tid.getOrElse(ByteVector.empty), details))(v =>
     (v.transactionId.some, v.details)
   )
 
@@ -170,21 +172,18 @@ object Message {
     )
 }
 
-sealed trait Query {
-  def queryingNodeId: NodeId
-}
-object Query {
-  final case class Ping(queryingNodeId: NodeId) extends Query
-  final case class FindNode(queryingNodeId: NodeId, target: NodeId) extends Query
-  final case class GetPeers(queryingNodeId: NodeId, infoHash: InfoHash) extends Query
-  final case class AnnouncePeer(queryingNodeId: NodeId, infoHash: InfoHash, port: Long) extends Query
-  final case class SampleInfoHashes(queryingNodeId: NodeId, target: NodeId) extends Query
-}
+enum Query:
+  case Ping(queryingNodeId: NodeId)
+  case FindNode(queryingNodeId: NodeId, target: NodeId)
+  case GetPeers(queryingNodeId: NodeId, infoHash: InfoHash)
+  case AnnouncePeer(queryingNodeId: NodeId, infoHash: InfoHash, port: Long)
+  case SampleInfoHashes(queryingNodeId: NodeId, target: NodeId)
 
-sealed trait Response
-object Response {
-  final case class Ping(id: NodeId) extends Response
-  final case class Nodes(id: NodeId, nodes: List[NodeInfo]) extends Response
-  final case class Peers(id: NodeId, peers: List[PeerInfo]) extends Response
-  final case class SampleInfoHashes(id: NodeId, nodes: Option[List[NodeInfo]], samples: List[InfoHash]) extends Response
-}
+  def queryingNodeId: NodeId
+end Query
+
+enum Response:
+  case Ping(id: NodeId)
+  case Nodes(id: NodeId, nodes: List[NodeInfo])
+  case Peers(id: NodeId, peers: List[PeerInfo])
+  case SampleInfoHashes(id: NodeId, nodes: Option[List[NodeInfo]], samples: List[InfoHash])

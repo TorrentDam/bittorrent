@@ -46,8 +46,10 @@ object RequestResponse {
       extends RequestResponse[F] {
     def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response] = {
       generateTransactionId.flatMap { transactionId =>
-        val message = Message.QueryMessage(transactionId, query)
-        val send = sendQueryMessage(address, message)
+        val send = sendQueryMessage(
+          address,
+          Message.QueryMessage(transactionId, query)
+        )
         send >> receive(transactionId, 10.seconds).flatMap(F.fromEither)
       }
     }

@@ -24,12 +24,11 @@ trait RoutingTable[F[_]] {
 
 object RoutingTable {
 
-  sealed trait TreeNode
+  enum TreeNode:
+    case Split(center: BigInt, lower: TreeNode, higher: TreeNode)
+    case Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, SocketAddress[IpAddress]])
 
   object TreeNode {
-
-    final case class Split(center: BigInt, lower: TreeNode, higher: TreeNode) extends TreeNode
-    final case class Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, SocketAddress[IpAddress]]) extends TreeNode
 
     def empty: TreeNode =
       TreeNode.Bucket(
