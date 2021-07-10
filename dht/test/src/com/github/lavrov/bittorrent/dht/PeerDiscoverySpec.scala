@@ -5,7 +5,7 @@ import cats.effect.kernel.Ref
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.noop.NoOpLogger
 

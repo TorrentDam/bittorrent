@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent.protocol.message
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import scodec.bits.ByteVector
 
-import scala.util.chaining._
+import scala.util.chaining.*
 
 class HandshakeSpec extends munit.FunSuite {
 
@@ -17,7 +17,8 @@ class HandshakeSpec extends munit.FunSuite {
     assert(
       PartialFunction.cond(Handshake.HandshakeCodec.encode(message).toOption) {
         case Some(bits) =>
-          bits.splitAt(20 * 8)
+          bits
+            .splitAt(20 * 8)
             .pipe {
               case (_, bits) =>
                 bits.splitAt(64)
@@ -29,7 +30,7 @@ class HandshakeSpec extends munit.FunSuite {
                 assert(reserved.get(44) == false)
             }
             true
-            case _ => false
+        case _ => false
       }
     )
   }

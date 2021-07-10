@@ -1,8 +1,8 @@
 package com.github.lavrov.bittorrent.protocol.extensions
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.github.torrentdam.bencode
-import com.github.torrentdam.bencode.format._
+import com.github.torrentdam.bencode.format.*
 import scodec.bits.ByteVector
 
 case class ExtensionHandshake(
@@ -28,7 +28,7 @@ object ExtensionHandshake {
       bc <-
         bencode
           .decode(bytes.bits)
-          .leftMap(Error.BencodeError)
+          .leftMap(Error.BencodeError.apply)
       handshakeResponse <-
         ExtensionHandshake.format
           .read(bc)

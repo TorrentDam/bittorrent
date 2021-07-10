@@ -2,10 +2,10 @@ package com.github.lavrov.bittorrent.protocol.message
 
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import scodec.Codec
-import scodec.codecs._
+import scodec.codecs.*
 import scodec.bits.ByteVector
 
-import scala.util.chaining._
+import scala.util.chaining.*
 
 final case class Handshake(
   extensionProtocol: Boolean,
@@ -19,7 +19,7 @@ object Handshake {
       utf8.unit("BitTorrent protocol")
     )
   val ReserveCodec: Codec[Boolean] = bits(8 * 8).xmap(
-    bv => bv get 43,
+    bv => bv.get(43),
     supported =>
       ByteVector
         .fill(8)(0)
@@ -59,17 +59,17 @@ object Message {
     val OtherMessagesCodec: Codec[Message] =
       discriminated[Message]
         .by(uint8)
-        .|(0) { case m @ Choke => m }(identity)(provide(Choke))
-        .|(1) { case m @ Unchoke => m }(identity)(provide(Unchoke))
-        .|(2) { case m @ Interested => m }(identity)(provide(Interested))
-        .|(3) { case m @ NotInterested => m }(identity)(provide(NotInterested))
-        .|(4) { case Have(index) => index }(Have)(uint32)
-        .|(5) { case Bitfield(bytes) => bytes }(Bitfield)(bytes)
-        .|(6) { case m: Request => m }(identity)((uint32 :: uint32 :: uint32).as)
-        .|(7) { case m: Piece => m }(identity)((uint32 :: uint32 :: bytes).as)
-        .|(8) { case m: Cancel => m }(identity)((uint32 :: uint32 :: uint32).as)
-        .|(9) { case Port(port) => port }(Port)(uint16)
-        .|(20) { case m: Extended => m }(identity)((ulong(8) :: bytes).as)
+        .caseP(0) { case m @ Choke => m }(identity)(provide(Choke))
+        .caseP(1) { case m @ Unchoke => m }(identity)(provide(Unchoke))
+        .caseP(2) { case m @ Interested => m }(identity)(provide(Interested))
+        .caseP(3) { case m @ NotInterested => m }(identity)(provide(NotInterested))
+        .caseP(4) { case Have(index) => index }(Have.apply)(uint32)
+        .caseP(5) { case Bitfield(bytes) => bytes }(Bitfield.apply)(bytes)
+        .caseP(6) { case m: Request => m }(identity)((uint32 :: uint32 :: uint32).as)
+        .caseP(7) { case m: Piece => m }(identity)((uint32 :: uint32 :: bytes).as)
+        .caseP(8) { case m: Cancel => m }(identity)((uint32 :: uint32 :: uint32).as)
+        .caseP(9) { case Port(port) => port }(Port.apply)(uint16)
+        .caseP(20) { case m: Extended => m }(identity)((ulong(8) :: bytes).as)
 
     choice(
       KeepAliveCodec.upcast,

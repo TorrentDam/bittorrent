@@ -3,8 +3,8 @@ package com.github.lavrov.bittorrent.dht
 import cats.Show.Shown
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.{Concurrent, Resource}
-import cats.instances.all._
-import cats.syntax.all._
+import cats.instances.all.*
+import cats.syntax.all.*
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import fs2.Stream
 import org.typelevel.log4cats.{Logger, StructuredLogger}
@@ -144,7 +144,7 @@ object PeerDiscovery {
       nodesToTry: List[NodeInfo],
       seenNodes: Set[NodeInfo],
       seenPeers: Set[PeerInfo] = Set.empty,
-      waiters: List[Deferred[F, NodeInfo]] = List.empty
+      waiters: List[Deferred[F, NodeInfo]] = Nil
     )
 
     def apply[F[_]: Concurrent](initialNodes: List[NodeInfo], infoHash: InfoHash): F[DiscoveryState[F]] =

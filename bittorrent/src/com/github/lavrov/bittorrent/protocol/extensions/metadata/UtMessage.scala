@@ -1,9 +1,9 @@
 package com.github.lavrov.bittorrent.protocol.extensions.metadata
 
 import scodec.bits.ByteVector
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.github.torrentdam.bencode
-import com.github.torrentdam.bencode.format._
+import com.github.torrentdam.bencode.format.*
 
 sealed trait UtMessage
 
@@ -21,9 +21,9 @@ object UtMessage {
   def encode(message: UtMessage): ByteVector = {
     val (bc, extraBytes) =
       message match {
-        case Request(piece) => (MessageFormat.write((0, piece)).right.get, none)
-        case Data(piece, bytes) => (MessageFormat.write((1, piece)).right.get, bytes.some)
-        case Reject(piece) => (MessageFormat.write((2, piece)).right.get, none)
+        case Request(piece) => (MessageFormat.write((0, piece)).toOption.get, none)
+        case Data(piece, bytes) => (MessageFormat.write((1, piece)).toOption.get, bytes.some)
+        case Reject(piece) => (MessageFormat.write((2, piece)).toOption.get, none)
       }
     bencode.encode(bc).toByteVector ++ extraBytes.getOrElse(ByteVector.empty)
   }

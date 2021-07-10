@@ -1,17 +1,17 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats._
+import cats.*
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.kernel.Temporal
-import cats.effect.syntax.all._
+import cats.effect.syntax.all.*
 import cats.effect.{Concurrent, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.github.lavrov.bittorrent.dht.RequestResponse.Timeout
 import com.github.torrentdam.bencode.Bencode
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 trait RequestResponse[F[_]] {
   def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response]

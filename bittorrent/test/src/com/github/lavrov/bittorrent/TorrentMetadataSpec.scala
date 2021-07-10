@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent
 
-import com.github.torrentdam.bencode._
+import com.github.torrentdam.bencode.*
 import scodec.bits.{Bases, BitVector, ByteVector}
 import TestUtils.InputStreamExtensions
 
@@ -21,7 +21,7 @@ class TorrentMetadataSpec extends munit.FunSuite {
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
-    val Right(bc) = decode(source)
+    val Right(bc) = decode(source): @unchecked
     val decodedResult = TorrentFile.TorrentFileFormat.read(bc)
     val result = decodedResult
       .map(_.info.raw)
@@ -80,22 +80,22 @@ class TorrentMetadataSpec extends munit.FunSuite {
   }
 
   test("decode ubuntu torrent") {
-    assert(decode(BitVector.encodeAscii("i56e").right.get) == Right(Bencode.BInteger(56L)))
-    assert(decode(BitVector.encodeAscii("2:aa").right.get) == Right(Bencode.BString("aa")))
+    assert(decode(BitVector.encodeAscii("i56e").toOption.get) == Right(Bencode.BInteger(56L)))
+    assert(decode(BitVector.encodeAscii("2:aa").toOption.get) == Right(Bencode.BString("aa")))
     assert(
-      decode(BitVector.encodeAscii("l1:a2:bbe").right.get) == Right(
+      decode(BitVector.encodeAscii("l1:a2:bbe").toOption.get) == Right(
         Bencode.BList(Bencode.BString("a") :: Bencode.BString("bb") :: Nil)
       )
     )
     assert(
-      decode(BitVector.encodeAscii("d1:ai6ee").right.get) == Right(
+      decode(BitVector.encodeAscii("d1:ai6ee").toOption.get) == Right(
         Bencode.BDictionary("a" -> Bencode.BInteger(6))
       )
     )
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
-    val Right(result) = decode(source)
+    val Right(result) = decode(source): @unchecked
     val decodeResult = TorrentFile.TorrentFileFormat.read(result)
     assert(decodeResult.isRight)
   }

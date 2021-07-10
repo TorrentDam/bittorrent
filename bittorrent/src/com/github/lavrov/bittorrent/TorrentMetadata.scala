@@ -4,8 +4,8 @@ import java.time.Instant
 
 import com.github.torrentdam.bencode
 import com.github.torrentdam.bencode.{Bencode, BencodeFormatException}
-import com.github.torrentdam.bencode.format._
-import cats.implicits._
+import com.github.torrentdam.bencode.format.*
+import cats.implicits.*
 import scodec.bits.ByteVector
 
 case class TorrentMetadata(
@@ -26,7 +26,7 @@ object TorrentMetadata {
     (
       field[Long]("length"),
       field[List[String]]("path")
-    ).imapN(File)(v => (v.length, v.path))
+    ).imapN(File.apply)(v => (v.length, v.path))
 
   implicit val TorrentMetadataFormat: BencodeFormat[TorrentMetadata] = {
     def to(name: String, pieceLength: Long, pieces: ByteVector, length: Option[Long], filesOpt: Option[List[File]]) = {

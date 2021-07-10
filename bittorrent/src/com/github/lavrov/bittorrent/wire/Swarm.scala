@@ -1,18 +1,18 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats._
+import cats.*
 import cats.data.ContT
-import cats.effect.implicits._
+import cats.effect.implicits.*
 import cats.effect.kernel.{Resource, Temporal}
 import cats.effect.std.Queue
-import cats.implicits._
+import cats.implicits.*
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
 import org.typelevel.log4cats.Logger
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 trait Swarm[F[_]] {
   def connected: Connected[F]
@@ -173,7 +173,7 @@ object Swarm {
     def stream: Stream[F, Connection[F]]
   }
 
-  sealed class Error(message: String) extends Throwable(message)
+  sealed abstract class Error(message: String) extends Throwable(message)
 
   object Error {
     case class ConnectTimeout(duration: FiniteDuration) extends Error(s"Connect timeout after $duration")

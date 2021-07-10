@@ -3,8 +3,8 @@ package com.github.lavrov.bittorrent.wire
 import java.nio.channels.InterruptedByTimeoutException
 import cats.effect.std.Semaphore
 import cats.effect.{Async, Concurrent, Resource}
-import cats.syntax.all._
-import com.github.lavrov.bittorrent._
+import cats.syntax.all.*
+import com.github.lavrov.bittorrent.*
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import com.github.lavrov.bittorrent.wire.MessageSocket.{MaxMessageSize, OversizedMessage}
 import fs2.Chunk

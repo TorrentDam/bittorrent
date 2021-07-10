@@ -1,12 +1,12 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
-import cats.implicits._
-import cats.effect.implicits._
+import cats.implicits.*
+import cats.effect.implicits.*
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.std.Queue
 import fs2.io.net.DatagramSocketGroup
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
 import scala.util.Random
@@ -30,11 +30,11 @@ object Node {
 
     def generateTransactionId: F[ByteVector] = {
       val nextChar = F.delay(Random.nextPrintableChar())
-      (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).right.get)
+      (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).toOption.get)
     }
 
     for {
-      messageSocket <- MessageSocket[F]
+      messageSocket <- MessageSocket[F]()
       responses <- Resource.eval {
         Queue
           .unbounded[F, (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])]

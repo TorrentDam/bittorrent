@@ -1,9 +1,9 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.implicits._
+import cats.effect.implicits.*
 import cats.effect.kernel.{Async, Resource}
-import cats.effect.kernel.syntax.all._
-import cats.implicits._
+import cats.effect.kernel.syntax.all.*
+import cats.implicits.*
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import org.typelevel.log4cats.{Logger, StructuredLogger}

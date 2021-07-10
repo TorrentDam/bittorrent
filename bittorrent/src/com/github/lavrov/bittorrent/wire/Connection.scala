@@ -1,9 +1,9 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats._
-import cats.implicits._
+import cats.*
+import cats.implicits.*
 import cats.effect.kernel.{Clock, Deferred, Ref, Temporal}
-import cats.effect.syntax.all._
+import cats.effect.syntax.all.*
 import cats.effect.{Async, Concurrent, Resource}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
@@ -16,7 +16,7 @@ import monocle.macros.GenLens
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 trait Connection[F[_]] {
   def info: PeerInfo
@@ -96,7 +96,7 @@ object Connection {
             new ExtensionHandler.UtMetadata.Create[F]
           )
           _ <- logger.debug(s"Connected ${peerInfo.address}")
-          updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.set(l))
+          updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
           fiber <-
             Concurrent[F]
               .race[Nothing, Nothing](
@@ -128,7 +128,7 @@ object Connection {
 
             def interested: F[Unit] =
               for {
-                interested <- stateRef.modify(s => (State.interested.set(true)(s), s.interested))
+                interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
                 _ <- F.whenA(!interested)(socket.send(Message.Interested))
               } yield ()
 
@@ -181,7 +181,7 @@ object Connection {
           val indices = bytes.toBitVector.toIndexedSeq.zipWithIndex.collect {
             case (true, i) => i
           }
-          updateBitfield(_ => BitSet(indices: _*))
+          updateBitfield(_ => BitSet(indices*))
         case m: Message.Extended =>
           extensionHandler(m)
         case _ =>

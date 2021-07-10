@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent.dht
 
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 
 import scala.util.Random
 
@@ -14,7 +14,7 @@ final case class NodeId(bytes: ByteVector) {
 
 object NodeId {
 
-  private def distance(a: ByteVector, b: ByteVector): BigInt = BigInt(1, (a xor b).toArray)
+  private def distance(a: ByteVector, b: ByteVector): BigInt = BigInt(1, (a.xor(b)).toArray)
 
   def distance(a: NodeId, b: NodeId): BigInt = distance(a.bytes, b.bytes)
 

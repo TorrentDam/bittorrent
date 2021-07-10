@@ -1,11 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.implicits._
+import cats.implicits.*
 import cats.effect.Sync
 import cats.effect.kernel.{Concurrent, Ref}
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 
 import scala.collection.immutable.ListMap
 
@@ -42,7 +42,7 @@ object RoutingTable {
   val MaxNodes = 8
 
   implicit class TreeNodeOps(bucket: TreeNode) {
-    import TreeNode._
+    import TreeNode.*
 
     def insert(node: NodeInfo, selfId: NodeId): TreeNode =
       bucket match {
@@ -58,7 +58,7 @@ object RoutingTable {
                 val center = (from + until) / 2
                 val splitBucket: TreeNode =
                   Split(center, Bucket(from, center - 1, ListMap.empty), Bucket(center, until, ListMap.empty))
-                nodes.view.map(NodeInfo.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
+                nodes.view.map(NodeInfo.apply.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
               }
               else {
                 Bucket(from, until, nodes.init)
@@ -107,7 +107,7 @@ object RoutingTable {
             lower.findNodes(nodeId) ++ higher.findNodes(nodeId)
           else
             higher.findNodes(nodeId) ++ lower.findNodes(nodeId)
-        case b: Bucket => b.nodes.toIterable.map(NodeInfo.tupled)
+        case b: Bucket => b.nodes.toIterable.map(NodeInfo.apply.tupled)
       }
 
   }
@@ -125,7 +125,7 @@ object RoutingTable {
         treeNodeRef.get.map(_.findNodes(nodeId))
 
       def findBucket(nodeId: NodeId): F[List[NodeInfo]] =
-        treeNodeRef.get.map(_.findBucket(nodeId).nodes.map(NodeInfo.tupled).toList)
+        treeNodeRef.get.map(_.findBucket(nodeId).nodes.map(NodeInfo.apply.tupled).toList)
 
       def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): F[Unit] =
         peers.update { map =>

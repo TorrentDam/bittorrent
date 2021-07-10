@@ -55,10 +55,9 @@ object cmd extends Module {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.6"
+  def scalaVersion = "3.0.1"
   def scalacOptions = Seq(
-    "-language:higherKinds",
-    "-Ymacro-annotations",
+    "-source:future",
   )
   def repositoriesTask = T.task {
     super.repositoriesTask() ++ Seq(
@@ -70,10 +69,6 @@ trait Module extends ScalaModule with ScalafmtModule {
       )
     )
   }
-  def scalacPluginIvyDeps = Agg(
-    ivy"org.typelevel:::kind-projector:0.13.0",
-    ivy"com.olegpy::better-monadic-for:0.3.1",
-  )
   trait TestModule extends Tests with mill.scalalib.TestModule.Munit {
     def ivyDeps = Agg(
       Deps.`munit-cats-effect`,
@@ -114,11 +109,11 @@ object Versions {
   val `cats-effect` = "3.1.1"
   val ip4s = "3.0.3"
   val fs2 = "3.0.6"
-  val monocle = "2.0.0"
+  val monocle = "3.0.0"
   val log4cats = "2.1.1"
-  val `scodec-bits` = "1.1.25"
+  val `scodec-bits` = "1.1.27"
   val upickle = "1.0.0"
-  val bencode = "0.2.0"
+  val bencode = "1.0.2"
   val requests = "0.5.1"
   val decline = "2.1.0"
 }
@@ -138,8 +133,8 @@ object Deps {
   val `log4cats-noop` = ivy"org.typelevel::log4cats-noop::${Versions.log4cats}"
   val `logback-classic` = ivy"ch.qos.logback:logback-classic:1.2.3"
 
-  val `monocle-core` = ivy"com.github.julien-truffaut::monocle-core::${Versions.monocle}"
-  val `monocle-macro` = ivy"com.github.julien-truffaut::monocle-macro::${Versions.monocle}"
+  val `monocle-core` = ivy"dev.optics::monocle-core::${Versions.monocle}"
+  val `monocle-macro` = ivy"dev.optics::monocle-macro::${Versions.monocle}"
 
   val upickle = ivy"com.lihaoyi::upickle::${Versions.upickle}"
 

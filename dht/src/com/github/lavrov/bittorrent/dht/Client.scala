@@ -4,10 +4,10 @@ import cats.effect.kernel.Temporal
 
 import java.net.InetSocketAddress
 import cats.effect.{Concurrent, Resource, Sync}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 import scala.util.Random
 import org.typelevel.log4cats.Logger
 

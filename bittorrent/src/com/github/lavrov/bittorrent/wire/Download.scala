@@ -2,10 +2,10 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.Show.Shown
 import cats.effect.std.{Queue, Semaphore}
-import cats.effect.implicits._
+import cats.effect.implicits.*
 import cats.effect.kernel.Ref
 import cats.effect.{Async, Resource, Temporal}
-import cats.implicits._
+import cats.implicits.*
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
@@ -13,8 +13,8 @@ import fs2.concurrent.SignallingRef
 import org.typelevel.log4cats.{Logger, StructuredLogger}
 
 import scala.collection.BitSet
-import scala.concurrent.duration._
-import scala.util.chaining._
+import scala.concurrent.duration.*
+import scala.util.chaining.*
 
 object Download {
 
@@ -117,7 +117,7 @@ object Download {
           .compile
           .drain
       _ <-
-        (fillQueue race drainQueue).void
+        fillQueue.race(drainQueue).void
           .guarantee {
             pickMutex.acquire >>
             incompleteRequests.get.flatMap { requests =>
@@ -162,7 +162,7 @@ object Download {
     }
   }
 
-  sealed class Error(message: String) extends Throwable(message)
+  sealed abstract class Error(message: String) extends Throwable(message)
   object Error {
     case class TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
     case class TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")

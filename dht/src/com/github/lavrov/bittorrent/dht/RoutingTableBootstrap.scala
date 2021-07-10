@@ -1,11 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.implicits._
+import cats.implicits.*
 import cats.MonadError
 import cats.effect.kernel.Temporal
 import org.typelevel.log4cats.Logger
-import com.comcast.ip4s._
-import scala.concurrent.duration._
+import com.comcast.ip4s.*
+import scala.concurrent.duration.*
 
 object RoutingTableBootstrap {
 

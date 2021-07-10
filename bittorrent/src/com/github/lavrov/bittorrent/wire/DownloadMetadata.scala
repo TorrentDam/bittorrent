@@ -1,13 +1,13 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.MonadThrow
-import cats.implicits._
-import cats.effect.implicits._
+import cats.implicits.*
+import cats.effect.implicits.*
 import cats.effect.Temporal
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 object DownloadMetadata {
 

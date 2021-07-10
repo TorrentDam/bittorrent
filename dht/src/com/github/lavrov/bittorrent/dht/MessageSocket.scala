@@ -1,14 +1,14 @@
 package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
-import cats._
+import cats.*
 import cats.effect.{Async, Concurrent, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.github.torrentdam.bencode.{decode, encode}
 import fs2.Chunk
 import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
 import org.typelevel.log4cats.Logger
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 
 class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
   F: MonadError[F, Throwable]
@@ -19,7 +19,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
     for {
       datagram <- socket.read
       bc <- F.fromEither(
-        decode(datagram.bytes.toBitVector).leftMap(Error.BecodeSerialization)
+        decode(datagram.bytes.toBitVector).leftMap(Error.BecodeSerialization.apply)
       )
       message <- F.fromEither(
         Message.MessageFormat
@@ -30,7 +30,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(implicit
     } yield (datagram.remote, message)
 
   def writeMessage(address: SocketAddress[IpAddress], message: Message): F[Unit] = {
-    val bc = Message.MessageFormat.write(message).right.get
+    val bc = Message.MessageFormat.write(message).toOption.get
     val bytes = encode(bc)
     val packet = Datagram(address, Chunk.byteVector(bytes.bytes))
     socket.write(packet) >> logger.trace(s">>> $address $message")

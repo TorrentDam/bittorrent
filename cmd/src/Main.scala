@@ -1,4 +1,4 @@
-import cats.syntax.all._
+import cats.syntax.all.*
 import cats.effect.{ExitCode, IO}
 import cats.effect.kernel.Resource
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}

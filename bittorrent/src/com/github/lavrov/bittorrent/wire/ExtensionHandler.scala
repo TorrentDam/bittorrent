@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.implicits._
+import cats.implicits.*
 import cats.{Applicative, Monad, MonadError}
 import cats.effect.{Async, Concurrent, Sync}
 import cats.effect.kernel.{Deferred, Ref}
@@ -147,7 +147,7 @@ object ExtensionHandler {
 
               def receiveUtMessage: F[UtMessage] = receiveQueue.take
 
-              (receiveQueue.offer _, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
+              (receiveQueue.offer, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
             }
 
           case None =>

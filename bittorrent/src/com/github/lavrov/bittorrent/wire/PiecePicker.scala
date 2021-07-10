@@ -2,7 +2,7 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.Eval
 import cats.data.Chain
-import cats.implicits._
+import cats.implicits.*
 import cats.effect.{Async, Concurrent, Sync, Temporal}
 import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
@@ -12,7 +12,7 @@ import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
-import com.comcast.ip4s._
+import com.comcast.ip4s.*
 
 import scala.collection.BitSet
 import scala.collection.immutable.TreeMap

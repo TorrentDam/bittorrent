@@ -1,7 +1,7 @@
 package com.github.lavrov.bittorrent
 
 import com.github.torrentdam.bencode
-import com.github.lavrov.bittorrent.TestUtils._
+import com.github.lavrov.bittorrent.TestUtils.*
 import com.github.lavrov.bittorrent.wire.PiecePicker
 
 class PiecePickerSpec extends munit.FunSuite {
@@ -10,7 +10,7 @@ class PiecePickerSpec extends munit.FunSuite {
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
       .readAll()
-    val Right(result) = bencode.decode(source)
+    val Right(result) = bencode.decode(source): @unchecked
     val torrentFile = TorrentFile.TorrentFileFormat.read(result).toOption.get
     assert(
       PartialFunction.cond(torrentFile.info) {
