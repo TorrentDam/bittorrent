@@ -1,6 +1,7 @@
 import cats.syntax.all.*
 import cats.effect.{ExitCode, IO}
 import cats.effect.kernel.Resource
+import cats.effect.std.Random
 import com.github.lavrov.bittorrent.{InfoHash, PeerId}
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, Swarm}
@@ -9,8 +10,6 @@ import com.monovore.decline.effect.CommandIOApp
 import fs2.io.net.Network
 import org.typelevel.log4cats.StructuredLogger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import scala.util.Random
 
 
 object Main extends CommandIOApp(
@@ -25,9 +24,10 @@ object Main extends CommandIOApp(
     val discoverCommand =
       Opts.subcommand("dht", "discover peers"){
         Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
-          val selfId = NodeId.generate(Random)
           val resources =
-            for {
+            for
+              given Random[IO] <- Resource.eval { Random.scalaUtilRandom[IO] }
+              selfId <- Resource.eval { NodeId.generate[IO] }
               infoHash <- Resource.eval {
                 InfoHash.fromString
                   .unapply(infoHash)
@@ -39,9 +39,9 @@ object Main extends CommandIOApp(
               }
               _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
               discovery <- PeerDiscovery.make(table, node.client)
-            } yield {
+            yield
               discovery.discover(infoHash)
-            }
+
           resources.use { stream =>
             stream
               .evalTap { peerInfo =>
@@ -58,11 +58,11 @@ object Main extends CommandIOApp(
       Opts.subcommand("metadata", "download metadata"){
         Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
 
-          val selfId = NodeId.generate(Random)
-          val selfPeerId = PeerId.generate(Random)
-
           val resources =
-            for {
+            for
+              given Random[IO] <- Resource.eval { Random.scalaUtilRandom[IO] }
+              selfId <- Resource.eval { NodeId.generate[IO] }
+              selfPeerId <- Resource.eval { PeerId.generate[IO] }
               infoHash <- Resource.eval {
                 InfoHash.fromString
                   .unapply(infoHash)
@@ -80,9 +80,8 @@ object Main extends CommandIOApp(
                   Connection.connect(selfPeerId, _, infoHash)
                 )
               }
-            } yield {
+            yield
               DownloadMetadata(swarm.connected.stream)
-            }
 
           resources.use { getMetadata =>
             getMetadata
@@ -96,11 +95,11 @@ object Main extends CommandIOApp(
       Opts.subcommand("download", "download torrent"){
         Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
 
-          val selfId = NodeId.generate(Random)
-          val selfPeerId = PeerId.generate(Random)
-
           val resources =
-            for {
+            for
+              given Random[IO] <- Resource.eval { Random.scalaUtilRandom[IO] }
+              selfId <- Resource.eval { NodeId.generate[IO] }
+              selfPeerId <- Resource.eval { PeerId.generate[IO] }
               infoHash <- Resource.eval {
                 InfoHash.fromString
                   .unapply(infoHash)
@@ -121,12 +120,11 @@ object Main extends CommandIOApp(
                       .evalTap(connection => logger.info(s"Connected to ${connection.info.address}"))
                 )
               }
-            } yield {
+            yield
               swarm
-            }
 
           resources.use { swarm =>
-            for {
+            for
               metadata <- DownloadMetadata(swarm.connected.stream)
               _ <- Download(swarm, metadata.parsed).use { picker =>
                 picker.pieces.flatMap { pieces =>
@@ -135,9 +133,8 @@ object Main extends CommandIOApp(
                   }
                 }
               }
-            } yield {
+            yield
               ExitCode.Success
-            }
           }
         }
       }

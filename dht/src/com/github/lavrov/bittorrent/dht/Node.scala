@@ -4,12 +4,11 @@ import java.net.InetSocketAddress
 import cats.implicits.*
 import cats.effect.implicits.*
 import cats.effect.{Async, Resource, Sync}
-import cats.effect.std.Queue
+import cats.effect.std.{Queue, Random}
 import fs2.io.net.DatagramSocketGroup
 import com.comcast.ip4s.*
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
-import scala.util.Random
 
 trait Node[F[_]] {
 
@@ -24,13 +23,14 @@ object Node {
   )(
     using
     F: Async[F],
+    random: Random[F],
     socketGroup: DatagramSocketGroup[F],
     logger: Logger[F]
   ): Resource[F, Node[F]] = {
 
 
     def generateTransactionId: F[ByteVector] = {
-      val nextChar = F.delay(Random.nextPrintableChar())
+      val nextChar = random.nextAlphaNumeric
       (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).toOption.get)
     }
 

@@ -1,10 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
+import cats.syntax.all.*
+import cats.Monad
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
+import cats.effect.std.Random
 import com.comcast.ip4s.*
-
-import scala.util.Random
 
 final case class NodeInfo(id: NodeId, address: SocketAddress[IpAddress])
 
@@ -20,9 +21,10 @@ object NodeId {
 
   def distance(a: NodeId, b: InfoHash): BigInt = distance(a.bytes, b.bytes)
 
-  def generate(rnd: Random): NodeId = {
-    val buffer = Array.ofDim[Byte](20)
-    rnd.nextBytes(buffer)
-    NodeId(ByteVector(buffer))
+  def generate[F[_]](using Random[F], Monad[F]): F[NodeId] = {
+    for
+      bytes <- Random[F].nextBytes(20)
+    yield
+      NodeId(ByteVector.view(bytes))
   }
 }

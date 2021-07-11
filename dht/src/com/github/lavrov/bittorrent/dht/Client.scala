@@ -8,7 +8,6 @@ import cats.syntax.all.*
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import com.comcast.ip4s.*
-import scala.util.Random
 import org.typelevel.log4cats.Logger
 
 trait Client[F[_]] {
