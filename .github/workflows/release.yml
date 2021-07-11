@@ -1,7 +1,10 @@
 name: release
 
 on:
-  create:
+  workflow_run:
+    workflows: [ "build" ]
+    types:
+      - completed
     tags:
       - '*'
 
