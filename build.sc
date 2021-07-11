@@ -10,6 +10,7 @@ import mill.contrib.artifactory.ArtifactoryPublishModule
 object common extends Module with Publishing {
   def ivyDeps = Agg(
     Deps.`scodec-bits`,
+    Deps.`cats-effect`,
     Deps.ip4s,
   )
   object js extends JsModule with Publishing {
