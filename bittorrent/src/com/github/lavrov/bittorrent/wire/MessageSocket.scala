@@ -1,16 +1,17 @@
 package com.github.lavrov.bittorrent.wire
 
+import cats.syntax.all.*
+import cats.effect.syntax.all.*
 import java.nio.channels.InterruptedByTimeoutException
 import cats.effect.std.Semaphore
-import cats.effect.{Async, Concurrent, Resource}
-import cats.syntax.all.*
+import cats.effect.{Async, Temporal, Resource}
 import com.github.lavrov.bittorrent.*
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
-import com.github.lavrov.bittorrent.wire.MessageSocket.{MaxMessageSize, OversizedMessage}
 import fs2.Chunk
 import fs2.io.net.{Socket, SocketGroup}
 import org.typelevel.log4cats.Logger
 import scodec.bits.ByteVector
+import scala.concurrent.duration.*
 
 
 class MessageSocket[F[_]](
@@ -19,16 +20,15 @@ class MessageSocket[F[_]](
   socket: Socket[F],
   writeMutex: Semaphore[F],
   logger: Logger[F]
-)(using F: Concurrent[F]) {
+)(using F: Temporal[F]) {
+
+  import MessageSocket.{MaxMessageSize, OversizedMessage, readTimeout, writeTimeout}
 
   def send(message: Message): F[Unit] =
     for
       _ <- writeMutex.permit.use { _ =>
-        socket.write(
-          Chunk.byteVector(
-            Message.MessageCodec.encode(message).require.toByteVector
-          )
-        )
+        val bytes = Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector)
+        socket.write(bytes).timeout(writeTimeout)
       }
       _ <- logger.trace(s">>> ${peerInfo.address} $message")
     yield ()
@@ -56,7 +56,7 @@ class MessageSocket[F[_]](
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
     for
-      chunk <- socket.readN(numBytes)
+      chunk <- socket.readN(numBytes).timeout(readTimeout)
       _ <- if chunk.size == numBytes then F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
     yield chunk.toByteVector
 
@@ -65,6 +65,8 @@ class MessageSocket[F[_]](
 object MessageSocket {
 
   val MaxMessageSize: Long = 1024 * 1024 // 1MB
+  val readTimeout = 10.seconds
+  val writeTimeout = 10.seconds
 
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
     using
@@ -91,18 +93,21 @@ object MessageSocket {
     selfId: PeerId,
     infoHash: InfoHash,
     socket: Socket[F]
-  )(using F: Concurrent[F]): F[Handshake] = {
+  )(using F: Temporal[F]): F[Handshake] = {
     val message = Handshake(extensionProtocol = true, infoHash, selfId)
     for
-      _ <- socket.write(
-        bytes = Chunk.byteVector(
-          Handshake.HandshakeCodec.encode(message).require.toByteVector
+      _ <- socket
+        .write(
+          bytes = Chunk.byteVector(
+            Handshake.HandshakeCodec.encode(message).require.toByteVector
+          )
         )
-      )
+        .timeout(writeTimeout)
       handshakeMessageSize = Handshake.HandshakeCodec.sizeBound.exact.get.toInt / 8
       bytes <-
         socket
           .readN(handshakeMessageSize)
+          .timeout(readTimeout)
           .adaptError {
             case e: InterruptedByTimeoutException =>
               Error("Timeout waiting for handshake", e)
