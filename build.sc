@@ -56,14 +56,14 @@ object cmd extends Module {
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "3.0.1"
+  def scalaVersion = "3.0.2"
   def scalacOptions = Seq(
     "-source:future",
   )
   def repositoriesTask = T.task {
     super.repositoriesTask() ++ Seq(
       MavenRepository(
-        "https://maven.pkg.github.com/TorrentDam/bencode",
+        "https://maven.pkg.github.com/TorrentDamDev/bencode",
         T.env.get("GITHUB_TOKEN").map { token =>
           coursier.core.Authentication("lavrov", token)
         }
@@ -79,7 +79,7 @@ trait Module extends ScalaModule with ScalafmtModule {
 }
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
-  def scalaJSVersion = "1.5.1"
+  def scalaJSVersion = "1.7.0"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
@@ -87,16 +87,16 @@ trait JsModule extends Module with scalajslib.ScalaJSModule {
 trait Publishing extends ArtifactoryPublishModule {
   import mill.scalalib.publish._
 
-  def artifactoryUri  = "https://maven.pkg.github.com/TorrentDam/bittorrent"
+  def artifactoryUri  = "https://maven.pkg.github.com/TorrentDamDev/bittorrent"
 
   def artifactorySnapshotUri = ""
 
   def pomSettings = PomSettings(
     description = "BitTorrent",
     organization = "com.github.torrentdam",
-    url = "https://github.com/TorrentDam/bittorrent",
+    url = "https://github.com/TorrentDamDev/bittorrent",
     licenses = Seq(License.MIT),
-    versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+    versionControl = VersionControl.github("TorrentDamDev", "bittorrent"),
     developers = Seq(
       Developer("lavrov", "Vitaly Lavrov","https://github.com/lavrov")
     )
