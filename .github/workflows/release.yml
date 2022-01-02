@@ -13,18 +13,17 @@ jobs:
 
     - uses: actions/checkout@v1
 
-    - name: Set up java
-      uses: actions/setup-java@v2.1.0
+    - name: Setup Scala
+    - uses: olafurpg/setup-scala@v10
       with:
         distribution: 'adopt'
-        java-version: 14
-        java-package: jre
+        java-version: graalvm-ce-java11@20.1.0
 
     - name: Publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        ./mill common.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
-        ./mill common.js.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
-        ./mill dht.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
-        ./mill bittorrent.publishArtifactory --credentials lavrov:${{ secrets.GITHUB_TOKEN }}
+        sbt commonJVM/publish
+        sbt commonJS/publish
+        sbt dht/publish
+        sbt bittorrent/publish

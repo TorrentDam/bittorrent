@@ -1,10 +1,12 @@
-out
-logs
+target
+
 .idea
 .idea_modules
+
+.vscode
+
 .metals
 .bloop
 .bsp
-.vscode
-node_modules
-package-lock.json
+
+logs

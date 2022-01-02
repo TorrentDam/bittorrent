@@ -16,7 +16,7 @@ jobs:
     - uses: actions/cache@v1
       with:
         path: ~/.cache/coursier/v1
-        key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sc') }}
+        key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sbt') }}
 
     - uses: olafurpg/setup-scala@v10
       with:
@@ -26,9 +26,9 @@ jobs:
     - name: Build
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./mill _.compile
+      run: sbt compile
 
     - name: Test
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./mill _.test
+      run: sbt test
