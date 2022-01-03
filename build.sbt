@@ -5,7 +5,7 @@ lazy val root = project.in(file("."))
 
 inThisBuild(
   List(
-    scalaVersion := "3.0.2",
+    scalaVersion := "3.1.0",
     scalacOptions ++= List(
       "-source:future",
       "-Ykind-projector:underscores",
@@ -58,6 +58,15 @@ lazy val dht = project
     )
   )
 
+lazy val tracker = project
+  .dependsOn(common.jvm)
+  .settings(
+    libraryDependencies ++= Seq(
+      Deps.bencode,
+      Deps.`http4s-client`,
+    )
+  )
+
 lazy val cmd = project
   .dependsOn(dht, bittorrent)
   .settings(
@@ -78,6 +87,7 @@ lazy val Versions = new {
   val bencode = "1.0.2"
   val decline = "2.2.0"
   val logback = "1.2.10"
+  val http4s = "1.0.0-M30"
 }
 
 lazy val Deps = new {
@@ -103,5 +113,7 @@ lazy val Deps = new {
   val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.5")
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
+
+  val `http4s-client` = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
 }
 

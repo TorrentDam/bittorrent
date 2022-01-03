@@ -2,7 +2,8 @@ package com.github.lavrov.bittorrent
 import scodec.bits.ByteVector
 
 final case class InfoHash(bytes: ByteVector) {
-  override def toString = bytes.toHex
+  def toHex: String = bytes.toHex
+  override def toString: String = toHex
 }
 
 object InfoHash {
