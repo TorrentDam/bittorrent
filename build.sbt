@@ -15,6 +15,7 @@ inThisBuild(
       Deps.`log4cats-noop`.value % Test,
     ),
     organization := "com.github.torrentdam.bittorrent",
+    version := sys.env.getOrElse("GITHUB_REF", "1.0.0").stripPrefix("refs/tags/"),
     githubOwner := "TorrentDamDev",
     githubRepository := "bittorrent",
     resolvers += Resolver.githubPackages("TorrentDamDev"),
