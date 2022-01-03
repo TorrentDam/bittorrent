@@ -31,19 +31,6 @@ lazy val common = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure
     )
   )
 
-lazy val dht = project
-  .dependsOn(common.jvm)
-  .settings(
-    libraryDependencies ++= Seq(
-      Deps.bencode,
-      Deps.`scodec-bits`.value,
-      Deps.`cats-core`.value,
-      Deps.`cats-effect`.value,
-      Deps.`fs2-io`,
-      Deps.log4cats,
-    )
-  )
-
 lazy val bittorrent = project
   .dependsOn(common.jvm, dht)
   .settings(
@@ -54,6 +41,19 @@ lazy val bittorrent = project
       Deps.`fs2-io`,
       Deps.`monocle-core`,
       Deps.`monocle-macro`,
+      Deps.log4cats,
+    )
+  )
+
+lazy val dht = project
+  .dependsOn(common.jvm)
+  .settings(
+    libraryDependencies ++= Seq(
+      Deps.bencode,
+      Deps.`scodec-bits`.value,
+      Deps.`cats-core`.value,
+      Deps.`cats-effect`.value,
+      Deps.`fs2-io`,
       Deps.log4cats,
     )
   )
@@ -71,12 +71,13 @@ lazy val Versions = new {
   val cats = "2.6.1"
   val `cats-effect` = "3.2.8"
   val ip4s = "3.0.3"
-  val fs2 = "3.1.2"
+  val fs2 = "3.2.4"
   val monocle = "3.0.0"
   val log4cats = "2.1.1"
   val `scodec-bits` = "1.1.27"
   val bencode = "1.0.2"
-  val decline = "2.1.0"
+  val decline = "2.2.0"
+  val logback = "1.2.10"
 }
 
 lazy val Deps = new {
@@ -92,7 +93,7 @@ lazy val Deps = new {
 
   val log4cats = "org.typelevel" %% "log4cats-slf4j" % Versions.log4cats
   val `log4cats-noop` = Def.setting("org.typelevel" %%% "log4cats-noop" % Versions.log4cats)
-  val `logback-classic` = "ch.qos.logback" % "logback-classic" % "1.2.3"
+  val `logback-classic` = "ch.qos.logback" % "logback-classic" % Versions.logback
 
   val `monocle-core` = "dev.optics" %% "monocle-core" % Versions.monocle
   val `monocle-macro` = "dev.optics" %% "monocle-macro" % Versions.monocle
