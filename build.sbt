@@ -11,8 +11,8 @@ inThisBuild(
       "-Ykind-projector:underscores",
     ),
     libraryDependencies ++= List(
-      Deps.`munit-cats-effect` % Test,
-      Deps.`log4cats-noop` % Test,
+      Deps.`munit-cats-effect`.value % Test,
+      Deps.`log4cats-noop`.value % Test,
     ),
     organization := "com.github.torrentdam.bittorrent",
     githubOwner := "TorrentDamDev",
@@ -90,7 +90,7 @@ lazy val Deps = new {
   val `scodec-bits` = Def.setting("org.scodec" %%% "scodec-bits" % Versions.`scodec-bits`)
 
   val log4cats = "org.typelevel" %% "log4cats-slf4j" % Versions.log4cats
-  val `log4cats-noop` = "org.typelevel" %% "log4cats-noop" % Versions.log4cats
+  val `log4cats-noop` = Def.setting("org.typelevel" %%% "log4cats-noop" % Versions.log4cats)
   val `logback-classic` = "ch.qos.logback" % "logback-classic" % "1.2.3"
 
   val `monocle-core` = "dev.optics" %% "monocle-core" % Versions.monocle
@@ -98,7 +98,7 @@ lazy val Deps = new {
 
   val bencode = "com.github.torrentdam" %% "bencode" % Versions.bencode
 
-  val `munit-cats-effect` = "org.typelevel" %% "munit-cats-effect-3" % "1.0.5"
+  val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.5")
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
 }
