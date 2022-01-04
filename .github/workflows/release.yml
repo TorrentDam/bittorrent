@@ -25,5 +25,6 @@ jobs:
       run: |
         sbt commonJVM/publish
         sbt commonJS/publish
-        sbt dht/publish
         sbt bittorrent/publish
+        sbt dht/publish
+        sbt tracker/publish

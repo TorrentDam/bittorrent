@@ -1,6 +1,6 @@
 lazy val root = project.in(file("."))
   .aggregate(
-    common.jvm, common.js, dht, bittorrent, cmd
+    common.jvm, common.js, dht, bittorrent, tracker
   )
 
 inThisBuild(
