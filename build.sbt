@@ -64,6 +64,7 @@ lazy val tracker = project
     libraryDependencies ++= Seq(
       Deps.bencode,
       Deps.`http4s-client`,
+      Deps.`http4s-blaze-client` % Test,
     )
   )
 
@@ -114,6 +115,7 @@ lazy val Deps = new {
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
 
-  val `http4s-client` = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
+  val `http4s-client` = "org.http4s" %% "http4s-client" % Versions.http4s
+  val `http4s-blaze-client` = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
 }
 
