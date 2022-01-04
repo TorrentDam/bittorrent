@@ -18,7 +18,8 @@ class Client(runGet: Uri => IO[ByteVector]):
         "uploaded=0",
         "downloaded=0",
         "left=0",
-        "port=80"
+        "port=80",
+        "compact=1"
       ).mkString("&")
     val rawUri =
       announceUrl.renderString + (

@@ -36,7 +36,8 @@ class ClientSuite extends munit.CatsEffectSuite {
             "&uploaded=0" +
             "&downloaded=0" +
             "&left=0" +
-            "&port=80"
+            "&port=80" +
+            "&compact=1"
         )
       )
       assert(result.isInstanceOf[Client.Response.Success])
