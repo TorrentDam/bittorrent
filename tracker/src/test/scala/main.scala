@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext.global
 object main extends IOApp.Simple:
   def run: IO[Unit] =
     BlazeClientBuilder[IO].resource.use { httpClient =>
-      val client = Client(httpClient.expect[ByteVector])
+      val client = Client.http(httpClient)
       for
         response <- client.get(
           announceUrl = Uri.unsafeFromString("http://bt.t-ru.org/ann?magnet"),

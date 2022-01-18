@@ -1,3 +1,5 @@
+package com.github.torrentdam.tracker.impl
+
 import cats.effect.IO
 import com.comcast.ip4s.*
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
@@ -6,12 +8,12 @@ import com.github.torrentdam.tracker.Client
 import org.http4s.Uri
 import scodec.bits.ByteVector
 
-class ClientSuite extends munit.CatsEffectSuite {
+class HttpClientSuite extends munit.CatsEffectSuite {
 
-  test("tracker request/response"){
+  test("http client"){
     var captureUri: Uri | Null = null
     val client =
-      Client( uri =>
+      HttpClient( uri =>
         IO{captureUri = uri}.as(
           ByteVector.fromValidHex(
             "64383a696e74657276616c69333535346531323a6d696e20696e74657276616c693335353465353a" +
