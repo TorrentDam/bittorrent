@@ -50,6 +50,7 @@ inThisBuild(
         "scm:git@github.com:TorrentDamDev/bittorrent.git"
       )
     ),
+    licenses := List("Unlicense" -> new URL("https://unlicense.org/")),
     homepage := Some(url("https://torrentdam.github.io/"))
   )
 )
