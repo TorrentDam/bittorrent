@@ -1,34 +1,54 @@
 name: build
 
-on:
-  push:
-    branches:
-      - '*'
+on: [push]
 
 jobs:
 
   build:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v1
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cache/coursier/v1
+          key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sbt') }}
+      - name: Set up java
+        uses: actions/setup-java@v2.1.0
+        with:
+          distribution: adopt
+          java-version: 17
+          java-package: jre
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sbt compile
+      - name: Test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sbt test
 
-    - uses: actions/checkout@v1
-
-    - uses: actions/cache@v1
-      with:
-        path: ~/.cache/coursier/v1
-        key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sbt') }}
-
-    - uses: olafurpg/setup-scala@v10
-      with:
-        distribution: 'adopt'
-        java-version: graalvm-ce-java11@20.1.0
-
-    - name: Build
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: sbt compile
-
-    - name: Test
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: sbt test
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up java
+        uses: actions/setup-java@v2.1.0
+        with:
+          distribution: adopt
+          java-version: 17
+          java-package: jre
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SONATYPE_CREDS: ${{ secrets.SONATYPE_CREDS }}
+          PGP_SECRET_KEY: ${{ secrets.PGP_SECRET_KEY }}
+        run: |
+          echo ${PGP_SECRET_KEY} | base64 --decode | gpg --import
+          export VERSION=${GITHUB_REF#*/v} 
+          echo Publishing $VERSION
+          sbt commonJVM/publishSigned
+          sbt commonJS/publishSigned
+          sbt bittorrent/publishSigned
+          sbt dht/publishSigned
+          sbt tracker/publishSigned

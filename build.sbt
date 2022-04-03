@@ -14,11 +14,43 @@ inThisBuild(
       Deps.`munit-cats-effect`.value % Test,
       Deps.`log4cats-noop`.value % Test,
     ),
-    organization := "com.github.torrentdam.bittorrent",
-    version := sys.env.getOrElse("GITHUB_REF", "1.0.0").stripPrefix("refs/tags/"),
-    githubOwner := "TorrentDamDev",
-    githubRepository := "bittorrent",
-    resolvers += Resolver.githubPackages("TorrentDamDev"),
+    organization := "io.github.torrentdam.bittorrent",
+    version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
+    description := "Bittorrent client",
+    publishTo := {
+      val nexus = "https://s01.oss.sonatype.org/"
+      Some("releases" at nexus + "service/local/staging/deploy/maven2")
+    },
+    credentials ++= {
+      sys.env.get("SONATYPE_CREDS") match {
+        case Some(credentials) =>
+          val Array(username, password) = credentials.split(':')
+          List(
+            Credentials(
+              "Sonatype Nexus Repository Manager",
+              "s01.oss.sonatype.org",
+              username,
+              password
+            )
+          )
+        case None => List.empty[Credentials]
+      }
+    },
+    developers := List(
+      Developer(
+        id = "lavrov",
+        name = "Vitaly Lavrov",
+        email = "lavrovvv@gmail.com",
+        url = url("https://github.com/lavrov")
+      )
+    ),
+    scmInfo := Some(
+      ScmInfo(
+        url("https://github.com/TorrentDamDev/bittorrent"),
+        "scm:git@github.com:TorrentDamDev/bittorrent.git"
+      )
+    ),
+    homepage := Some(url("https://torrentdam.github.io/"))
   )
 )
 
@@ -85,7 +117,7 @@ lazy val Versions = new {
   val monocle = "3.0.0"
   val log4cats = "2.1.1"
   val `scodec-bits` = "1.1.27"
-  val bencode = "1.0.2"
+  val bencode = "1.0.0"
   val decline = "2.2.0"
   val logback = "1.2.10"
   val http4s = "1.0.0-M30"
@@ -109,7 +141,7 @@ lazy val Deps = new {
   val `monocle-core` = "dev.optics" %% "monocle-core" % Versions.monocle
   val `monocle-macro` = "dev.optics" %% "monocle-macro" % Versions.monocle
 
-  val bencode = "com.github.torrentdam" %% "bencode" % Versions.bencode
+  val bencode = "io.github.torrentdam.bencode" %% "bencode" % Versions.bencode
 
   val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.5")
 
