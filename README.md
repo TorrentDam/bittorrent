@@ -1,12 +1,12 @@
-BitTorrent Client
-=================
+# BitTorrent Client
 
-Development
------------
-
-Open in Intellij IDEA.
+## Development
 
 Run tests:
 ```sh
-$ ./mill _.test
+$ sbt test
 ```
+
+## Releasing
+
+Tagging triggers uploading jars to Sonatype where they have to be manually released.
