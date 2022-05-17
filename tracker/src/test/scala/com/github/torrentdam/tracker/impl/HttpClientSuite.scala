@@ -13,7 +13,7 @@ class HttpClientSuite extends munit.CatsEffectSuite {
   test("http client"){
     var captureUri: Uri | Null = null
     val client =
-      HttpClient( uri =>
+      HttpClient.impl( uri =>
         IO{captureUri = uri}.as(
           ByteVector.fromValidHex(
             "64383a696e74657276616c69333535346531323a6d696e20696e74657276616c693335353465353a" +

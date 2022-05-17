@@ -96,6 +96,7 @@ lazy val tracker = project
   .settings(
     libraryDependencies ++= Seq(
       Deps.bencode,
+      Deps.`scodec-bits`.value,
       Deps.`http4s-client`,
       Deps.`http4s-blaze-client` % Test,
     )
