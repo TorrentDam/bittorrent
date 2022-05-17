@@ -270,7 +270,7 @@ object UdpClient:
       for
         _ <- ref.update(map => map.updated(transactionId, callback))
         _ <- supervisor.supervise(
-          IO.sleep(60.seconds) >> complete(transactionId, Left(new TimeoutException))
+          IO.sleep(5.seconds) >> complete(transactionId, Left(new TimeoutException))
         )
       yield {}
 
