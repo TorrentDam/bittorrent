@@ -1,28 +1,30 @@
 import cats.syntax.all.*
-import cats.effect.{ExitCode, IO}
 import cats.effect.kernel.Resource
 import cats.effect.std.Random
-import com.github.lavrov.bittorrent.{InfoHash, PeerId}
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
+import cats.effect.{ExitCode, IO}
+import com.comcast.ip4s.SocketAddress
+import com.github.lavrov.bittorrent.dht.*
 import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, Swarm}
+import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
 import fs2.io.net.Network
+import fs2.Stream
 import org.typelevel.log4cats.StructuredLogger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-
-object Main extends CommandIOApp(
-  name = "tdm",
-  header = "TorrentDam"
-) {
+object Main
+    extends CommandIOApp(
+      name = "tdm",
+      header = "TorrentDam"
+    ) {
 
   def main: Opts[IO[ExitCode]] = {
 
     given logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromClass(classOf[Main.type])
 
     val discoverCommand =
-      Opts.subcommand("dht", "discover peers"){
+      Opts.subcommand("dht", "discover peers") {
         Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
           val resources =
             for
@@ -39,8 +41,7 @@ object Main extends CommandIOApp(
               }
               _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
               discovery <- PeerDiscovery.make(table, node.client)
-            yield
-              discovery.discover(infoHash)
+            yield discovery.discover(infoHash)
 
           resources.use { stream =>
             stream
@@ -55,7 +56,7 @@ object Main extends CommandIOApp(
       }
 
     val metadataCommand =
-      Opts.subcommand("metadata", "download metadata"){
+      Opts.subcommand("metadata", "download metadata") {
         Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
 
           val resources =
@@ -80,8 +81,7 @@ object Main extends CommandIOApp(
                   Connection.connect(selfPeerId, _, infoHash)
                 )
               }
-            yield
-              DownloadMetadata(swarm.connected.stream)
+            yield DownloadMetadata(swarm.connected.stream)
 
           resources.use { getMetadata =>
             getMetadata
@@ -92,8 +92,10 @@ object Main extends CommandIOApp(
       }
 
     val downloadCommand =
-      Opts.subcommand("download", "download torrent"){
-        Opts.option[String]("info-hash", "Info-hash").map { infoHash =>
+      Opts.subcommand("download", "download torrent") {
+        val options: Opts[(String, Option[String])] =
+          (Opts.option[String]("info-hash", "Info-hash"), Opts.option[String]("peer", "Peer address").orNone).tupled
+        options.map { case (infoHash, peerAddress) =>
 
           val resources =
             for
@@ -105,23 +107,22 @@ object Main extends CommandIOApp(
                   .unapply(infoHash)
                   .liftTo[IO](new Exception("Malformed info-hash"))
               }
+              peerAddress <- Resource.pure(peerAddress.flatMap(SocketAddress.fromStringIp))
               table <- Resource.eval { RoutingTable[IO](selfId) }
               node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
                 Node(selfId, QueryHandler(selfId, table))
               }
               _ <- Resource.eval { RoutingTableBootstrap(table, node.client) }
               discovery <- PeerDiscovery.make(table, node.client)
+              peers <- Resource.pure(
+                peerAddress match
+                  case Some(peerAddress) => Stream.emit(PeerInfo(peerAddress)).covary[IO]
+                  case None => discovery.discover(infoHash)
+              )
               swarm <- Network[IO].socketGroup().flatMap { implicit group =>
-                Swarm(
-                  discovery.discover(infoHash),
-                  peerInfo =>
-                    Connection
-                      .connect[IO](selfPeerId, peerInfo, infoHash)
-                      .evalTap(connection => logger.info(s"Connected to ${connection.info.address}"))
-                )
+                Swarm(peers, peerInfo => Connection.connect[IO](selfPeerId, peerInfo, infoHash))
               }
-            yield
-              swarm
+            yield swarm
 
           resources.use { swarm =>
             for
@@ -133,8 +134,7 @@ object Main extends CommandIOApp(
                   }
                 }
               }
-            yield
-              ExitCode.Success
+            yield ExitCode.Success
           }
         }
       }
