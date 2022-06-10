@@ -11,6 +11,7 @@ import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 import org.typelevel.log4cats.{Logger, StructuredLogger}
+import scodec.bits.ByteVector
 
 import scala.collection.BitSet
 import scala.concurrent.duration.*
@@ -66,64 +67,93 @@ object Download {
     connection: Connection[F],
     pieces: PiecePicker[F]
   )(using F: Temporal[F], logger: Logger[F]): F[Unit] = {
+    class Internal(
+        requestQueue: Queue[F, Message.Request],
+        incompleteRequests: SignallingRef[F, Set[Message.Request]],
+        pickMutex: Semaphore[F],
+        failureCounter: Ref[F, Int]
+    ) {
+      def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
+        F.uncancelable { _ =>
+          pickMutex.permit.use { _ =>
+            logger.trace(s"Complete $request") >>
+            pieces.complete(request, bytes) >>
+            incompleteRequests.update(_ - request) >>
+            failureCounter.update(_ => 0)
+          }
+        }
+
+      def fail(request: Message.Request): F[Unit] =
+        F.uncancelable { _ =>
+          pickMutex.permit.use { _ =>
+            logger.trace(s"Fail $request") >>
+            incompleteRequests.update(_ - request) >>
+            pieces.unpick(request) >>
+            failureCounter.updateAndGet(_ + 1).flatMap(count =>
+              if (count >=5 ) F.raiseError(Error.PeerDoesNotRespond()) else F.unit
+            )
+          }
+        }
+
+      def sendRequest(request: Message.Request): F[Unit] =
+        logger.debug(s"Request $request") >>
+        connection
+          .request(request)
+          .timeout(5.seconds)
+          .attempt
+          .flatMap {
+            case Right(bytes) => complete(request, bytes)
+            case Left(_) => fail(request)
+          }
+
+      def fillQueue: F[Unit] =
+        (incompleteRequests, connection.availability, pieces.updates).tupled.discrete
+          .evalTap {
+            case (requests: Set[Message.Request], availability: BitSet, _) if requests.size < MaxParallelRequests =>
+              F.uncancelable { poll =>
+                pickMutex.permit.use { _ =>
+                  for
+                    request <- pieces.pick(availability, connection.info.address)
+                    _ <- request match {
+                      case Some(request) =>
+                        logger.trace(s"Picked $request") >>
+                          incompleteRequests.update(_ + request) >>
+                          requestQueue.offer(request)
+                      case None =>
+                        logger.trace(s"No pieces dispatched for ${connection.info.address}")
+                    }
+                  yield ()
+                }
+              }.void
+            case _ =>
+              F.unit
+          }
+          .compile
+          .drain
+
+      def drainQueue: F[Unit] =
+        Stream.fromQueueUnterminated(requestQueue)
+          .parEvalMapUnordered(MaxParallelRequests)(sendRequest)
+          .compile
+          .drain
+
+      def run: F[Unit] =
+        logger.info(s"Download started") >>
+        fillQueue.race(drainQueue).void
+          .guarantee {
+            pickMutex.acquire >>
+              incompleteRequests.get.flatMap { requests =>
+                logger.debug(s"Unpick $requests") >>
+                  requests.toList.traverse_(pieces.unpick)
+              }
+          }
+    }
     for
       requestQueue <- Queue.unbounded[F, Message.Request]
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
       pickMutex <- Semaphore(1)
-      fillQueue = (
-          (incompleteRequests, connection.availability, pieces.updates).tupled.discrete
-            .evalTap {
-              case (requests: Set[Message.Request], availability: BitSet, _) if requests.size < MaxParallelRequests =>
-                F.uncancelable { poll =>
-                  pickMutex.permit.use { _ =>
-                    for
-                      request <- pieces.pick(availability, connection.info.address)
-                      _ <- request match {
-                        case Some(request) =>
-                          logger.trace(s"Picked $request") >>
-                          incompleteRequests.update(_ + request) >>
-                          requestQueue.offer(request)
-                        case None =>
-                          logger.trace(s"No pieces dispatched for ${connection.info.address}")
-                      }
-                    yield ()
-                  }
-                }.void
-              case _ =>
-                F.unit
-            }
-            .compile
-            .drain
-      ): F[Unit]
-      sendRequest = { (request: Message.Request) =>
-        logger.trace(s"Request $request") >>
-        connection
-          .request(request)
-          .timeoutTo(5.seconds, F.raiseError(Error.TimeoutWaitingForPiece(5.seconds)))
-          .flatMap { bytes =>
-            F.uncancelable { poll =>
-              pickMutex.permit.use { _ =>
-                logger.trace(s"Complete $request") >>
-                pieces.complete(request, bytes) >>
-                incompleteRequests.update(_ - request)
-              }
-            }
-          }
-      }
-      drainQueue =
-        Stream.fromQueueUnterminated(requestQueue)
-          .parEvalMapUnordered(Int.MaxValue)(sendRequest)
-          .compile
-          .drain
-      _ <-
-        fillQueue.race(drainQueue).void
-          .guarantee {
-            pickMutex.acquire >>
-            incompleteRequests.get.flatMap { requests =>
-              logger.debug(s"Unpick $requests") >>
-              requests.toList.traverse_(pieces.unpick)
-            }
-          }
+      failureCounter <- Ref.of(0)
+      _ <- Internal(requestQueue, incompleteRequests, pickMutex, failureCounter).run
     yield ()
   }
 
@@ -166,4 +196,5 @@ object Download {
     case TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
     case TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")
     case InvalidChecksum() extends Error("Invalid checksum")
+    case PeerDoesNotRespond() extends Error("Peer does not respond")
 }
