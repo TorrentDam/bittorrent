@@ -19,8 +19,6 @@ import scala.util.chaining.*
 
 object Download {
 
-  private val MaxParallelRequests = 10
-
   def apply[F[_]](
     swarm: Swarm[F],
     metadata: TorrentMetadata
@@ -71,7 +69,9 @@ object Download {
         requestQueue: Queue[F, Message.Request],
         incompleteRequests: SignallingRef[F, Set[Message.Request]],
         pickMutex: Semaphore[F],
-        failureCounter: Ref[F, Int]
+        failureCounter: Ref[F, Int],
+        downloadedBytes: SignallingRef[F, Long],
+        maxOutstanding: SignallingRef[F, Int]
     ) {
       def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
         F.uncancelable { _ =>
@@ -95,10 +95,21 @@ object Download {
           }
         }
 
+      def computeOutstanding =
+        downloadedBytes.discrete.groupWithin(Int.MaxValue, 10.seconds)
+          .map(ones =>
+            scala.math.max(ones.foldLeft(0L)(_ + _) / 10 / PiecePicker.ChunkSize, 5L).toInt
+          )
+          .evalMap(maxOutstanding.set)
+          .compile
+          .drain
+
       def sendRequest(request: Message.Request): F[Unit] =
         logger.debug(s"Request $request") >>
-        connection
-          .request(request)
+          connection.request(request)
+          .flatMap {
+            bytes => downloadedBytes.set(bytes.size).as(bytes)
+          }
           .timeout(5.seconds)
           .attempt
           .flatMap {
@@ -107,9 +118,9 @@ object Download {
           }
 
       def fillQueue: F[Unit] =
-        (incompleteRequests, connection.availability, pieces.updates).tupled.discrete
+        (incompleteRequests, connection.availability, maxOutstanding, pieces.updates).tupled.discrete
           .evalTap {
-            case (requests: Set[Message.Request], availability: BitSet, _) if requests.size < MaxParallelRequests =>
+            case (requests: Set[Message.Request], availability: BitSet, maxParallelRequests, _) if requests.size < maxParallelRequests =>
               F.uncancelable { poll =>
                 pickMutex.permit.use { _ =>
                   for
@@ -133,13 +144,13 @@ object Download {
 
       def drainQueue: F[Unit] =
         Stream.fromQueueUnterminated(requestQueue)
-          .parEvalMapUnordered(MaxParallelRequests)(sendRequest)
+          .parEvalMapUnordered(Int.MaxValue)(sendRequest)
           .compile
           .drain
 
       def run: F[Unit] =
         logger.info(s"Download started") >>
-        fillQueue.race(drainQueue).void
+        (fillQueue, drainQueue, computeOutstanding).parTupled.void
           .guarantee {
             pickMutex.acquire >>
               incompleteRequests.get.flatMap { requests =>
@@ -153,7 +164,9 @@ object Download {
       incompleteRequests <- SignallingRef[F, Set[Message.Request]](Set.empty)
       pickMutex <- Semaphore(1)
       failureCounter <- Ref.of(0)
-      _ <- Internal(requestQueue, incompleteRequests, pickMutex, failureCounter).run
+      downloadTime <- SignallingRef[F, Long](0L)
+      maxOutstanding <- SignallingRef[F, Int](5)
+      _ <- Internal(requestQueue, incompleteRequests, pickMutex, failureCounter, downloadTime, maxOutstanding).run
     yield ()
   }
 

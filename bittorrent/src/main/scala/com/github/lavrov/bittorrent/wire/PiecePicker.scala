@@ -27,6 +27,8 @@ trait PiecePicker[F[_]] {
   def pieces: F[List[Int]]
 }
 object PiecePicker {
+  val ChunkSize: Int = 16 * 1024
+  
   def apply[F[_]](
     metadata: TorrentMetadata
   )(using F: Async[F], logger: Logger[F]): F[PiecePicker[F]] =
@@ -173,12 +175,11 @@ object PiecePicker {
     }
 
     def genRequests(pieceIndex: Long, length: Long): Chain[Message.Request] = {
-      val chunkSize = 16 * 1024
       var result = Chain.empty[Message.Request]
       def loop(index: Long): Unit = {
-        val thisChunkSize = math.min(chunkSize, length - index * chunkSize)
+        val thisChunkSize = math.min(ChunkSize, length - index * ChunkSize)
         if thisChunkSize > 0 then
-          val begin = index * chunkSize
+          val begin = index * ChunkSize
           result = result.append(
             Message.Request(
               pieceIndex,
