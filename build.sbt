@@ -112,15 +112,15 @@ lazy val cmd = project
   )
 
 lazy val Versions = new {
-  val cats = "2.6.1"
-  val `cats-effect` = "3.2.8"
-  val ip4s = "3.0.3"
-  val fs2 = "3.2.4"
-  val monocle = "3.0.0"
-  val log4cats = "2.1.1"
+  val cats = "2.8.0"
+  val `cats-effect` = "3.3.13"
+  val ip4s = "3.1.3"
+  val fs2 = "3.2.8"
+  val monocle = "3.1.0"
+  val log4cats = "2.3.2"
   val `scodec-bits` = "1.1.27"
   val bencode = "1.0.0"
-  val decline = "2.2.0"
+  val decline = "2.3.0"
   val logback = "1.2.10"
   val http4s = "1.0.0-M30"
 }
@@ -145,7 +145,7 @@ lazy val Deps = new {
 
   val bencode = "io.github.torrentdam.bencode" %% "bencode" % Versions.bencode
 
-  val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.5")
+  val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.7")
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
 
