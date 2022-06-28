@@ -105,8 +105,8 @@ object Download {
           .drain
 
       def sendRequest(request: Message.Request): F[Unit] =
-        logger.debug(s"Request $request") >>
-          connection.request(request)
+        connection
+          .request(request)
           .flatMap {
             bytes => downloadedBytes.set(bytes.size).as(bytes)
           }

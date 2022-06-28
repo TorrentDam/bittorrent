@@ -44,7 +44,7 @@ object Swarm {
             reconnects,
             peerInfo =>
               for
-                _ <- logger.trace(s"Connecting to ${peerInfo.address}")
+                _ <- logger.debug(s"Connecting to ${peerInfo.address}")
                 _ <- connect(peerInfo).use { connection =>
                   stateRef.update(_.updated(peerInfo, connection)) >>
                   lastConnected.set(connection) >>
@@ -52,7 +52,9 @@ object Swarm {
                   stateRef.update(_ - peerInfo)
                 }
               yield ()
-          ).foreverM[Unit].start
+          )
+            .foreverM[Unit]
+            .start
         )
       yield
         val impl = new Impl(stateRef, lastConnected)

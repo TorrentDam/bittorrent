@@ -87,6 +87,7 @@ object Connection {
     MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
       Resource {
         for
+          _ <- logger.debug(s"Connected ${peerInfo.address}")
           stateRef <- Ref.of[F, State](State())
           chokedStatusRef <- SignallingRef(true)
           bitfieldRef <- SignallingRef(BitSet.empty)
@@ -96,7 +97,6 @@ object Connection {
             socket.send,
             new ExtensionHandler.UtMetadata.Create[F]
           )
-          _ <- logger.debug(s"Connected ${peerInfo.address}")
           updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
           fiber <-
             Concurrent[F]
@@ -117,10 +117,14 @@ object Connection {
           closed <- Deferred[F, Either[Throwable, Unit]]
           doClose =
             (reason: Either[Throwable, Unit]) =>
-              fiber.cancel >>
-              requestRegistry.failAll(ConnectionClosed()) >>
-              logger.debug(s"Disconnected ${peerInfo.address}") >>
-              closed.complete(reason).attempt.void
+              closed.complete(reason).flatMap {
+                case true =>
+                  fiber.cancel >>
+                  requestRegistry.failAll(ConnectionClosed()) >>
+                  logger.debug(s"Disconnected ${peerInfo.address}")
+                case false =>
+                  F.unit
+              }
           _ <- fiber.join.flatMap(_ => doClose(().asRight)).start
         yield
           val impl: Connection[F] = new Connection[F] {

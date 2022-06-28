@@ -1,4 +1,5 @@
 import cats.syntax.all.*
+import cats.effect.syntax.all.*
 import cats.effect.kernel.Resource
 import cats.effect.std.Random
 import cats.effect.{ExitCode, IO}
@@ -12,6 +13,7 @@ import fs2.io.net.Network
 import fs2.Stream
 import org.typelevel.log4cats.StructuredLogger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import scala.concurrent.duration.DurationInt
 
 object Main
     extends CommandIOApp(
@@ -120,7 +122,13 @@ object Main
                   case None => discovery.discover(infoHash)
               )
               swarm <- Network[IO].socketGroup().flatMap { implicit group =>
-                Swarm(peers, peerInfo => Connection.connect[IO](selfPeerId, peerInfo, infoHash))
+                Swarm(
+                  peers,
+                  peerInfo =>
+                    Connection
+                      .connect[IO](selfPeerId, peerInfo, infoHash)
+                      .timeout(5.seconds)
+                )
               }
             yield swarm
 
