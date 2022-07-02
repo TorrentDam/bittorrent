@@ -8,7 +8,7 @@ import com.github.torrentdam.bencode.{decode, encode}
 import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Chunk
 import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import com.comcast.ip4s.*
 
 class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(

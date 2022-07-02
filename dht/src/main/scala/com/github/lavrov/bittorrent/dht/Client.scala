@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import com.comcast.ip4s.*
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 
 trait Client[F[_]] {
 

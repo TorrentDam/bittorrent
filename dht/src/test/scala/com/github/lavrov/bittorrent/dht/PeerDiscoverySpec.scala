@@ -6,8 +6,7 @@ import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import com.comcast.ip4s.*
-import org.typelevel.log4cats.Logger
-import org.typelevel.log4cats.noop.NoOpLogger
+import org.legogroup.woof.Logger
 
 class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
@@ -17,7 +16,7 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
     def nodeId(id: String) = NodeId(ByteVector.encodeUtf8(id).toOption.get)
 
-    given logger: Logger[IO] = NoOpLogger[IO]
+    given logger: Logger[IO] = NoOpLogger()
 
     def getPeers(
       nodeInfo: NodeInfo,

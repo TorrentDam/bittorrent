@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
 import fs2.concurrent.{Signal, SignallingRef}
 import fs2.io.net.SocketGroup
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import monocle.Lens
 import monocle.macros.GenLens
 import scodec.bits.ByteVector

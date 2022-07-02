@@ -7,7 +7,7 @@ import cats.effect.{Async, Resource, Sync}
 import cats.effect.std.{Queue, Random}
 import fs2.io.net.DatagramSocketGroup
 import com.comcast.ip4s.*
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 
 trait Node[F[_]] {

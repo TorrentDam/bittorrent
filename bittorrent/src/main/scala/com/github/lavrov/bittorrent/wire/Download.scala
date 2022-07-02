@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.SignallingRef
-import org.typelevel.log4cats.{Logger, StructuredLogger}
+import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 
 import scala.collection.BitSet
@@ -25,7 +25,7 @@ object Download {
   )(
     using
     F: Async[F],
-    logger: StructuredLogger[F]
+    logger: Logger[F]
   ): Resource[F, PiecePicker[F]] = {
     for
       picker <- Resource.eval { PiecePicker(metadata) }
@@ -40,11 +40,12 @@ object Download {
   )(
     using
     F: Temporal[F],
-    logger: StructuredLogger[F]
+    logger: Logger[F]
   ): F[Unit] =
+    import Logger.withLogContext
     swarm.connected.stream
       .parEvalMapUnordered(Int.MaxValue) { connection =>
-        logger.addContext(("address", connection.info.address.toString: Shown)).pipe { logger =>
+        (
           connection.interested >>
           whenUnchoked(connection)(download(connection, piecePicker))
             .recoverWith {
@@ -52,7 +53,7 @@ object Download {
                 logger.debug(s"Closing connection due to ${e.getMessage}") >>
                 connection.close
             }
-        }
+          ).withLogContext("address", connection.info.address.toString)
       }
       .compile
       .drain

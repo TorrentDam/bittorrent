@@ -7,7 +7,8 @@ import cats.instances.all.*
 import cats.syntax.all.*
 import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
 import fs2.Stream
-import org.typelevel.log4cats.{Logger, StructuredLogger}
+import org.legogroup.woof.{Logger, given}
+import Logger.withLogContext
 
 trait PeerDiscovery[F[_]] {
 
@@ -22,18 +23,13 @@ object PeerDiscovery {
   )(
     using
     F: Concurrent[F],
-    logger: StructuredLogger[F]
+    logger: Logger[F]
   ): Resource[F, PeerDiscovery[F]] =
     Resource.pure[F, PeerDiscovery[F]] {
-
-      val logger0 = logger
 
       new PeerDiscovery[F] {
 
         def discover(infoHash: InfoHash): Stream[F, PeerInfo] = {
-
-          given logger: Logger[F] =
-            logger0.addContext(("infoHash", infoHash.toString: Shown))
 
           Stream
             .eval {

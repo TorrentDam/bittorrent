@@ -3,7 +3,7 @@ package com.github.lavrov.bittorrent.dht
 import cats.implicits.*
 import cats.MonadError
 import cats.effect.kernel.Temporal
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 

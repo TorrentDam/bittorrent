@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{*, given}
 
 import scala.concurrent.duration.*
 

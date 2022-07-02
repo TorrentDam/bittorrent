@@ -12,7 +12,6 @@ inThisBuild(
     ),
     libraryDependencies ++= List(
       Deps.`munit-cats-effect`.value % Test,
-      Deps.`log4cats-noop`.value % Test,
     ),
     organization := "io.github.torrentdam.bittorrent",
     version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
@@ -74,7 +73,7 @@ lazy val bittorrent = project
       Deps.`fs2-io`,
       Deps.`monocle-core`,
       Deps.`monocle-macro`,
-      Deps.log4cats,
+      Deps.`woof-core`,
     )
   )
 
@@ -87,7 +86,7 @@ lazy val dht = project
       Deps.`cats-core`.value,
       Deps.`cats-effect`.value,
       Deps.`fs2-io`,
-      Deps.log4cats,
+      Deps.`woof-core`,
     )
   )
 
@@ -107,7 +106,7 @@ lazy val cmd = project
   .settings(
     libraryDependencies ++= Seq(
       Deps.decline,
-      Deps.`logback-classic`,
+      Deps.`woof-core`,
     )
   )
 
@@ -117,12 +116,11 @@ lazy val Versions = new {
   val ip4s = "3.1.3"
   val fs2 = "3.2.8"
   val monocle = "3.1.0"
-  val log4cats = "2.3.2"
   val `scodec-bits` = "1.1.27"
   val bencode = "1.0.0"
   val decline = "2.3.0"
-  val logback = "1.2.10"
   val http4s = "1.0.0-M30"
+  val woof = "0.4.5"
 }
 
 lazy val Deps = new {
@@ -136,9 +134,7 @@ lazy val Deps = new {
 
   val `scodec-bits` = Def.setting("org.scodec" %%% "scodec-bits" % Versions.`scodec-bits`)
 
-  val log4cats = "org.typelevel" %% "log4cats-slf4j" % Versions.log4cats
-  val `log4cats-noop` = Def.setting("org.typelevel" %%% "log4cats-noop" % Versions.log4cats)
-  val `logback-classic` = "ch.qos.logback" % "logback-classic" % Versions.logback
+  val `woof-core` = "org.legogroup" %% "woof-core"  % Versions.woof
 
   val `monocle-core` = "dev.optics" %% "monocle-core" % Versions.monocle
   val `monocle-macro` = "dev.optics" %% "monocle-macro" % Versions.monocle

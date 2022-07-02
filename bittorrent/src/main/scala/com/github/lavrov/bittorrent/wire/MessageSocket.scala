@@ -9,10 +9,9 @@ import com.github.lavrov.bittorrent.*
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import fs2.Chunk
 import fs2.io.net.{Socket, SocketGroup}
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 import scala.concurrent.duration.*
-
 
 class MessageSocket[F[_]](
   val handshake: Handshake,

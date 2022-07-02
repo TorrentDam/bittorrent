@@ -6,7 +6,7 @@ import cats.effect.kernel.syntax.all.*
 import cats.implicits.*
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
-import org.typelevel.log4cats.{Logger, StructuredLogger}
+import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
@@ -22,7 +22,7 @@ object Torrent {
   def make[F[_]](
     metadata: TorrentMetadata.Lossless,
     swarm: Swarm[F]
-  )(using F: Async[F], logger: StructuredLogger[F]): Resource[F, Torrent[F]] =
+  )(using F: Async[F], logger: Logger[F]): Resource[F, Torrent[F]] =
       for
         piecePicker <- Resource.eval { PiecePicker(metadata.parsed) }
         _ <- F.background(Download(swarm, piecePicker))

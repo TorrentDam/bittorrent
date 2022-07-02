@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 import com.comcast.ip4s.*
 
