@@ -146,15 +146,13 @@ object Main
                 peers <- Resource.pure(
                   peerAddress match
                     case Some(peerAddress) => Stream.emit(PeerInfo(peerAddress)).covary[IO]
-                    case None => discovery.discover(infoHash)
+                    case None              => discovery.discover(infoHash)
                 )
                 swarm <- Network[IO].socketGroup().flatMap { implicit group =>
                   Swarm(
                     peers,
                     peerInfo =>
-                      Connection
-                        .connect[IO](selfPeerId, peerInfo, infoHash)
-                        .timeout(5.seconds)
+                      Connection.connect[IO](selfPeerId, peerInfo, infoHash)
                   )
                 }
               yield swarm

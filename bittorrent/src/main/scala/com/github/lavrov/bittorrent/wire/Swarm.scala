@@ -114,24 +114,22 @@ object Swarm {
     logger: RoutineLogger[F]
   ): F[Unit] = {
     val maxAttempts = 5
-    def connectWithRetry(attempt: Int): F[Unit] = {
+    def connectWithRetry(attempt: Int): F[Unit] =
       connect
         .flatMap {
-          case Right(_) => F.unit
+          case Right(_) =>
+            logger.disconnected >> connectWithRetry(1)
           case Left(e) =>
             val cause = e.getMessage
             if attempt == maxAttempts
             then logger.gaveUp
             else
               val duration = (10 * attempt).seconds
-              logger.connectionFailed(attempt, cause, duration) >> coolDown(duration) >> connectWithRetry(attempt + 1)
+              logger.connectionFailed(attempt, cause, duration)
+                >> coolDown(duration)
+                >> connectWithRetry(attempt + 1)
         }
-    }
-    for
-      _ <- connectWithRetry(1)
-      _ <- logger.disconnected
-      _ <- connectRoutine(peerInfo)(connect, coolDown)
-    yield ()
+    connectWithRetry(1)
   }
 
   trait RoutineLogger[F[_]] {
@@ -148,10 +146,10 @@ object Swarm {
     def apply[F[_]](logger: Logger[F]): RoutineLogger[F] =
       new RoutineLogger[F] {
 
-        def gaveUp: F[Unit] = logger.trace(s"Gave up")
+        def gaveUp: F[Unit] = logger.trace(s"Gave up and forget this peer")
 
         def connectionFailed(attempt: Int, cause: String, waitDuration: FiniteDuration): F[Unit] =
-          logger.trace(s"Connection failed $attempt $cause. Retry connecting in at least $waitDuration")
+          logger.trace(s"Connection failed ($attempt): $cause. Retry connecting in at least $waitDuration")
 
         def disconnected: F[Unit] =
           logger.trace(s"Disconnected. Trying to reconnect.")
