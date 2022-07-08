@@ -113,7 +113,7 @@ object Swarm {
     F: Monad[F],
     logger: RoutineLogger[F]
   ): F[Unit] = {
-    val maxAttempts = 5
+    val maxAttempts = 10
     def connectWithRetry(attempt: Int): F[Unit] =
       connect
         .flatMap {

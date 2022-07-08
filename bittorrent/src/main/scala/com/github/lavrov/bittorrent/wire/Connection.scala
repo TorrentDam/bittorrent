@@ -4,7 +4,7 @@ import cats.*
 import cats.implicits.*
 import cats.effect.kernel.{Clock, Deferred, Ref, Temporal}
 import cats.effect.syntax.all.*
-import cats.effect.{Async, Concurrent, Resource}
+import cats.effect.{Async, Concurrent, Outcome, Resource}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
@@ -112,20 +112,24 @@ object Connection {
                 backgroundLoop(stateRef, socket)
               )
               .void
-              .attempt
               .start
           closed <- Deferred[F, Either[Throwable, Unit]]
           doClose =
             (reason: Either[Throwable, Unit]) =>
               closed.complete(reason).flatMap {
                 case true =>
+                  val msg = reason.fold(e => e.getMessage, _ => "normal")
                   fiber.cancel >>
                   requestRegistry.failAll(ConnectionClosed()) >>
-                  logger.debug(s"Disconnected ${peerInfo.address}")
+                  logger.trace(s"Disconnected: $msg")
                 case false =>
                   F.unit
               }
-          _ <- fiber.join.flatMap(_ => doClose(().asRight)).start
+          _ <- fiber.join.flatMap {
+            case Outcome.Succeeded(_) => doClose(Right(()))
+            case Outcome.Errored(e) => doClose(Left(e))
+            case Outcome.Canceled() => doClose(Left(Exception("Receive loop cancelled")))
+          }.start
         yield
           val impl: Connection[F] = new Connection[F] {
             def info: PeerInfo = peerInfo
@@ -209,7 +213,7 @@ object Connection {
       .flatMap { _ =>
         for
           currentTime <- F.realTime
-          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 1.minute)
+          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 10.minutes)
           _ <- F.whenA(timedOut) {
             F.raiseError(Error.ConnectionTimeout())
           }

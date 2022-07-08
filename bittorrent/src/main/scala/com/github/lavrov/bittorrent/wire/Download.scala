@@ -91,7 +91,7 @@ object Download {
             incompleteRequests.update(_ - request) >>
             pieces.unpick(request) >>
             failureCounter.updateAndGet(_ + 1).flatMap(count =>
-              if (count >=5 ) F.raiseError(Error.PeerDoesNotRespond()) else F.unit
+              if (count >= 10) F.raiseError(Error.PeerDoesNotRespond()) else F.unit
             )
           }
         }
@@ -99,7 +99,7 @@ object Download {
       def computeOutstanding =
         downloadedBytes.discrete.groupWithin(Int.MaxValue, 10.seconds)
           .map(ones =>
-            scala.math.max(ones.foldLeft(0L)(_ + _) / 10 / PiecePicker.ChunkSize, 5L).toInt
+            scala.math.max(ones.foldLeft(0L)(_ + _) / 10 / PiecePicker.ChunkSize, 1L).toInt
           )
           .evalMap(maxOutstanding.set)
           .compile

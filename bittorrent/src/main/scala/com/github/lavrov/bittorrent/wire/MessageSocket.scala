@@ -44,18 +44,20 @@ class MessageSocket[F[_]](
         logger.error(s"Oversized payload $size $MaxMessageSize") >>
         OversizedMessage(size, MaxMessageSize).raiseError
       )
-      bytes <- readExactlyN(size.toInt)
-      message <- F.fromTry(
-        Message.MessageBodyCodec
-          .decodeValue(bytes.toBitVector)
-          .toTry
-      )
+      message <- if (size == 0) F.pure(Message.KeepAlive) else
+        readExactlyN(size.toInt).flatMap(bytes =>
+          F.fromTry(
+            Message.MessageBodyCodec
+              .decodeValue(bytes.toBitVector)
+              .toTry
+          )
+        )
       _ <- logger.trace(s"<<< ${peerInfo.address} $message")
     yield message
 
   private def readExactlyN(numBytes: Int): F[ByteVector] =
     for
-      chunk <- socket.readN(numBytes).timeout(readTimeout)
+      chunk <- socket.readN(numBytes)
       _ <- if chunk.size == numBytes then F.unit else F.raiseError(new Exception("Connection was interrupted by peer"))
     yield chunk.toByteVector
 
@@ -64,7 +66,7 @@ class MessageSocket[F[_]](
 object MessageSocket {
 
   val MaxMessageSize: Long = 1024 * 1024 // 1MB
-  val readTimeout = 10.seconds
+  val readTimeout = 1.minute
   val writeTimeout = 10.seconds
 
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
