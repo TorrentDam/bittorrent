@@ -57,9 +57,8 @@ object Download {
       }
       .compile
       .drain
-      .attempt
-      .flatMap { result =>
-        logger.error(s"Download process exited with $result")
+      .onError { e =>
+        logger.error(s"Download process exited with $e")
       }
 
   private def download[F[_]](
@@ -150,7 +149,7 @@ object Download {
           .drain
 
       def run: F[Unit] =
-        logger.info(s"Download started") >>
+        logger.trace(s"Download started") >>
         (fillQueue, drainQueue, computeOutstanding).parTupled.void
           .guarantee {
             pickMutex.acquire >>

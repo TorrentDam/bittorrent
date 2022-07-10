@@ -58,7 +58,7 @@ object Node {
               }
               .recoverWith {
                 case e: Throwable =>
-                  logger.error(s"Failed to read message: $e")
+                  logger.trace(s"Failed to read message: $e")
               }
               .foreverM
               .start

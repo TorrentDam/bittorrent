@@ -9,9 +9,11 @@ import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
-import fs2.io.net.Network
+import fs2.io.net.{Network, SocketGroup}
 import fs2.Stream
 import org.legogroup.woof.{*, given}
+
+import java.util.concurrent.{Executors, ThreadFactory}
 import scala.concurrent.duration.DurationInt
 
 object Main
@@ -53,7 +55,7 @@ object Main
             resources.use { stream =>
               stream
                 .evalTap { peerInfo =>
-                  Logger[IO].info(s"Discovered peer ${peerInfo.address}")
+                  Logger[IO].trace(s"Discovered peer ${peerInfo.address}")
                 }
                 .compile
                 .drain
@@ -93,12 +95,11 @@ object Main
                   RoutingTableBootstrap(table, node.client)
                 }
                 discovery <- PeerDiscovery.make(table, node.client)
-                swarm <- Network[IO].socketGroup().flatMap { implicit group =>
-                  Swarm(
-                    discovery.discover(infoHash),
-                    Connection.connect(selfPeerId, _, infoHash)
-                  )
-                }
+                given SocketGroup[IO] <- Network[IO].socketGroup()
+                swarm <- Swarm(
+                  discovery.discover(infoHash),
+                  Connection.connect(selfPeerId, _, infoHash)
+                )
               yield DownloadMetadata(swarm.connected.stream)
 
             resources.use { getMetadata =>
@@ -161,10 +162,20 @@ object Main
               for
                 metadata <- DownloadMetadata(swarm.connected.stream)
                 _ <- Download(swarm, metadata.parsed).use { picker =>
-                  picker.pieces.flatMap { pieces =>
-                    pieces.traverse { index =>
-                      picker.download(index) >> Logger[IO].info(s"Downloaded piece $index")
-                    }
+                  (picker.pieces, IO.ref(0)).tupled.flatMap { (pieces, counter) =>
+                    val total = pieces.size
+                    Stream
+                      .emits(pieces)
+                      .parEvalMap(10)(index =>
+                        for
+                          _ <- picker.download(index)
+                          count <- counter.updateAndGet(_ + 1)
+                          percent = ((count.toDouble / total) * 100).toInt
+                          _ <- Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")
+                        yield ()
+                      )
+                      .compile
+                      .drain
                   }
                 }
               yield ExitCode.Success
@@ -177,7 +188,7 @@ object Main
   }
 
   def withLogger[A](body: Logger[IO] ?=> IO[A]): IO[A] =
-    given Filter = Filter.everything
+    given Filter = Filter.atLeastLevel(LogLevel.Info)
     given Printer = ColorPrinter()
     DefaultLogger.makeIo(Output.fromConsole[IO]).flatMap(body(using _))
 }
