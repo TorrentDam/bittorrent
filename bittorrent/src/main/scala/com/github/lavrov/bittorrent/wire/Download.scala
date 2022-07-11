@@ -9,7 +9,7 @@ import cats.implicits.*
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 
@@ -120,24 +120,25 @@ object Download {
       def fillQueue: F[Unit] =
         (incompleteRequests, connection.availability, maxOutstanding, pieces.updates).tupled.discrete
           .evalTap {
-            case (requests: Set[Message.Request], availability: BitSet, maxParallelRequests, _) if requests.size < maxParallelRequests =>
-              F.uncancelable { poll =>
-                pickMutex.permit.use { _ =>
-                  for
-                    request <- pieces.pick(availability, connection.info.address)
-                    _ <- request match {
-                      case Some(request) =>
-                        logger.trace(s"Picked $request") >>
-                          incompleteRequests.update(_ + request) >>
-                          requestQueue.offer(request)
-                      case None =>
-                        logger.trace(s"No pieces dispatched for ${connection.info.address}")
-                    }
-                  yield ()
-                }
-              }.void
-            case _ =>
-              F.unit
+            case (requests: Set[Message.Request], availability: BitSet, maxParallelRequests, _) =>
+              logger.trace(s"In progress ${requests.size}, max parallel req $maxParallelRequests") >>
+              F.whenA(requests.size < maxParallelRequests)(
+                F.uncancelable { _ =>
+                  pickMutex.permit.use { _ =>
+                    for
+                      request <- pieces.pick(availability, connection.info.address)
+                      _ <- logger.trace(s"Picked $request")
+                        _ <- request match {
+                        case Some(request) =>
+                            incompleteRequests.update(_ + request) >>
+                            requestQueue.offer(request)
+                        case None =>
+                          logger.trace(s"No pieces dispatched for ${connection.info.address}")
+                      }
+                    yield ()
+                  }
+                }.void
+              )
           }
           .compile
           .drain

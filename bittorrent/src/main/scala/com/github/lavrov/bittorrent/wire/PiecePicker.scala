@@ -58,6 +58,7 @@ object PiecePicker {
       mutex.permit.use( _ => F.uncancelable(poll => fa))
 
     def download(index: Int): F[ByteVector] =
+      logger.trace(s"Download piece $index") >>
       synchronized {
         for
           deferred <- Deferred[F, ByteVector]
@@ -89,7 +90,7 @@ object PiecePicker {
               request
             }
           }
-          _ <- logger.trace(s"Picking $request")
+          _ <- logger.trace(s"Picked $request")
         yield
           request
       }
@@ -118,16 +119,17 @@ object PiecePicker {
           _ <- piece.bytes.traverse_ { bytes =>
             val verified = piece.verify(bytes)
             if verified then
+              val index = piece.piece.index.toInt
               for
                 complete <- Sync[F].delay {
-                  val index = piece.piece.index.toInt
                   state.queue.remove(index)
                   state.completions.remove(index)
                 }
+                _ <- logger.info(s"Piece $index is valid")
                 _ <- complete.traverse_(_(bytes))
               yield ()
             else
-              logger.info(s"Piece ${piece.piece.index} data is invalid") >>
+              logger.error(s"Piece ${piece.piece.index} data is invalid") >>
               Sync[F].delay {
                 piece.reset()
               } >>
@@ -206,12 +208,12 @@ object PiecePicker {
     val piece: IncompletePiece,
     var requests: List[Message.Request],
     var downloadedSize: Long = 0,
-    var downloaded: TreeMap[Int, ByteVector] = TreeMap.empty
+    var downloaded: List[(Long, ByteVector)] = List.empty
   ) {
 
     def add(request: Message.Request, bytes: ByteVector): Unit = {
       downloadedSize = downloadedSize + request.length
-      downloaded = downloaded.updated(request.begin.toInt, bytes)
+      downloaded = (request.begin, bytes) :: downloaded
     }
 
     def isComplete: Boolean = piece.size == downloadedSize
@@ -219,7 +221,7 @@ object PiecePicker {
     def bytes: Option[ByteVector] = {
       if isComplete
       then
-        val joined = downloaded.values.reduce(_ ++ _)
+        val joined = downloaded.sortBy(_._1).view.map(_._2).reduce(_ ++ _)
         Some(joined)
       else
         None
@@ -232,7 +234,7 @@ object PiecePicker {
     def reset(): Unit = {
       requests = piece.requests.value
       downloadedSize = 0
-      downloaded = downloaded.empty
+      downloaded = List.empty
     }
   }
 

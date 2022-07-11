@@ -9,7 +9,7 @@ import cats.implicits.*
 import com.github.lavrov.bittorrent.PeerInfo
 import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
-import fs2.concurrent.{Signal, SignallingRef}
+import fs2.concurrent.{Signal, SignallingRef, Topic}
 import org.legogroup.woof.{*, given}
 
 import scala.concurrent.duration.*
@@ -33,7 +33,7 @@ object Swarm {
     Resource {
       for
         stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
-        lastConnected <- SignallingRef[F, Connection[F]](null)
+        topic <- Topic[F, Connection[F]]
         peerBuffer <- Queue.bounded[F, PeerInfo](10)
         reconnects <- Queue.unbounded[F, F[Unit]]
         fiber1 <- dhtPeers.evalTap(peerBuffer.offer).compile.drain.start
@@ -47,7 +47,7 @@ object Swarm {
                 _ <- logger.debug(s"Connecting to ${peerInfo.address}")
                 _ <- connect(peerInfo).use { connection =>
                   stateRef.update(_.updated(peerInfo, connection)) >>
-                  lastConnected.set(connection) >>
+                  topic.publish1(connection) >>
                   connection.disconnected >>
                   stateRef.update(_ - peerInfo)
                 }
@@ -57,7 +57,7 @@ object Swarm {
             .start
         )
       yield
-        val impl = new Impl(stateRef, lastConnected)
+        val impl = new Impl(stateRef, topic)
         val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
         (impl, close)
       end for
@@ -65,14 +65,14 @@ object Swarm {
 
   private class Impl[F[_]](
     stateRef: SignallingRef[F, Map[PeerInfo, Connection[F]]],
-    lastConnected: SignallingRef[F, Connection[F]]
+    topic: Topic[F, Connection[F]]
   )(using F: Monad[F])
       extends Swarm[F] {
     val connected: Connected[F] = new Connected[F] {
       def count: Signal[F, Int] = stateRef.map(_.size)
       def list: F[List[Connection[F]]] = stateRef.get.map(_.values.toList)
       def stream: Stream[F, Connection[F]] =
-        Stream.evalSeq(stateRef.get.map(_.values.toList)) ++ lastConnected.discrete.tail
+        Stream.evalSeq(stateRef.get.map(_.values.toList)) ++ topic.subscribe(10)
     }
   }
 
