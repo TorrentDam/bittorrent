@@ -11,6 +11,7 @@ import com.github.lavrov.bittorrent.wire.Swarm.Connected
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef, Topic}
 import org.legogroup.woof.{*, given}
+import org.legogroup.woof.Logger.withLogContext
 
 import scala.concurrent.duration.*
 
@@ -43,15 +44,18 @@ object Swarm {
             peerBuffer.take,
             reconnects,
             peerInfo =>
-              for
-                _ <- logger.debug(s"Connecting to ${peerInfo.address}")
+              (for
+                _ <- logger.trace(s"Connecting")
                 _ <- connect(peerInfo).use { connection =>
+                  logger.trace(s"Add to swarm") >>
                   stateRef.update(_.updated(peerInfo, connection)) >>
                   topic.publish1(connection) >>
+                  logger.trace(s"Published connection") >>
                   connection.disconnected >>
-                  stateRef.update(_ - peerInfo)
+                  stateRef.update(_ - peerInfo) >>
+                  logger.trace(s"Remove from swarm")
                 }
-              yield ()
+              yield ()).withLogContext("address", peerInfo.address.toString)
           )
             .foreverM[Unit]
             .start

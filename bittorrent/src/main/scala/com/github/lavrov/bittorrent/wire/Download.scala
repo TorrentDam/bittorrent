@@ -44,22 +44,20 @@ object Download {
   ): F[Unit] =
     import Logger.withLogContext
     swarm.connected.stream
-      .parEvalMapUnordered(Int.MaxValue) { connection =>
-        (
-          connection.interested >>
-          whenUnchoked(connection)(download(connection, piecePicker))
-            .recoverWith {
-              case e =>
-                logger.debug(s"Closing connection due to ${e.getMessage}") >>
-                connection.close
-            }
-          ).withLogContext("address", connection.info.address.toString)
+      .evalMap { connection =>
+        logger.trace(s"Send Interested") >>
+        connection.interested >>
+        logger.trace(s"Wait for Unchoked") >>
+        whenUnchoked(connection)(download(connection, piecePicker))
+        .guaranteeCase { outcome =>
+          connection.close >>
+          logger.trace(s"Download exited with $outcome")
+        }
+        .withLogContext("address", connection.info.address.toString)
+        .start
       }
       .compile
       .drain
-      .onError { e =>
-        logger.error(s"Download process exited with $e")
-      }
 
   private def download[F[_]](
     connection: Connection[F],
@@ -176,34 +174,13 @@ object Download {
     F: Temporal[F],
     logger: Logger[F]
   ): F[Unit] = {
-    def unchoked = connection.choked.map(!_)
-    def asString(choked: Boolean) = if choked then "Choked" else "Unchoked"
-    F.ref[Option[Boolean]](None)
-      .flatMap { current =>
-        connection.choked.discrete
-          .evalTap { choked =>
-            current.getAndSet(choked.some).flatMap { previous =>
-              val from = previous.map(asString)
-              val to = asString(choked)
-              logger.debug(s"$from $to")
-            }
-          }
-          .flatMap { choked =>
-            if choked then
-              Stream
-                .fixedDelay(30.seconds)
-                .interruptWhen(unchoked)
-                .flatMap { _ =>
-                  Stream.raiseError[F](Error.TimeoutWaitingForUnchoke(30.seconds))
-                }
-            else
-              Stream
-                .eval(f)
-                .interruptWhen(connection.choked)
-          }
-          .compile
-          .drain
-    }
+    def waitChoked = connection.choked.waitUntil(identity)
+    def waitUnchoked =
+      connection.choked
+        .waitUntil(choked => !choked)
+        .timeoutTo(30.seconds, F.raiseError(Error.TimeoutWaitingForUnchoke(30.seconds)))
+
+    (waitUnchoked >> (f race waitChoked)).foreverM
   }
 
   enum Error(message: String) extends Throwable(message):
