@@ -9,8 +9,9 @@ import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
+import fs2.io.file.{Flags, Path}
 import fs2.io.net.{Network, SocketGroup}
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import org.legogroup.woof.{*, given}
 
 import java.util.concurrent.{Executors, ThreadFactory}
@@ -168,11 +169,15 @@ object Main
                       .emits(pieces)
                       .parEvalMap(10)(index =>
                         for
-                          _ <- picker.download(index)
+                          piece <- picker.download(index)
                           count <- counter.updateAndGet(_ + 1)
                           percent = ((count.toDouble / total) * 100).toInt
                           _ <- Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")
-                        yield ()
+                        yield Chunk.byteVector(piece)
+                      )
+                      .unchunks
+                      .through(
+                        fs2.io.file.Files[IO].writeAll(Path("downloaded.data"), Flags.Write)
                       )
                       .compile
                       .drain

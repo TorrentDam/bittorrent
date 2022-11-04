@@ -2,7 +2,6 @@ package com.github.lavrov.bittorrent
 
 import scodec.bits.ByteVector
 import TorrentMetadata.File
-import FileMapping.Span
 
 class FileMappingSpec extends munit.FunSuite {
 
