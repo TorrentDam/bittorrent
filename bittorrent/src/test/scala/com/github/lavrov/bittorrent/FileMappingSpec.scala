@@ -2,6 +2,7 @@ package com.github.lavrov.bittorrent
 
 import scodec.bits.ByteVector
 import TorrentMetadata.File
+import FileMapping.FileSpan
 
 class FileMappingSpec extends munit.FunSuite {
 
@@ -19,10 +20,11 @@ class FileMappingSpec extends munit.FunSuite {
     val result = FileMapping.fromMetadata(metadata)
     val expectation = FileMapping(
       List(
-        Span(0, 0, 0, 5, 10),
-        Span(0, 5, 0, 8, 10),
-        Span(0, 8, 1, 0, 10)
-      )
+        FileSpan(0, 5, 0, 0, 0, 5),
+        FileSpan(1, 3, 0, 5, 0, 8),
+        FileSpan(2, 2, 0, 8, 1, 0)
+      ),
+      pieceLength = 10
     )
     assert(result == expectation)
   }
@@ -41,10 +43,11 @@ class FileMappingSpec extends munit.FunSuite {
     val result = FileMapping.fromMetadata(metadata)
     val expectation = FileMapping(
       List(
-        Span(0, 0, 0, 5, 10),
-        Span(0, 5, 1, 8, 10),
-        Span(1, 8, 2, 0, 10)
-      )
+        FileSpan(0, 5, 0, 0, 0, 5),
+        FileSpan(1, 13, 0, 5, 1, 8),
+        FileSpan(2, 2, 1, 8, 2, 0)
+      ),
+      pieceLength = 10
     )
     assert(result == expectation)
   }

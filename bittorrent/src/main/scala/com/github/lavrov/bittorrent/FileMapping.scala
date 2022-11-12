@@ -1,4 +1,6 @@
-import FileMapping.{FileSpan, PieceInFile}
+package com.github.lavrov.bittorrent
+
+import com.github.lavrov.bittorrent.FileMapping.{FileSpan, PieceInFile}
 import com.github.lavrov.bittorrent.TorrentMetadata
 
 case class FileMapping(value: List[FileSpan], pieceLength: Long) {
