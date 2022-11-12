@@ -10,7 +10,7 @@ import com.github.torrentdam.tracker.Client
 import com.github.torrentdam.tracker.impl.UdpClient
 import fs2.io.net.Network
 import org.http4s.Uri
-import org.http4s.blaze.client.*
+import org.http4s.ember.client.*
 import scodec.bits.ByteVector
 import com.comcast.ip4s.port
 
@@ -21,16 +21,19 @@ object main extends IOApp.Simple:
   def run: IO[Unit] = runUdp
 
   def runHttp: IO[Unit] =
-    BlazeClientBuilder[IO].resource.use { httpClient =>
-      val client = Client.http(httpClient)
-      for
-        response <- client.get(
-          announceUrl = Uri.unsafeFromString("http://bt.t-ru.org/ann?magnet"),
-          infoHash = InfoHash.fromString("C071AA6D06101FE3C1D8D3411343CFEB33D91E5F"),
-        )
-        _ <- IO.println(response)
-      yield ()
-    }
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { httpClient =>
+        val client = Client.http(httpClient)
+        for
+          response <- client.get(
+            announceUrl = Uri.unsafeFromString("http://bt.t-ru.org/ann?magnet"),
+            infoHash = InfoHash.fromString("C071AA6D06101FE3C1D8D3411343CFEB33D91E5F"),
+          )
+          _ <- IO.println(response)
+        yield ()
+      }
 
   def runUdp: IO[Unit] =
     val client =

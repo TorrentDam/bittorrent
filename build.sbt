@@ -119,7 +119,7 @@ lazy val Versions = new {
   val `scodec-bits` = "1.1.27"
   val bencode = "1.0.0"
   val decline = "2.3.0"
-  val http4s = "1.0.0-M30"
+  val http4s = "1.0.0-M37"
   val woof = "0.4.5"
 }
 
@@ -146,6 +146,6 @@ lazy val Deps = new {
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
 
   val `http4s-client` = "org.http4s" %% "http4s-client" % Versions.http4s
-  val `http4s-blaze-client` = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
+  val `http4s-blaze-client` = "org.http4s" %% "http4s-ember-client" % Versions.http4s
 }
 

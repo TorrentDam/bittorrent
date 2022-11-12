@@ -75,7 +75,7 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
           ),
         infoHash = infoHash
       )
-      list <- PeerDiscovery.start(infoHash, getPeers, state).take(1).compile.toList
+      list <- PeerDiscovery.start(infoHash, getPeers, state, 1).take(1).compile.toList
     } yield {
       assertEquals(
         list,

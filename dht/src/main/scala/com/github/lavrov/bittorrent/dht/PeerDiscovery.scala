@@ -59,7 +59,8 @@ object PeerDiscovery {
   private[dht] def start[F[_]](
     infoHash: InfoHash,
     getPeers: (NodeInfo, InfoHash) => F[Either[Response.Nodes, Response.Peers]],
-    state: DiscoveryState[F]
+    state: DiscoveryState[F],
+    parallelism: Int = 10
   )(
     using
     F: Concurrent[F],
@@ -68,7 +69,7 @@ object PeerDiscovery {
 
     Stream
       .repeatEval(state.next)
-      .parEvalMapUnordered(10) { nodeInfo =>
+      .parEvalMapUnordered(parallelism) { nodeInfo =>
          getPeers(nodeInfo, infoHash).attempt <* logger.trace(s"Get peers $nodeInfo")
       }
       .flatMap {
