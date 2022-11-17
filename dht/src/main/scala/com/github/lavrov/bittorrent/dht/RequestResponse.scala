@@ -41,7 +41,7 @@ object RequestResponse {
   private class Impl[F[_]](
     generateTransactionId: F[ByteVector],
     sendQueryMessage: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
-    receive: (ByteVector, FiniteDuration) => F[Either[Throwable, Response]]
+    receive: ByteVector => F[Either[Throwable, Response]]
   )(using F: MonadError[F, Throwable])
       extends RequestResponse[F] {
     def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response] = {
@@ -50,7 +50,7 @@ object RequestResponse {
           address,
           Message.QueryMessage(transactionId, query)
         )
-        send >> receive(transactionId, 10.seconds).flatMap(F.fromEither)
+        send >> receive(transactionId).flatMap(F.fromEither)
       }
     }
   }
@@ -79,7 +79,7 @@ object RequestResponse {
 }
 
 trait CallbackRegistry[F[_]] {
-  def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]]
+  def add(transactionId: ByteVector): F[Either[Throwable, Response]]
 
   def complete(transactionId: ByteVector, result: Either[Throwable, Response]): F[Boolean]
 }
@@ -100,25 +100,17 @@ object CallbackRegistry {
   private class Impl[F[_]](
     ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
   )(using F: Temporal[F]) extends CallbackRegistry[F] {
-    def add(transactionId: ByteVector, timeout: FiniteDuration): F[Either[Throwable, Response]] ={
+    def add(transactionId: ByteVector): F[Either[Throwable, Response]] ={
       F.deferred[Either[Throwable, Response]].flatMap { deferred =>
         val update =
           ref.update { map =>
-            map.updated(
-              transactionId,
-              deferred.complete(_).attempt.map(_.isRight)
-            )
+            map.updated(transactionId, deferred.complete)
           }
-        val scheduleTimeout =
-          (F.sleep(timeout) >> complete(
-            transactionId,
-            Timeout().asLeft
-          )).start
         val delete =
           ref.update { map =>
             map - transactionId
           }
-        update *> scheduleTimeout *> deferred.get <* delete
+        (update *> deferred.get).guarantee(delete)
       }
     }
 

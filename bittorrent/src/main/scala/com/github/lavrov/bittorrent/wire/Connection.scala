@@ -47,20 +47,18 @@ object Connection {
     def apply[F[_]: Concurrent]: F[RequestRegistry[F]] =
       for
         stateRef <- Ref.of(
-          Map.empty[Message.Request, Either[Throwable, ByteVector] => F[Unit]]
+          Map.empty[Message.Request, Either[Throwable, ByteVector] => F[Boolean]]
         )
       yield new RequestRegistry[F] {
 
-        def register(request: Message.Request): F[ByteVector] = {
-          for
-            deferred <- Deferred[F, Either[Throwable, ByteVector]]
-            _ <- stateRef.update(_.updated(request, deferred.complete(_).void))
-            result <- deferred.get.guarantee(
-              stateRef.update(_ - request)
-            )
-            result <- Concurrent[F].fromEither(result)
-          yield result
-        }
+        def register(request: Message.Request): F[ByteVector] =
+          Deferred[F, Either[Throwable, ByteVector]]
+            .flatMap { deferred =>
+              val update = stateRef.update(_.updated(request, deferred.complete))
+              val delete = stateRef.update(_ - request)
+              (update >> deferred.get).guarantee(delete)
+            }
+            .flatMap(Concurrent[F].fromEither)
 
         def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
           for

@@ -65,7 +65,7 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
     }
 
     for {
-      state <- PeerDiscovery.DiscoveryState[IO](
+      state <- PeerDiscovery.DiscoveryState(
         initialNodes =
           List(
             NodeInfo(

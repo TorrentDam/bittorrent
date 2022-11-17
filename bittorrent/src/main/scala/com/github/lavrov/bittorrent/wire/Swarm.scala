@@ -31,41 +31,45 @@ object Swarm {
     defer: Defer[F],
     logger: Logger[F]
   ): Resource[F, Swarm[F]] =
-    Resource {
-      for
-        stateRef <- SignallingRef(Map.empty[PeerInfo, Connection[F]])
-        topic <- Topic[F, Connection[F]]
-        peerBuffer <- Queue.bounded[F, PeerInfo](10)
-        reconnects <- Queue.unbounded[F, F[Unit]]
-        fiber1 <- dhtPeers.evalTap(peerBuffer.offer).compile.drain.start
-        connectionFibers <- F.replicateA(
-          maxConnections,
-          openConnections[F](
-            peerBuffer.take,
-            reconnects,
-            peerInfo =>
-              (for
-                _ <- logger.trace(s"Connecting")
-                _ <- connect(peerInfo).use { connection =>
-                  logger.trace(s"Add to swarm") >>
-                  stateRef.update(_.updated(peerInfo, connection)) >>
-                  topic.publish1(connection) >>
-                  logger.trace(s"Published connection") >>
-                  connection.disconnected >>
-                  stateRef.update(_ - peerInfo) >>
-                  logger.trace(s"Remove from swarm")
-                }
-              yield ()).withLogContext("address", peerInfo.address.toString)
-          )
-            .foreverM[Unit]
-            .start
+    for
+      _ <- Resource.make(logger.info("Starting swarm"))(_ => logger.info("Swarm closed"))
+      stateRef <- Resource.eval(SignallingRef(Map.empty[PeerInfo, Connection[F]]))
+      topic <- Resource.eval(Topic[F, Connection[F]])
+      peerBuffer <- Resource.eval(Queue.bounded[F, PeerInfo](10))
+      reconnects <- Resource.eval(Queue.unbounded[F, F[Unit]])
+      _ <- F.background(dhtPeers.evalTap(peerBuffer.offer).compile.drain)
+      openNewConnection = (peerInfo: PeerInfo) =>
+        connectRoutine(
+          (for
+            _ <- logger.trace(s"Connecting")
+            _ <- connect(peerInfo).use { connection =>
+              logger.trace(s"Add to swarm") >>
+                stateRef.update(_.updated(peerInfo, connection)) >>
+                topic.publish1(connection) >>
+                logger.trace(s"Published connection") >>
+                connection.disconnected >>
+                stateRef.update(_ - peerInfo) >>
+                logger.trace(s"Remove from swarm")
+            }
+          yield ()).withLogContext("address", peerInfo.address.toString),
+          (delay, reconnect) => F.start(F.sleep(delay) >> reconnects.offer(reconnect)).void
         )
-      yield
-        val impl = new Impl(stateRef, topic)
-        val close = fiber1.cancel >> connectionFibers.traverse_(_.cancel) >> logger.info("Closed Swarm")
-        (impl, close)
-      end for
-    }
+      connectOrReconnect = F
+        .race(peerBuffer.take, reconnects.take)
+        .flatMap {
+           case Left(peerInfo) => openNewConnection(peerInfo)
+           case Right(reconnect) => reconnect
+        }
+        .foreverM
+      _ <- F.background(
+        F.parReplicateAN(maxConnections)(
+          maxConnections,
+          connectOrReconnect
+        )
+      )
+    yield
+      new Impl(stateRef, topic)
+    end for
 
   private class Impl[F[_]](
     stateRef: SignallingRef[F, Map[PeerInfo, Connection[F]]],
@@ -80,44 +84,29 @@ object Swarm {
     }
   }
 
-  private def openConnections[F[_]](discover: F[PeerInfo], reconnects: Queue[F, F[Unit]], connect: PeerInfo => F[Unit])(
+  private def connectRoutine[F[_]](
+    connect: F[Unit],
+    scheduleReconnect: (FiniteDuration, F[Unit]) => F[Unit]
+  )(
     using
     F: Temporal[F],
-    defer: Defer[F],
     logger: Logger[F]
   ): F[Unit] =
-    for
-      continuation <- reconnects.tryTake.flatMap {
-        case Some(c) => c.pure[F]
-        case None =>
-          type Cont[A] = ContT[F, Unit, A]
-          given logger1: RoutineLogger[Cont] = RoutineLogger(logger).mapK(ContT.liftK)
-          F.race(discover, reconnects.take).map {
-            _.leftMap { discovered =>
-              connectRoutine[Cont](discovered)(
-                connect = ContT.liftF {
-                  connect(discovered).attempt
-                },
-                coolDown = duration =>
-                  ContT { k0 =>
-                    val k = k0(())
-                    (F.sleep(duration) >> reconnects.offer(k)).start.void
-                  }
-              ).run(_ => F.unit)
-            }.merge
-          }
-      }
-      _ <- continuation
-    yield ()
+    given RoutineLogger[F] = RoutineLogger(logger)
+    connectRoutine0(
+      connect = connect.attempt,
+      sleep = duration => reconnect => scheduleReconnect(duration, reconnect)
+    )
 
-  private def connectRoutine[F[_]](
-    peerInfo: PeerInfo
-  )(connect: F[Either[Throwable, Unit]], coolDown: FiniteDuration => F[Unit])(
+  private def connectRoutine0[F[_]](
+    connect: F[Either[Throwable, Unit]],
+    sleep: FiniteDuration => F[Unit] => F[Unit]
+  )(
     using
     F: Monad[F],
     logger: RoutineLogger[F]
   ): F[Unit] = {
-    val maxAttempts = 10
+    val maxAttempts = 5
     def connectWithRetry(attempt: Int): F[Unit] =
       connect
         .flatMap {
@@ -125,15 +114,14 @@ object Swarm {
             logger.disconnected >> connectWithRetry(1)
           case Left(e) =>
             val cause = e.getMessage
-            if attempt == maxAttempts
+            if attempt == 0 || attempt == maxAttempts
             then logger.gaveUp
             else
               val duration = (10 * attempt).seconds
               logger.connectionFailed(attempt, cause, duration)
-                >> coolDown(duration)
-                >> connectWithRetry(attempt + 1)
+                >> sleep(duration)(connectWithRetry(attempt + 1))
         }
-    connectWithRetry(1)
+    connectWithRetry(0)
   }
 
   trait RoutineLogger[F[_]] {

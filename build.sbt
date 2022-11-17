@@ -109,6 +109,7 @@ lazy val cmd = project
       Deps.`woof-core`,
     )
   )
+  .enablePlugins(JavaAppPackaging)
 
 lazy val Versions = new {
   val cats = "2.8.0"
