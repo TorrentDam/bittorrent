@@ -113,7 +113,7 @@ lazy val cmd = project
 
 lazy val Versions = new {
   val cats = "2.8.0"
-  val `cats-effect` = "3.3.13"
+  val `cats-effect` = "3.4.2"
   val ip4s = "3.1.3"
   val fs2 = "3.2.8"
   val monocle = "3.1.0"

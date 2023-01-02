@@ -20,8 +20,8 @@ class TorrentMetadataSpec extends munit.FunSuite {
   test("calculate info_hash") {
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAll()
-    val Right(bc) = decode(source): @unchecked
+      .readAllBytes()
+    val Right(bc) = decode(BitVector(source)): @unchecked
     val decodedResult = summon[BencodeFormat[TorrentFile]].read(bc)
     val result = decodedResult
       .map(_.info.raw)
@@ -94,8 +94,8 @@ class TorrentMetadataSpec extends munit.FunSuite {
     )
     val source = getClass.getClassLoader
       .getResourceAsStream("bencode/ubuntu-18.10-live-server-amd64.iso.torrent")
-      .readAll()
-    val Right(result) = decode(source): @unchecked
+      .readAllBytes()
+    val Right(result) = decode(BitVector(source)): @unchecked
     val decodeResult = summon[BencodeFormat[TorrentFile]].read(result)
     assert(decodeResult.isRight)
   }

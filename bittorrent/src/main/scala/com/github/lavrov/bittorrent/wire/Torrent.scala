@@ -1,6 +1,8 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.effect.implicits.*
+import cats.effect.IO
+import cats.effect.Resource
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.kernel.syntax.all.*
 import cats.implicits.*
@@ -11,34 +13,34 @@ import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
 
-trait Torrent[F[_]] {
+trait Torrent {
   def metadata: TorrentMetadata.Lossless
-  def stats: F[Torrent.Stats]
-  def piece(index: Int): F[ByteVector]
+  def stats: IO[Torrent.Stats]
+  def downloadPiece(index: Long): IO[ByteVector]
 }
 
 object Torrent {
 
-  def make[F[_]](
+  def make(
     metadata: TorrentMetadata.Lossless,
-    swarm: Swarm[F]
-  )(using F: Async[F], logger: Logger[F]): Resource[F, Torrent[F]] =
+    swarm: Swarm[IO]
+  )(using logger: Logger[IO]): Resource[IO, Torrent] =
       for
-        piecePicker <- Resource.eval { PiecePicker(metadata.parsed) }
-        _ <- F.background(Download(swarm, piecePicker))
+        requestDispatcher <- RequestDispatcher(metadata.parsed)
+        _ <- Download(swarm, requestDispatcher).background
       yield
         val metadata0 = metadata
-        new Torrent[F] {
+        new Torrent {
           def metadata: TorrentMetadata.Lossless = metadata0
-          def stats: F[Stats] =
+          def stats: IO[Stats] =
             for
               connected <- swarm.connected.list
               availability <- connected.traverse(_.availability.get)
-              availability <- availability.foldMap(identity).pure[F]
+              availability <- availability.foldMap(identity).pure[IO]
             yield
               Stats(connected.size, availability)
-          def piece(index: Int): F[ByteVector] =
-            piecePicker.download(index)
+          def downloadPiece(index: Long): IO[ByteVector] =
+            requestDispatcher.downloadPiece(index)
         }
       end for
 

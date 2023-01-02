@@ -5,7 +5,7 @@ import cats.effect.std.Random
 import cats.effect.{ExitCode, IO}
 import com.comcast.ip4s.SocketAddress
 import com.github.lavrov.bittorrent.dht.*
-import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, Swarm}
+import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, RequestDispatcher, Swarm, Torrent}
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
@@ -162,14 +162,14 @@ object Main
             resources.use { swarm =>
               for
                 metadata <- DownloadMetadata(swarm.connected.stream)
-                _ <- Download(swarm, metadata.parsed).use { picker =>
-                  (picker.pieces, IO.ref(0)).tupled.flatMap { (pieces, counter) =>
-                    val total = pieces.size
+                _ <- Torrent.make(metadata, swarm).use { torrent =>
+                  val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
+                  IO.ref(0).flatMap { counter =>
                     Stream
-                      .emits(pieces)
-                      .parEvalMap(10)(index =>
+                      .range(0L, total)
+                      .parEvalMapUnordered(3)(index =>
                         for
-                          piece <- picker.download(index)
+                          piece <- torrent.downloadPiece(index)
                           count <- counter.updateAndGet(_ + 1)
                           percent = ((count.toDouble / total) * 100).toInt
                           _ <- Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")

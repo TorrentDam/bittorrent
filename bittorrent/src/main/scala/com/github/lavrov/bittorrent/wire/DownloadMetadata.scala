@@ -1,9 +1,8 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.MonadThrow
 import cats.implicits.*
 import cats.effect.implicits.*
-import cats.effect.Temporal
+import cats.effect.IO
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
 
@@ -11,7 +10,7 @@ import scala.concurrent.duration.*
 
 object DownloadMetadata {
 
-  def apply[F[_]](connections: Stream[F, Connection[F]])(using F: Temporal[F]): F[Lossless] =
+  def apply(connections: Stream[IO, Connection[IO]]): IO[Lossless] =
     connections
       .parEvalMapUnordered(10)(connection =>
         DownloadMetadata(connection)
@@ -24,9 +23,9 @@ object DownloadMetadata {
       .compile
       .lastOrError
 
-  def apply[F[_]](connection: Connection[F])(using F: MonadThrow[F]): F[Lossless] =
+  def apply(connection: Connection[IO]): IO[Lossless] =
     connection.extensionApi
-      .flatMap(_.utMetadata.liftTo[F](UtMetadataNotSupported()))
+      .flatMap(_.utMetadata.liftTo[IO](UtMetadataNotSupported()))
       .flatMap(_.fetch)
 
   case class UtMetadataNotSupported() extends Throwable("UtMetadata is not supported")
