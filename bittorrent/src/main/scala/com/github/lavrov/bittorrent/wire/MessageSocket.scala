@@ -76,7 +76,7 @@ object MessageSocket {
     logger: Logger[F]
   ): Resource[F, MessageSocket[F]] = {
     for
-      socket <- socketGroup.client(to = peerInfo.address).attempt.timeout(5.seconds).rethrow
+      socket <- socketGroup.client(to = peerInfo.address).timeout(5.seconds)
       _ <- Resource.make(F.unit)(
         _ => logger.trace(s"Closed socket $peerInfo")
       )

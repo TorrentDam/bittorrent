@@ -135,26 +135,27 @@ object Main
                     .liftTo[IO](new Exception("Malformed info-hash"))
                 }
                 peerAddress <- Resource.pure(peerAddress.flatMap(SocketAddress.fromStringIp))
-                table <- Resource.eval {
-                  RoutingTable[IO](selfId)
-                }
-                node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
-                  Node(selfId, QueryHandler(selfId, table))
-                }
-                _ <- Resource.eval {
-                  RoutingTableBootstrap(table, node.client)
-                }
-                discovery <- PeerDiscovery.make(table, node.client)
-                peers <- Resource.pure(
+                peers <-
                   peerAddress match
-                    case Some(peerAddress) => Stream.emit(PeerInfo(peerAddress)).covary[IO]
-                    case None              => discovery.discover(infoHash)
-                )
+                    case Some(peerAddress) =>
+                      Resource.pure(Stream.emit(PeerInfo(peerAddress)).covary[IO])
+                    case None =>
+                      for
+                        table <- Resource.eval {
+                          RoutingTable[IO](selfId)
+                        }
+                        node <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
+                          Node(selfId, QueryHandler(selfId, table))
+                        }
+                        _ <- Resource.eval {
+                          RoutingTableBootstrap(table, node.client)
+                        }
+                        discovery <- PeerDiscovery.make(table, node.client)
+                      yield discovery.discover(infoHash)
                 swarm <- Network[IO].socketGroup().flatMap { implicit group =>
                   Swarm(
                     peers,
-                    peerInfo =>
-                      Connection.connect[IO](selfPeerId, peerInfo, infoHash)
+                    peerInfo => Connection.connect[IO](selfPeerId, peerInfo, infoHash)
                   )
                 }
               yield swarm
@@ -167,7 +168,7 @@ object Main
                   IO.ref(0).flatMap { counter =>
                     Stream
                       .range(0L, total)
-                      .parEvalMapUnordered(3)(index =>
+                      .parEvalMap(10)(index =>
                         for
                           piece <- torrent.downloadPiece(index)
                           count <- counter.updateAndGet(_ + 1)
@@ -196,4 +197,5 @@ object Main
     given Filter = Filter.atLeastLevel(LogLevel.Info)
     given Printer = ColorPrinter()
     DefaultLogger.makeIo(Output.fromConsole[IO]).flatMap(body(using _))
+  override def reportFailure(ex: Throwable) = IO.unit
 }

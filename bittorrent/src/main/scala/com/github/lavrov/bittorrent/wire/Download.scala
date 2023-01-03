@@ -30,17 +30,16 @@ object Download {
   ): IO[Unit] =
     import Logger.withLogContext
     swarm.connected.stream
-      .evalMap { connection =>
+      .parEvalMapUnbounded { connection =>
         logger.trace(s"Send Interested") >>
         connection.interested >>
-        logger.trace(s"Wait for Unchoked") >>
         whenUnchoked(connection)(download(connection, piecePicker))
           .guaranteeCase { outcome =>
             connection.close >>
             logger.trace(s"Download exited with $outcome")
           }
+          .attempt
           .withLogContext("address", connection.info.address.toString)
-          .start
       }
       .compile
       .drain
@@ -50,10 +49,10 @@ object Download {
     pieces: RequestDispatcher
   )(using logger: Logger[IO]): IO[Unit] = {
 
-    def computeOutstanding(downloadTime: SignallingRef[IO, Long], maxOutstanding: SignallingRef[IO, Int]) =
-      downloadTime.discrete
+    def computeOutstanding(downloadedBytes: SignallingRef[IO, Long], maxOutstanding: SignallingRef[IO, Int]) =
+      downloadedBytes.discrete
         .groupWithin(Int.MaxValue, 10.seconds)
-        .map(ones => scala.math.max(ones.foldLeft(0L)(_ + _) / 10 / RequestDispatcher.ChunkSize, 1L).toInt)
+        .map(chunks => scala.math.max(chunks.foldLeft(0L)(_ + _) / 10 / RequestDispatcher.ChunkSize, 1L).toInt)
         .evalMap(maxOutstanding.set)
         .compile
         .drain
@@ -78,19 +77,20 @@ object Download {
     def fireRequests(semaphore: Semaphore[IO], failureCounter: Ref[IO, Int], downloadedBytes: Ref[IO, Long]) =
       pieces
         .stream(connection.availability)
-        .evalMap { (request, promise) =>
-          semaphore.permit.use(_ =>
-            sendRequest(request).attempt.flatMap {
-              case Right(bytes) =>
-                failureCounter.set(0) >> downloadedBytes.set(bytes.size) >> promise.complete(bytes)
-              case Left(_) =>
-                failureCounter
-                  .updateAndGet(_ + 1)
-                  .flatMap(count => if (count >= 10) IO.raiseError(Error.PeerDoesNotRespond()) else IO.unit)
-            }.start
-          )
+        .map { (request, promise) =>
+          Stream
+            .resource(semaphore.permit)
+            .evalMap(_ =>
+              sendRequest(request).attempt.flatMap {
+                case Right(bytes) =>
+                  failureCounter.set(0) >> downloadedBytes.set(bytes.size) >> promise.complete(bytes)
+                case Left(_) =>
+                  failureCounter
+                    .updateAndGet(_ + 1)
+                    .flatMap(count => if (count >= 10) IO.raiseError(Error.PeerDoesNotRespond()) else IO.unit)
+              }
+            )
         }
-        .map(fiber => Stream.eval(fiber.joinWithUnit))
         .parJoinUnbounded
         .compile
         .drain
