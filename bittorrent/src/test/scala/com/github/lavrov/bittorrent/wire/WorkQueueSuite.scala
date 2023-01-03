@@ -52,9 +52,9 @@ class WorkQueueSuite extends munit.CatsEffectSuite {
       finishFirst <- CountDownLatch[IO](1)
       fiber0 <- workQueue.nextRequest.use((request, _) => finishFirst.await.as(request)).start
       fiber1 <- workQueue.nextRequest.use((request, _) => IO.pure(request)).start
+      request1 <- fiber1.joinWithNever.attempt
       _ <- finishFirst.release
       request0 <- fiber0.joinWithNever
-      request1 <- fiber1.joinWithNever.attempt
     yield
       assertEquals(request0, 1)
       assertEquals(request1, Left(EmptyQueue))
