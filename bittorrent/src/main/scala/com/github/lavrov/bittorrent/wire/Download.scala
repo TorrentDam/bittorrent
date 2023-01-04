@@ -77,19 +77,20 @@ object Download {
     def fireRequests(semaphore: Semaphore[IO], failureCounter: Ref[IO, Int], downloadedBytes: Ref[IO, Long]) =
       pieces
         .stream(connection.availability)
+        .flatTap(_ =>
+          Stream.resource(semaphore.permit)
+        )
         .map { (request, promise) =>
-          Stream
-            .resource(semaphore.permit)
-            .evalMap(_ =>
-              sendRequest(request).attempt.flatMap {
-                case Right(bytes) =>
-                  failureCounter.set(0) >> downloadedBytes.set(bytes.size) >> promise.complete(bytes)
-                case Left(_) =>
-                  failureCounter
-                    .updateAndGet(_ + 1)
-                    .flatMap(count => if (count >= 10) IO.raiseError(Error.PeerDoesNotRespond()) else IO.unit)
-              }
-            )
+          Stream.eval(
+            sendRequest(request).attempt.flatMap {
+              case Right(bytes) =>
+                failureCounter.set(0) >> downloadedBytes.set(bytes.size) >> promise.complete(bytes)
+              case Left(_) =>
+                failureCounter
+                  .updateAndGet(_ + 1)
+                  .flatMap(count => if (count >= 10) IO.raiseError(Error.PeerDoesNotRespond()) else IO.unit)
+            }
+          )
         }
         .parJoinUnbounded
         .compile
