@@ -35,14 +35,14 @@ object RequestDispatcher {
 
   def apply(metadata: TorrentMetadata): Resource[IO, RequestDispatcher] = Resource(
     for
-      inProgress <- IO.ref(Map.empty[Long, PieceWorkQueue])
+      inProgress <- IO.ref(TreeMap.empty[Long, PieceWorkQueue])
       workGenerator = WorkGenerator(metadata)
     yield (Impl(workGenerator, inProgress), IO.unit)
   )
 
   private class Impl(
     workGenerator: WorkGenerator,
-    inProgress: Ref[IO, Map[Long, PieceWorkQueue]]
+    inProgress: Ref[IO, TreeMap[Long, PieceWorkQueue]]
   ) extends RequestDispatcher {
     def downloadPiece(index: Long): IO[ByteVector] =
       (
