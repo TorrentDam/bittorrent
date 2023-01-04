@@ -29,31 +29,39 @@ object Download {
     logger: Logger[IO]
   ): IO[Unit] =
     import Logger.withLogContext
-    swarm.connected.stream
-      .parEvalMapUnbounded { connection =>
-        logger.trace(s"Send Interested") >>
-        connection.interested >>
-        whenUnchoked(connection)(download(connection, piecePicker))
-          .guaranteeCase { outcome =>
-            connection.close >>
-            logger.trace(s"Download exited with $outcome")
-          }
-          .attempt
-          .withLogContext("address", connection.info.address.toString)
-      }
-      .compile
-      .drain
+    Classifier().use(classifier =>
+      swarm.connected.stream
+        .parEvalMapUnbounded { connection =>
+          for
+            _ <- logger.trace(s"Send Interested")
+            _ <- connection.interested
+            _ <- classifier.create.use(speedInfo =>
+              whenUnchoked(connection)(download(connection, piecePicker, speedInfo))
+                .guaranteeCase { outcome =>
+                  connection.close >>
+                    logger.trace(s"Download exited with $outcome")
+                }
+                .attempt
+                .withLogContext("address", connection.info.address.toString)
+            )
+          yield ()
+        }
+        .compile
+        .drain
+    )
 
   private def download(
     connection: Connection[IO],
-    pieces: RequestDispatcher
+    pieces: RequestDispatcher,
+    speedInfo: SpeedInfo
   )(using logger: Logger[IO]): IO[Unit] = {
 
     def computeOutstanding(downloadedBytes: SignallingRef[IO, Long], maxOutstanding: SignallingRef[IO, Int]) =
       downloadedBytes.discrete
         .groupWithin(Int.MaxValue, 10.seconds)
         .map(chunks => scala.math.max(chunks.foldLeft(0L)(_ + _) / 10 / RequestDispatcher.ChunkSize, 1L).toInt)
-        .evalMap(maxOutstanding.set)
+        .evalTap(maxOutstanding.set)
+        .evalTap(speedInfo.bytes.set)
         .compile
         .drain
 
@@ -76,10 +84,8 @@ object Download {
 
     def fireRequests(semaphore: Semaphore[IO], failureCounter: Ref[IO, Int], downloadedBytes: Ref[IO, Long]) =
       pieces
-        .stream(connection.availability)
-        .flatTap(_ =>
-          Stream.resource(semaphore.permit)
-        )
+        .stream(connection.availability.get, speedInfo.cls.get)
+        .flatTap(_ => Stream.resource(semaphore.permit))
         .map { (request, promise) =>
           Stream.eval(
             sendRequest(request).attempt.flatMap {
@@ -122,9 +128,47 @@ object Download {
     (waitUnchoked >> (f race waitChoked)).foreverM
   }
 
+  case class SpeedInfo(bytes: Ref[IO, Int], cls: Ref[IO, ConnectionClass])
+
+  class Classifier(counter: Ref[IO, Long], state: Ref[IO, Map[Long, SpeedInfo]]) {
+    def create: Resource[IO, SpeedInfo] = Resource(
+      for
+        id <- counter.getAndUpdate(_ + 1)
+        bytes <- IO.ref(0)
+        cls <- IO.ref(ConnectionClass.Slow)
+        _ <- state.update(_.updated(id, SpeedInfo(bytes, cls)))
+      yield (SpeedInfo(bytes, cls), state.update(_ - id))
+    )
+  }
+  object Classifier {
+    def apply(): Resource[IO, Classifier] =
+      for
+        counter <- Resource.eval(IO.ref(0L))
+        state <- Resource.eval(IO.ref(Map.empty[Long, SpeedInfo]))
+        _ <- (IO.sleep(10.seconds) >> updateClass(state)).foreverM.background
+      yield new Classifier(counter, state)
+
+    private def updateClass(state: Ref[IO, Map[Long, SpeedInfo]]): IO[Unit] =
+      state.get
+        .flatMap(_.values.toList.traverse { info =>
+          info.bytes.get.tupleRight(info)
+        })
+        .flatMap(values =>
+          val sorted = values.sortBy(_._1)(Ordering[Int].reverse).map(_._2)
+          val fastCount = (values.size.toDouble * 0.7).ceil.toInt
+          val (fast, slow) = sorted.splitAt(fastCount)
+          fast.traverse(_.cls.set(ConnectionClass.Fast)) >> slow.traverse(_.cls.set(ConnectionClass.Slow))
+        )
+        .void
+  }
+
   enum Error(message: String) extends Throwable(message):
     case TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
     case TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")
     case InvalidChecksum() extends Error("Invalid checksum")
     case PeerDoesNotRespond() extends Error("Peer does not respond")
+}
+
+enum ConnectionClass {
+  case Slow, Fast
 }

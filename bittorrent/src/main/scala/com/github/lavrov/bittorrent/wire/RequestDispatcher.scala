@@ -25,7 +25,7 @@ import scala.concurrent.duration.DurationInt
 trait RequestDispatcher {
   def downloadPiece(index: Long): IO[ByteVector]
 
-  def stream(availability: Signal[IO, BitSet]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])]
+  def stream(availability: IO[BitSet], cls: IO[ConnectionClass]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])]
 }
 
 object RequestDispatcher {
@@ -36,13 +36,15 @@ object RequestDispatcher {
   def apply(metadata: TorrentMetadata): Resource[IO, RequestDispatcher] = Resource(
     for
       inProgress <- IO.ref(TreeMap.empty[Long, PieceWorkQueue])
+      inProgressReverse <- IO.ref(TreeMap.empty[Long, PieceWorkQueue](using Ordering[Long].reverse))
       workGenerator = WorkGenerator(metadata)
-    yield (Impl(workGenerator, inProgress), IO.unit)
+    yield (Impl(workGenerator, inProgress, inProgressReverse), IO.unit)
   )
 
   private class Impl(
     workGenerator: WorkGenerator,
-    inProgress: Ref[IO, TreeMap[Long, PieceWorkQueue]]
+    inProgress: Ref[IO, TreeMap[Long, PieceWorkQueue]],
+    inProgressReverse: Ref[IO, TreeMap[Long, PieceWorkQueue]]
   ) extends RequestDispatcher {
     def downloadPiece(index: Long): IO[ByteVector] =
       (
@@ -51,13 +53,14 @@ object RequestDispatcher {
           pieceWork = workGenerator.pieceWork(index)
           tracker <- WorkQueue(pieceWork.requests.toList, result.complete)
           _ <- inProgress.update(_.updated(index, tracker))
+          _ <- inProgressReverse.update(_.updated(index, tracker))
           result <- result.get
         yield result.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _)
       ).guarantee(
-        inProgress.update(_ - index)
+        inProgress.update(_ - index) >> inProgressReverse.update(_ - index)
       )
 
-    def stream(availability: Signal[IO, BitSet]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])] =
+    def stream(availability: IO[BitSet], cls: IO[ConnectionClass]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])] =
       def pickFrom(trackers: List[PieceWorkQueue]): Resource[IO, (Message.Request, Deferred[IO, ByteVector])] =
         trackers match
           case Nil =>
@@ -67,8 +70,13 @@ object RequestDispatcher {
 
       def singlePass =
         for
-          inProgress <- Resource.eval(inProgress.get)
-          availability <- Resource.eval(availability.get)
+          cls <- Resource.eval(cls)
+          inProgress <- Resource.eval(
+            cls match
+              case ConnectionClass.Fast => inProgress.get
+              case ConnectionClass.Slow => inProgressReverse.get // take piece with the highest index first
+          )
+          availability <- Resource.eval(availability)
           matched = inProgress.collect { case (index, tracker) if availability(index.toInt) => tracker }.toList
           result <- pickFrom(matched)
         yield result
