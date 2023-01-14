@@ -1,18 +1,18 @@
 package com.github.lavrov.bittorrent.wire
 
+import cats.implicits.*
 import cats.Show.Shown
 import cats.effect.IO
 import cats.effect.Resource
-import cats.effect.std.{Queue, Semaphore}
+import cats.effect.std.{Queue, Semaphore, Supervisor}
 import cats.effect.implicits.*
 import cats.effect.kernel.Ref
 import cats.effect.{Async, Resource, Temporal}
-import cats.implicits.*
 import com.github.lavrov.bittorrent.TorrentMetadata
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.Chunk
-import fs2.concurrent.{Signal, SignallingRef}
+import fs2.concurrent.{Signal, SignallingRef, Topic}
 import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
 
@@ -23,43 +23,56 @@ import scala.util.chaining.*
 object Download {
 
   def apply(
-    swarm: Swarm[IO],
+    swarm: Swarm,
     piecePicker: RequestDispatcher
   )(using
     logger: Logger[IO]
   ): IO[Unit] =
     import Logger.withLogContext
     Classifier().use(classifier =>
-      swarm.connected.stream
-        .parEvalMapUnbounded { connection =>
-          for
-            _ <- logger.trace(s"Send Interested")
-            _ <- connection.interested
-            _ <- classifier.create.use(speedInfo =>
-              whenUnchoked(connection)(download(connection, piecePicker, speedInfo))
-                .guaranteeCase { outcome =>
-                  connection.close >>
-                    logger.trace(s"Download exited with $outcome")
-                }
-                .attempt
-                .withLogContext("address", connection.info.address.toString)
-            )
-          yield ()
-        }
-        .compile
-        .drain
+      swarm.connect
+        .use(connection =>
+          (
+            for
+              _ <- connection.interested
+              _ <- classifier.create.use(speedInfo =>
+                whenUnchoked(connection)(
+                  download(connection, piecePicker, speedInfo)
+                )
+              )
+            yield ()
+          )
+            .race(connection.disconnected)
+            .withLogContext("address", connection.info.address.toString)
+        )
+        .attempt
+        .foreverM
+        .parReplicateA(30)
+        .void
     )
 
   private def download(
-    connection: Connection[IO],
+    connection: Connection,
     pieces: RequestDispatcher,
-    speedInfo: SpeedInfo
+    speedInfo: SpeedData
   )(using logger: Logger[IO]): IO[Unit] = {
 
-    def computeOutstanding(downloadedBytes: SignallingRef[IO, Long], maxOutstanding: SignallingRef[IO, Int]) =
-      downloadedBytes.discrete
+    def bounded(min: Int, max: Int)(n: Int): Int = math.min(math.max(n, min), max)
+
+    def computeOutstanding(
+      downloadedBytes: Topic[IO, Long],
+      downloadedTotal: Ref[IO, Long],
+      maxOutstanding: SignallingRef[IO, Int]
+    ) =
+      downloadedBytes
+        .subscribe(10)
+        .evalTap(size => downloadedTotal.update(_ + size))
         .groupWithin(Int.MaxValue, 10.seconds)
-        .map(chunks => scala.math.max(chunks.foldLeft(0L)(_ + _) / 10 / RequestDispatcher.ChunkSize, 1L).toInt)
+        .map(chunks =>
+          bounded(1, 100)(
+            (chunks.foldLeft(0L)(_ + _) / 10 / RequestDispatcher.ChunkSize).toInt
+          )
+        )
         .evalTap(maxOutstanding.set)
         .evalTap(speedInfo.bytes.set)
         .compile
@@ -82,19 +95,33 @@ object Download {
         .request(request)
         .timeout(5.seconds)
 
-    def fireRequests(semaphore: Semaphore[IO], failureCounter: Ref[IO, Int], downloadedBytes: Ref[IO, Long]) =
-      pieces
-        .stream(connection.availability.get, speedInfo.cls.get)
-        .flatTap(_ => Stream.resource(semaphore.permit))
+    def nextRequest(semaphore: Semaphore[IO]) =
+      semaphore.permit >> pieces.stream(connection.availability.get, speedInfo.cls.get)
+
+    def fireRequests(
+      semaphore: Semaphore[IO],
+      failureCounter: Ref[IO, Int],
+      downloadedBytes: Topic[IO, Long]
+    ) =
+      Stream
+        .resource(nextRequest(semaphore))
+        .interruptWhen(
+          IO.sleep(1.minute).as(Left(Error.TimeoutWaitingForPiece(1.minute)))
+        )
+        .repeat
         .map { (request, promise) =>
           Stream.eval(
             sendRequest(request).attempt.flatMap {
               case Right(bytes) =>
-                failureCounter.set(0) >> downloadedBytes.set(bytes.size) >> promise.complete(bytes)
+                failureCounter.set(0) >> downloadedBytes.publish1(bytes.size) >> promise.complete(bytes)
               case Left(_) =>
                 failureCounter
                   .updateAndGet(_ + 1)
-                  .flatMap(count => if (count >= 10) IO.raiseError(Error.PeerDoesNotRespond()) else IO.unit)
+                  .flatMap(count =>
+                    if count >= 10
+                    then IO.raiseError(Error.PeerDoesNotRespond())
+                    else IO.unit
+                  )
             }
           )
         }
@@ -104,19 +131,25 @@ object Download {
 
     for
       failureCounter <- IO.ref(0)
-      downloadedBytes <- SignallingRef[IO, Long](0L)
+      downloadedBytes <- Topic[IO, Long]
+      downloadedTotal <- IO.ref(0L)
       maxOutstanding <- SignallingRef[IO, Int](5)
       semaphore <- Semaphore[IO](5)
-      _ <- logger.trace(s"Download started")
       _ <- (
-        computeOutstanding(downloadedBytes, maxOutstanding),
+        computeOutstanding(downloadedBytes, downloadedTotal, maxOutstanding),
         updateSemaphore(semaphore, maxOutstanding),
         fireRequests(semaphore, failureCounter, downloadedBytes)
       ).parTupled
+        .handleErrorWith(e =>
+          downloadedTotal.get.flatMap {
+            case 0 => IO.raiseError(e)
+            case _ => IO.unit
+          }
+        )
     yield ()
   }
 
-  private def whenUnchoked(connection: Connection[IO])(f: IO[Unit])(using
+  private def whenUnchoked(connection: Connection)(f: IO[Unit])(using
     logger: Logger[IO]
   ): IO[Unit] = {
     def waitChoked = connection.choked.waitUntil(identity)
@@ -128,27 +161,27 @@ object Download {
     (waitUnchoked >> (f race waitChoked)).foreverM
   }
 
-  case class SpeedInfo(bytes: Ref[IO, Int], cls: Ref[IO, ConnectionClass])
+  private case class SpeedData(bytes: Ref[IO, Int], cls: Ref[IO, SpeedClass])
 
-  class Classifier(counter: Ref[IO, Long], state: Ref[IO, Map[Long, SpeedInfo]]) {
-    def create: Resource[IO, SpeedInfo] = Resource(
+  private class Classifier(counter: Ref[IO, Long], state: Ref[IO, Map[Long, SpeedData]]) {
+    def create: Resource[IO, SpeedData] = Resource(
       for
         id <- counter.getAndUpdate(_ + 1)
         bytes <- IO.ref(0)
-        cls <- IO.ref(ConnectionClass.Slow)
-        _ <- state.update(_.updated(id, SpeedInfo(bytes, cls)))
-      yield (SpeedInfo(bytes, cls), state.update(_ - id))
+        cls <- IO.ref(SpeedClass.Slow)
+        _ <- state.update(_.updated(id, SpeedData(bytes, cls)))
+      yield (SpeedData(bytes, cls), state.update(_ - id))
     )
   }
-  object Classifier {
+  private object Classifier {
     def apply(): Resource[IO, Classifier] =
       for
         counter <- Resource.eval(IO.ref(0L))
-        state <- Resource.eval(IO.ref(Map.empty[Long, SpeedInfo]))
+        state <- Resource.eval(IO.ref(Map.empty[Long, SpeedData]))
         _ <- (IO.sleep(10.seconds) >> updateClass(state)).foreverM.background
       yield new Classifier(counter, state)
 
-    private def updateClass(state: Ref[IO, Map[Long, SpeedInfo]]): IO[Unit] =
+    private def updateClass(state: Ref[IO, Map[Long, SpeedData]]): IO[Unit] =
       state.get
         .flatMap(_.values.toList.traverse { info =>
           info.bytes.get.tupleRight(info)
@@ -157,7 +190,7 @@ object Download {
           val sorted = values.sortBy(_._1)(Ordering[Int].reverse).map(_._2)
           val fastCount = (values.size.toDouble * 0.7).ceil.toInt
           val (fast, slow) = sorted.splitAt(fastCount)
-          fast.traverse(_.cls.set(ConnectionClass.Fast)) >> slow.traverse(_.cls.set(ConnectionClass.Slow))
+          fast.traverse(_.cls.set(SpeedClass.Fast)) >> slow.traverse(_.cls.set(SpeedClass.Slow))
         )
         .void
   }
@@ -169,6 +202,6 @@ object Download {
     case PeerDoesNotRespond() extends Error("Peer does not respond")
 }
 
-enum ConnectionClass {
+enum SpeedClass {
   case Slow, Fast
 }

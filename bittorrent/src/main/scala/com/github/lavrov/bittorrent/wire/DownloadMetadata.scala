@@ -5,16 +5,23 @@ import cats.effect.implicits.*
 import cats.effect.IO
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
+import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.*
 
 object DownloadMetadata {
 
-  def apply(connections: Stream[IO, Connection[IO]]): IO[Lossless] =
-    connections
-      .parEvalMapUnordered(10)(connection =>
-        DownloadMetadata(connection)
-          .timeout(1.minute)
+  def apply(swarm: Swarm)(using logger: Logger[IO]): IO[Lossless] =
+    logger.info("Downloading metadata") >>
+    Stream
+      .unit
+      .repeat
+      .parEvalMapUnordered(10)(_ =>
+        swarm
+          .connect
+          .use(connection =>
+            DownloadMetadata(connection).timeout(1.minute)
+          )
           .attempt
       )
       .collectFirst {
@@ -22,8 +29,11 @@ object DownloadMetadata {
       }
       .compile
       .lastOrError
+      .flatTap(_ =>
+        logger.info("Metadata downloaded")
+      )
 
-  def apply(connection: Connection[IO]): IO[Lossless] =
+  def apply(connection: Connection)(using logger: Logger[IO]): IO[Lossless] =
     connection.extensionApi
       .flatMap(_.utMetadata.liftTo[IO](UtMetadataNotSupported()))
       .flatMap(_.fetch)

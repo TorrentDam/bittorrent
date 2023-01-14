@@ -2,9 +2,10 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.*
 import cats.implicits.*
-import cats.effect.kernel.{Clock, Deferred, Ref, Temporal}
+import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.syntax.all.*
-import cats.effect.{Async, Concurrent, Outcome, Resource}
+import cats.effect.{IO, Outcome, Resource}
+import cats.effect.std.Queue
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
@@ -18,16 +19,15 @@ import scodec.bits.ByteVector
 import scala.collection.immutable.BitSet
 import scala.concurrent.duration.*
 
-trait Connection[F[_]] {
+trait Connection {
   def info: PeerInfo
   def extensionProtocol: Boolean
-  def interested: F[Unit]
-  def request(request: Message.Request): F[ByteVector]
-  def choked: Signal[F, Boolean]
-  def availability: Signal[F, BitSet]
-  def disconnected: F[Either[Throwable, Unit]]
-  def close: F[Unit]
-  def extensionApi: F[ExtensionApi[F]]
+  def interested: IO[Unit]
+  def request(request: Message.Request): IO[ByteVector]
+  def choked: Signal[IO, Boolean]
+  def availability: Signal[IO, BitSet]
+  def disconnected: IO[Either[Throwable, Unit]]
+  def extensionApi: IO[ExtensionApi[IO]]
 }
 
 object Connection {
@@ -38,142 +38,123 @@ object Connection {
     val interested: Lens[State, Boolean] = GenLens[State](_.interested)
   }
 
-  trait RequestRegistry[F[_]] {
-    def register(request: Message.Request): F[ByteVector]
-    def complete(request: Message.Request, bytes: ByteVector): F[Unit]
-    def failAll(t: Throwable): F[Unit]
+  trait RequestRegistry {
+    def register(request: Message.Request): IO[ByteVector]
+    def complete(request: Message.Request, bytes: ByteVector): IO[Unit]
   }
   object RequestRegistry {
-    def apply[F[_]: Concurrent]: F[RequestRegistry[F]] =
+    def apply(): Resource[IO, RequestRegistry] =
       for
-        stateRef <- Ref.of(
-          Map.empty[Message.Request, Either[Throwable, ByteVector] => F[Boolean]]
+        stateRef <- Resource.eval(
+          IO.ref(Map.empty[Message.Request, Either[Throwable, ByteVector] => IO[Boolean]])
         )
-      yield new RequestRegistry[F] {
+//        _ <- Resource.onFinalize(
+//          for
+//            state <- stateRef.get
+//            _ <- state.values.toList.traverse { cb =>
+//              cb(ConnectionClosed().asLeft)
+//            }
+//          yield ()
+//        )
+      yield new RequestRegistry {
 
-        def register(request: Message.Request): F[ByteVector] =
-          Deferred[F, Either[Throwable, ByteVector]]
+        def register(request: Message.Request): IO[ByteVector] =
+          IO.deferred[Either[Throwable, ByteVector]]
             .flatMap { deferred =>
               val update = stateRef.update(_.updated(request, deferred.complete))
               val delete = stateRef.update(_ - request)
               (update >> deferred.get).guarantee(delete)
             }
-            .flatMap(Concurrent[F].fromEither)
+            .flatMap(IO.fromEither)
 
-        def complete(request: Message.Request, bytes: ByteVector): F[Unit] =
+        def complete(request: Message.Request, bytes: ByteVector): IO[Unit] =
           for
             callback <- stateRef.get.map(_.get(request))
             _ <- callback.traverse(cb => cb(bytes.asRight))
           yield ()
-
-        def failAll(t: Throwable): F[Unit] =
-          for
-            state <- stateRef.get
-            _ <- state.values.toList.traverse { cb =>
-              cb(t.asLeft)
-            }
-          yield ()
       }
   }
 
-  def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
+  def connect(selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
     using
-    F: Async[F],
-    socketGroup: SocketGroup[F],
-    logger: Logger[F]
-  ): Resource[F, Connection[F]] =
-    MessageSocket.connect(selfId, peerInfo, infoHash).flatMap { socket =>
-      Resource {
-        for
-          _ <- logger.debug(s"Connected ${peerInfo.address}")
-          stateRef <- Ref.of[F, State](State())
-          chokedStatusRef <- SignallingRef(true)
-          bitfieldRef <- SignallingRef(BitSet.empty)
-          requestRegistry <- RequestRegistry[F]
-          (extensionHandler, initExtension) <- ExtensionHandler.InitExtension(
-            infoHash,
-            socket.send,
-            new ExtensionHandler.UtMetadata.Create[F]
+    socketGroup: SocketGroup[IO],
+    logger: Logger[IO]
+  ): Resource[IO, Connection] =
+    for
+      requestRegistry <- RequestRegistry()
+      socket <- MessageSocket.connect[IO](selfId, peerInfo, infoHash)
+      stateRef <- Resource.eval(IO.ref(State()))
+      chokedStatusRef <- Resource.eval(SignallingRef[IO].of(true))
+      bitfieldRef <- Resource.eval(SignallingRef[IO].of(BitSet.empty))
+      sendQueue <- Resource.eval(Queue.bounded[IO, Message](10))
+      (extensionHandler, initExtension) <- Resource.eval(
+        ExtensionHandler.InitExtension(
+          infoHash,
+          sendQueue.offer,
+          new ExtensionHandler.UtMetadata.Create[IO]
+        )
+      )
+      updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
+      closed <- Resource.eval(IO.deferred[Either[Throwable, Unit]])
+      _ <-
+          (
+            receiveLoop(
+              requestRegistry,
+              bitfieldRef.update,
+              chokedStatusRef.set,
+              updateLastMessageTime,
+              socket,
+              extensionHandler
+            ),
+            sendLoop(sendQueue, socket),
+            keepAliveLoop(stateRef, sendQueue.offer)
           )
-          updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
-          fiber <-
-            Concurrent[F]
-              .race[Nothing, Nothing](
-                receiveLoop(
-                  requestRegistry,
-                  bitfieldRef.update,
-                  chokedStatusRef.set,
-                  updateLastMessageTime,
-                  socket,
-                  extensionHandler
-                ),
-                backgroundLoop(stateRef, socket)
-              )
-              .void
-              .start
-          closed <- Deferred[F, Either[Throwable, Unit]]
-          doClose =
-            (reason: Either[Throwable, Unit]) =>
-              closed.complete(reason).flatMap {
-                case true =>
-                  val msg = reason.fold(e => e.getMessage, _ => "normal")
-                  fiber.cancel >>
-                  requestRegistry.failAll(ConnectionClosed()) >>
-                  logger.trace(s"Disconnected: $msg")
-                case false =>
-                  F.unit
-              }
-          _ <- fiber.join.flatMap {
-            case Outcome.Succeeded(_) => doClose(Right(()))
-            case Outcome.Errored(e) => doClose(Left(e))
-            case Outcome.Canceled() => doClose(Left(Exception("Receive loop cancelled")))
-          }.start
-        yield
-          val impl: Connection[F] = new Connection[F] {
-            def info: PeerInfo = peerInfo
-            def extensionProtocol: Boolean = socket.handshake.extensionProtocol
+            .parTupled
+            .guarantee(
+              closed.complete(Right(())).void
+            )
+            .background
+    yield
+      new Connection {
+        def info: PeerInfo = peerInfo
+        def extensionProtocol: Boolean = socket.handshake.extensionProtocol
 
-            def interested: F[Unit] =
-              for
-                interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
-                _ <- F.whenA(!interested)(socket.send(Message.Interested))
-              yield ()
+        def interested: IO[Unit] =
+          for
+            interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
+            _ <- IO.whenA(!interested)(sendQueue.offer(Message.Interested))
+          yield ()
 
-            def request(request: Message.Request): F[ByteVector] =
-              socket.send(request) >>
-              requestRegistry.register(request).flatMap { bytes =>
-                if bytes.length == request.length
-                then
-                  bytes.pure[F]
-                else
-                  Error.InvalidBlockLength(request, bytes.length).raiseError[F, ByteVector]
-              }
-
-            def choked: Signal[F, Boolean] = chokedStatusRef
-
-            def availability: Signal[F, BitSet] = bitfieldRef
-
-            def disconnected: F[Either[Throwable, Unit]] = closed.get
-
-            def close: F[Unit] = doClose(().asRight)
-
-            def extensionApi: F[ExtensionApi[F]] = initExtension.init
+        def request(request: Message.Request): IO[ByteVector] =
+          sendQueue.offer(request) >>
+          requestRegistry.register(request).flatMap { bytes =>
+            if bytes.length == request.length
+            then
+              bytes.pure[IO]
+            else
+              Error.InvalidBlockLength(request, bytes.length).raiseError[IO, ByteVector]
           }
-          (impl, doClose(Right(())))
-        end for
+
+        def choked: Signal[IO, Boolean] = chokedStatusRef
+
+        def availability: Signal[IO, BitSet] = bitfieldRef
+
+        def disconnected: IO[Either[Throwable, Unit]] = closed.get
+
+        def extensionApi: IO[ExtensionApi[IO]] = initExtension.init
       }
-    }
+    end for
 
   case class ConnectionClosed() extends Throwable
 
-  private def receiveLoop[F[_]: Monad](
-    requestRegistry: RequestRegistry[F],
-    updateBitfield: (BitSet => BitSet) => F[Unit],
-    updateChokeStatus: Boolean => F[Unit],
-    updateLastMessageAt: Long => F[Unit],
-    socket: MessageSocket[F],
-    extensionHandler: ExtensionHandler[F]
-  )(using clock: Clock[F]): F[Nothing] =
+  private def receiveLoop(
+    requestRegistry: RequestRegistry,
+    updateBitfield: (BitSet => BitSet) => IO[Unit],
+    updateChokeStatus: Boolean => IO[Unit],
+    updateLastMessageAt: Long => IO[Unit],
+    socket: MessageSocket[IO],
+    extensionHandler: ExtensionHandler[IO]
+  ): IO[Nothing] =
     socket.receive
       .flatMap {
         case Message.Unchoke =>
@@ -193,32 +174,35 @@ object Connection {
         case m: Message.Extended =>
           extensionHandler(m)
         case _ =>
-          Monad[F].unit
+          IO.unit
       }
       .flatTap { _ =>
-        clock.realTime.flatMap { currentTime =>
+        IO.realTime.flatMap { currentTime =>
           updateLastMessageAt(currentTime.toMillis)
         }
       }
       .foreverM
 
-  private def backgroundLoop[F[_]](
-    stateRef: Ref[F, State],
-    socket: MessageSocket[F]
-  )(using F: Temporal[F]): F[Nothing] =
-    F
+  private def keepAliveLoop(
+    stateRef: Ref[IO, State],
+    send: Message => IO[Unit]
+  ): IO[Nothing] =
+    IO
       .sleep(10.seconds)
       .flatMap { _ =>
         for
-          currentTime <- F.realTime
-          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 10.minutes)
-          _ <- F.whenA(timedOut) {
-            F.raiseError(Error.ConnectionTimeout())
+          currentTime <- IO.realTime
+          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 30.seconds)
+          _ <- IO.whenA(timedOut) {
+            IO.raiseError(Error.ConnectionTimeout())
           }
-          _ <- socket.send(Message.KeepAlive)
+          _ <- send(Message.KeepAlive)
         yield ()
       }
       .foreverM
+
+  private def sendLoop(queue: Queue[IO, Message], socket: MessageSocket[IO]): IO[Nothing] =
+    queue.take.flatMap(socket.send).foreverM
 
   enum Error(message: String) extends Exception(message):
     case ConnectionTimeout() extends Error("Connection timed out")

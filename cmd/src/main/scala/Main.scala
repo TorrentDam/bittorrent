@@ -101,7 +101,7 @@ object Main
                   discovery.discover(infoHash),
                   Connection.connect(selfPeerId, _, infoHash)
                 )
-              yield DownloadMetadata(swarm.connected.stream)
+              yield DownloadMetadata(swarm)
 
             resources.use { getMetadata =>
               getMetadata
@@ -155,14 +155,14 @@ object Main
                 swarm <- Network[IO].socketGroup().flatMap { implicit group =>
                   Swarm(
                     peers,
-                    peerInfo => Connection.connect[IO](selfPeerId, peerInfo, infoHash)
+                    peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash)
                   )
                 }
               yield swarm
 
             resources.use { swarm =>
               for
-                metadata <- DownloadMetadata(swarm.connected.stream)
+                metadata <- DownloadMetadata(swarm)
                 _ <- Torrent.make(metadata, swarm).use { torrent =>
                   val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
                   IO.ref(0).flatMap { counter =>

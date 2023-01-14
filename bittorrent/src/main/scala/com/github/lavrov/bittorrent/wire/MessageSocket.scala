@@ -17,18 +17,15 @@ class MessageSocket[F[_]](
   val handshake: Handshake,
   val peerInfo: PeerInfo,
   socket: Socket[F],
-  writeMutex: Semaphore[F],
   logger: Logger[F]
 )(using F: Temporal[F]) {
 
   import MessageSocket.{MaxMessageSize, OversizedMessage, readTimeout, writeTimeout}
 
   def send(message: Message): F[Unit] =
+    val bytes = Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector)
     for
-      _ <- writeMutex.permit.use { _ =>
-        val bytes = Chunk.byteVector(Message.MessageCodec.encode(message).require.toByteVector)
-        socket.write(bytes).timeout(writeTimeout)
-      }
+      _ <- socket.write(bytes)
       _ <- logger.trace(s">>> ${peerInfo.address} $message")
     yield ()
 
@@ -86,8 +83,7 @@ object MessageSocket {
         handshake(selfId, infoHash, socket) <*
         logger.trace(s"Successful handshake with ${peerInfo.address}")
       )
-      writeMutex <- Resource.eval(Semaphore(1))
-    yield new MessageSocket(handshakeResponse, peerInfo, socket, writeMutex, logger)
+    yield new MessageSocket(handshakeResponse, peerInfo, socket, logger)
   }
 
   def handshake[F[_]](

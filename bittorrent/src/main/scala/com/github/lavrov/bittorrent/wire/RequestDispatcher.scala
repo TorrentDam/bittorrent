@@ -8,7 +8,7 @@ import cats.effect.Ref
 import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
 import cats.effect.std.Dequeue
-import com.github.lavrov.bittorrent.TorrentMetadata
+import com.github.lavrov.bittorrent.{PeerInfo, TorrentMetadata}
 import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import fs2.concurrent.{Signal, SignallingRef}
@@ -25,26 +25,28 @@ import scala.concurrent.duration.DurationInt
 trait RequestDispatcher {
   def downloadPiece(index: Long): IO[ByteVector]
 
-  def stream(availability: IO[BitSet], cls: IO[ConnectionClass]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])]
+  def stream(
+    availability: IO[BitSet],
+    speedClass: IO[SpeedClass]
+  ): Resource[IO, (Message.Request, Deferred[IO, ByteVector])]
 }
 
 object RequestDispatcher {
   val ChunkSize: Int = 16 * 1024
 
-  private type PieceWorkQueue = WorkQueue[Message.Request, ByteVector]
+  private type RequestQueue = WorkQueue[Message.Request, ByteVector]
 
-  def apply(metadata: TorrentMetadata): Resource[IO, RequestDispatcher] = Resource(
+  def apply(metadata: TorrentMetadata)(using logger: Logger[IO]): Resource[IO, RequestDispatcher] =
     for
-      inProgress <- IO.ref(TreeMap.empty[Long, PieceWorkQueue])
-      inProgressReverse <- IO.ref(TreeMap.empty[Long, PieceWorkQueue](using Ordering[Long].reverse))
+      queue <- Resource.eval(IO.ref(TreeMap.empty[Long, RequestQueue]))
+      queueReverse <- Resource.eval(IO.ref(TreeMap.empty[Long, RequestQueue](using Ordering[Long].reverse)))
       workGenerator = WorkGenerator(metadata)
-    yield (Impl(workGenerator, inProgress, inProgressReverse), IO.unit)
-  )
+    yield Impl(workGenerator, queue, queueReverse)
 
   private class Impl(
     workGenerator: WorkGenerator,
-    inProgress: Ref[IO, TreeMap[Long, PieceWorkQueue]],
-    inProgressReverse: Ref[IO, TreeMap[Long, PieceWorkQueue]]
+    queue: Ref[IO, TreeMap[Long, RequestQueue]],
+    queueReverse: Ref[IO, TreeMap[Long, RequestQueue]]
   ) extends RequestDispatcher {
     def downloadPiece(index: Long): IO[ByteVector] =
       (
@@ -52,16 +54,19 @@ object RequestDispatcher {
           result <- IO.deferred[Map[Request, ByteVector]]
           pieceWork = workGenerator.pieceWork(index)
           tracker <- WorkQueue(pieceWork.requests.toList, result.complete)
-          _ <- inProgress.update(_.updated(index, tracker))
-          _ <- inProgressReverse.update(_.updated(index, tracker))
+          _ <- queue.update(_.updated(index, tracker))
+          _ <- queueReverse.update(_.updated(index, tracker))
           result <- result.get
         yield result.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _)
       ).guarantee(
-        inProgress.update(_ - index) >> inProgressReverse.update(_ - index)
+        queue.update(_ - index) >> queueReverse.update(_ - index)
       )
 
-    def stream(availability: IO[BitSet], cls: IO[ConnectionClass]): Stream[IO, (Message.Request, Deferred[IO, ByteVector])] =
-      def pickFrom(trackers: List[PieceWorkQueue]): Resource[IO, (Message.Request, Deferred[IO, ByteVector])] =
+    def stream(
+      availability: IO[BitSet],
+      speedClass: IO[SpeedClass]
+    ): Resource[IO, (Message.Request, Deferred[IO, ByteVector])] =
+      def pickFrom(trackers: List[RequestQueue]): Resource[IO, (Message.Request, Deferred[IO, ByteVector])] =
         trackers match
           case Nil =>
             Resource.eval(IO.raiseError(NoPieceAvailable))
@@ -70,11 +75,11 @@ object RequestDispatcher {
 
       def singlePass =
         for
-          cls <- Resource.eval(cls)
+          speedClass <- Resource.eval(speedClass)
           inProgress <- Resource.eval(
-            cls match
-              case ConnectionClass.Fast => inProgress.get
-              case ConnectionClass.Slow => inProgressReverse.get // take piece with the highest index first
+            speedClass match
+              case SpeedClass.Fast => queue.get
+              case SpeedClass.Slow => queueReverse.get // take piece with the highest index first
           )
           availability <- Resource.eval(availability)
           matched = inProgress.collect { case (index, tracker) if availability(index.toInt) => tracker }.toList
@@ -84,9 +89,7 @@ object RequestDispatcher {
       def polling: Resource[IO, (Message.Request, Deferred[IO, ByteVector])] =
         singlePass.recoverWith(_ => Resource.eval(IO.sleep(1.seconds)) >> polling)
 
-      Stream
-        .resource(polling)
-        .repeat
+      polling
   }
 
   class WorkGenerator(pieceLength: Long, totalLength: Long, pieces: ByteVector) {
@@ -134,8 +137,8 @@ object RequestDispatcher {
 
   case object NoPieceAvailable extends Throwable("No piece available")
 
-  trait WorkQueue[Request, Response] {
-    def nextRequest: Resource[IO, (Request, Deferred[IO, Response])]
+  trait WorkQueue[Work, Result] {
+    def nextRequest: Resource[IO, (Work, Deferred[IO, Result])]
   }
 
   object WorkQueue {
@@ -150,7 +153,7 @@ object RequestDispatcher {
         _ <- requests.traverse(requestQueue.offer)
         responses <- IO.ref(Map.empty[Request, Response])
         outstandingCount <- IO.ref(requests.size)
-      yield new WorkQueue {
+      yield new {
         override def nextRequest: Resource[IO, (Request, Deferred[IO, Response])] =
           Resource(
             for

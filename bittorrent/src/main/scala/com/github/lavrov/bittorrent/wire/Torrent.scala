@@ -23,7 +23,7 @@ object Torrent {
 
   def make(
     metadata: TorrentMetadata.Lossless,
-    swarm: Swarm[IO]
+    swarm: Swarm
   )(using logger: Logger[IO]): Resource[IO, Torrent] =
       for
         requestDispatcher <- RequestDispatcher(metadata.parsed)
