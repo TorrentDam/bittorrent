@@ -197,5 +197,4 @@ object Main
     given Filter = Filter.atLeastLevel(LogLevel.Info)
     given Printer = ColorPrinter()
     DefaultLogger.makeIo(Output.fromConsole[IO]).flatMap(body(using _))
-  override def reportFailure(ex: Throwable) = IO.unit
 }
