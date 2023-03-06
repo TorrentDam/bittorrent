@@ -61,10 +61,15 @@ object Swarm {
     yield new Impl(stateRef, connectOrReconnect)
     end for
 
-  private class Impl(stateRef: SignallingRef[IO, Map[PeerInfo, Connection]], connectOrReconnect: Resource[IO, Connection])(using
-    logger: Logger[IO]
-  ) extends Swarm {
-    val connect: Resource[IO, Connection] = connectOrReconnect
+  private class Impl(stateRef: SignallingRef[IO, Map[PeerInfo, Connection]], connectOrReconnect: Resource[IO, Connection]) extends Swarm {
+    val connect: Resource[IO, Connection] =
+      connectOrReconnect.flatTap(connection =>
+        Resource.make {
+          stateRef.update(_ + (connection.info -> connection))
+        } { _ =>
+          stateRef.update(_ - connection.info)
+        }
+      )
     val connected: Connected = new {
       val count: Signal[IO, Int] = stateRef.map(_.size)
       val list: IO[List[Connection]] = stateRef.get.map(_.values.toList)
