@@ -112,14 +112,14 @@ lazy val cmd = project
   .enablePlugins(JavaAppPackaging)
 
 lazy val Versions = new {
-  val cats = "2.8.0"
-  val `cats-effect` = "3.4.4"
-  val ip4s = "3.1.3"
-  val fs2 = "3.4.0"
-  val monocle = "3.1.0"
+  val cats = "2.9.0"
+  val `cats-effect` = "3.4.8"
+  val ip4s = "3.2.0"
+  val fs2 = "3.6.1"
+  val monocle = "3.2.0"
   val `scodec-bits` = "1.1.27"
   val bencode = "1.0.0"
-  val decline = "2.3.0"
+  val decline = "2.4.1"
   val http4s = "1.0.0-M37"
   val woof = "0.4.5"
 }
