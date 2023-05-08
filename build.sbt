@@ -1,6 +1,6 @@
 lazy val root = project.in(file("."))
   .aggregate(
-    common.jvm, common.js, dht, bittorrent, tracker
+    common.jvm, common.js, dht, bittorrent
   )
 
 inThisBuild(
@@ -90,17 +90,6 @@ lazy val dht = project
     )
   )
 
-lazy val tracker = project
-  .dependsOn(common.jvm)
-  .settings(
-    libraryDependencies ++= Seq(
-      Deps.bencode,
-      Deps.`scodec-bits`.value,
-      Deps.`http4s-client`,
-      Deps.`http4s-blaze-client` % Test,
-    )
-  )
-
 lazy val cmd = project
   .dependsOn(dht, bittorrent)
   .settings(
@@ -145,8 +134,5 @@ lazy val Deps = new {
   val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.7")
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
-
-  val `http4s-client` = "org.http4s" %% "http4s-client" % Versions.http4s
-  val `http4s-blaze-client` = "org.http4s" %% "http4s-ember-client" % Versions.http4s
 }
 

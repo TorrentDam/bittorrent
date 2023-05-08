@@ -51,5 +51,4 @@ jobs:
           sbt commonJS/publishSigned
           sbt bittorrent/publishSigned
           sbt dht/publishSigned
-          sbt tracker/publishSigned
           sbt cmd/publishSigned
