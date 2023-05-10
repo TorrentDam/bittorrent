@@ -10,7 +10,7 @@ import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
 import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
 import fs2.concurrent.{Signal, SignallingRef}
-import fs2.io.net.SocketGroup
+import fs2.io.net.{Network, SocketGroup}
 import org.legogroup.woof.{Logger, given}
 import monocle.Lens
 import monocle.macros.GenLens
@@ -77,7 +77,7 @@ object Connection {
 
   def connect(selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
     using
-    socketGroup: SocketGroup[IO],
+    network: Network[IO],
     logger: Logger[IO]
   ): Resource[IO, Connection] =
     for

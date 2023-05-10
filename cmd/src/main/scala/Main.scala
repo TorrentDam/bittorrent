@@ -11,7 +11,6 @@ import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
 import com.monovore.decline.Opts
 import com.monovore.decline.effect.CommandIOApp
 import fs2.io.file.{Flags, Path}
-import fs2.io.net.{DatagramSocketGroup, Network, SocketGroup}
 import fs2.{Chunk, Stream}
 import org.legogroup.woof.{*, given}
 import java.util.concurrent.{Executors, ThreadFactory}
@@ -75,7 +74,6 @@ object Main
               !RoutingTableBootstrap(table, node.client)
               val discovery = !PeerDiscovery.make(table, node.client)
 
-              given SocketGroup[IO] = !Network[IO].socketGroup()
 
               val swarm = !Swarm(
                 discovery.discover(infoHash),
@@ -119,7 +117,6 @@ object Main
                     val discovery = !PeerDiscovery.make(table, node.client)
                     discovery.discover(infoHash)
               }
-              given SocketGroup[IO] = !Network[IO].socketGroup()
               val swarm = !Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash))
               val metadata = !DownloadMetadata(swarm)
               val torrent = !Torrent.make(metadata, swarm)

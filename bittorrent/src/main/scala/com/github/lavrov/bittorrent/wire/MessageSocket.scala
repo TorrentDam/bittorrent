@@ -2,15 +2,17 @@ package com.github.lavrov.bittorrent.wire
 
 import cats.syntax.all.*
 import cats.effect.syntax.all.*
+
 import java.nio.channels.InterruptedByTimeoutException
 import cats.effect.std.Semaphore
-import cats.effect.{Async, Temporal, Resource}
+import cats.effect.{Async, Resource, Temporal}
 import com.github.lavrov.bittorrent.*
 import com.github.lavrov.bittorrent.protocol.message.{Handshake, Message}
 import fs2.Chunk
-import fs2.io.net.{Socket, SocketGroup}
+import fs2.io.net.{Network, Socket, SocketGroup}
 import org.legogroup.woof.{Logger, given}
 import scodec.bits.ByteVector
+
 import scala.concurrent.duration.*
 
 class MessageSocket[F[_]](
@@ -69,11 +71,11 @@ object MessageSocket {
   def connect[F[_]](selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
     using
     F: Async[F],
-    socketGroup: SocketGroup[F],
+    network: Network[F],
     logger: Logger[F]
   ): Resource[F, MessageSocket[F]] = {
     for
-      socket <- socketGroup.client(to = peerInfo.address).timeout(5.seconds)
+      socket <- network.client(to = peerInfo.address).timeout(5.seconds)
       _ <- Resource.make(F.unit)(
         _ => logger.trace(s"Closed socket $peerInfo")
       )
