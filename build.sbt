@@ -92,7 +92,10 @@ lazy val dht = project
   )
 
 lazy val cmd = project
-  .dependsOn(dht, bittorrent)
+  .dependsOn(
+    bittorrent,
+//    dht,
+  )
   .settings(
     libraryDependencies ++= Seq(
       Deps.decline,
