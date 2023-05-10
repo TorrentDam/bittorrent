@@ -41,7 +41,6 @@ object Main
                   .liftTo[IO](new Exception("Malformed info-hash"))
               }
               val table = !RoutingTable[IO](selfId)
-              given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
               val node = !Node(selfId, QueryHandler(selfId, table))
               !RoutingTableBootstrap(table, node.client)
               val discovery = !PeerDiscovery.make(table, node.client)
@@ -72,7 +71,6 @@ object Main
                   .unapply(infoHash0)
                   .liftTo[IO](new Exception("Malformed info-hash"))
               val table = !RoutingTable[IO](selfId)
-              given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
               val node = !Node(selfId, QueryHandler(selfId, table))
               !RoutingTableBootstrap(table, node.client)
               val discovery = !PeerDiscovery.make(table, node.client)
@@ -114,7 +112,6 @@ object Main
                     val table = !Resource.eval {
                       RoutingTable[IO](selfId)
                     }
-                    given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
                     val node = !Node(selfId, QueryHandler(selfId, table))
                     !Resource.eval {
                       RoutingTableBootstrap(table, node.client)

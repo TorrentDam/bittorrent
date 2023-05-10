@@ -2,28 +2,25 @@ package com.github.lavrov.bittorrent.dht
 
 import java.net.InetSocketAddress
 import cats.*
-import cats.effect.{Async, Concurrent, Resource}
+import cats.effect.{Async, Concurrent, IO, Resource}
 import cats.syntax.all.*
 import com.github.torrentdam.bencode.{decode, encode}
 import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Chunk
-import fs2.io.net.{DatagramSocket, DatagramSocketGroup, Datagram}
+import fs2.io.net.{Datagram, DatagramSocket, DatagramSocketGroup, Network}
 import org.legogroup.woof.{Logger, given}
 import com.comcast.ip4s.*
 
-class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(
-  using
-  F: MonadError[F, Throwable]
-) {
+class MessageSocket(socket: DatagramSocket[IO], logger: Logger[IO]) {
   import MessageSocket.Error
 
-  def readMessage: F[(SocketAddress[IpAddress], Message)] =
+  def readMessage: IO[(SocketAddress[IpAddress], Message)] =
     for {
       datagram <- socket.read
-      bc <- F.fromEither(
+      bc <- IO.fromEither(
         decode(datagram.bytes.toBitVector).leftMap(Error.BecodeSerialization.apply)
       )
-      message <- F.fromEither(
+      message <- IO.fromEither(
         summon[BencodeFormat[Message]]
           .read(bc)
           .leftMap(e => Error.MessageFormat(s"Filed to read message from bencode: $bc", e))
@@ -31,7 +28,7 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(
       _ <- logger.trace(s"<<< ${datagram.remote} $message")
     } yield (datagram.remote, message)
 
-  def writeMessage(address: SocketAddress[IpAddress], message: Message): F[Unit] = {
+  def writeMessage(address: SocketAddress[IpAddress], message: Message): IO[Unit] = {
     val bc = summon[BencodeFormat[Message]].write(message).toOption.get
     val bytes = encode(bc)
     val packet = Datagram(address, Chunk.byteVector(bytes.bytes))
@@ -41,13 +38,11 @@ class MessageSocket[F[_]](socket: DatagramSocket[F], logger: Logger[F])(
 
 object MessageSocket {
 
-  def apply[F[_]]()(
+  def apply()(
     using
-    F: Async[F],
-    socketGroup: DatagramSocketGroup[F],
-    logger: Logger[F]
-  ): Resource[F, MessageSocket[F]] =
-    socketGroup
+    logger: Logger[IO]
+  ): Resource[IO, MessageSocket] =
+    Network[IO]
       .openDatagramSocket()
       .map(socket => new MessageSocket(socket, logger))
 
