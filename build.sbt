@@ -5,7 +5,7 @@ lazy val root = project.in(file("."))
 
 inThisBuild(
   List(
-    scalaVersion := "3.2.1",
+    scalaVersion := "3.2.2",
     scalacOptions ++= List(
       "-source:future",
       "-Ykind-projector:underscores",
