@@ -1,6 +1,6 @@
 lazy val root = project.in(file("."))
   .aggregate(
-    common.jvm, common.js, dht, bittorrent
+    common.jvm, common.js, dht, bittorrent, cmd
   )
 
 inThisBuild(
@@ -11,6 +11,7 @@ inThisBuild(
       "-Ykind-projector:underscores",
     ),
     libraryDependencies ++= List(
+      Deps.`dotty-cps`.value,
       Deps.`munit-cats-effect`.value % Test,
     ),
     organization := "io.github.torrentdam.bittorrent",
@@ -111,6 +112,7 @@ lazy val Versions = new {
   val decline = "2.4.1"
   val http4s = "1.0.0-M37"
   val woof = "0.4.5"
+  val `dotty-cps` = "0.9.16"
 }
 
 lazy val Deps = new {
@@ -134,5 +136,7 @@ lazy val Deps = new {
   val `munit-cats-effect` = Def.setting("org.typelevel" %%% "munit-cats-effect-3" % "1.0.7")
 
   val decline = "com.monovore" %% "decline-effect" % Versions.decline
+
+  val `dotty-cps` = Def.setting("com.github.rssh" %%% "cps-async-connect-cats-effect" % Versions.`dotty-cps`)
 }
 
