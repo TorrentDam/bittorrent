@@ -5,7 +5,7 @@ lazy val root = project
     common.js,
     bittorrent.jvm,
     dht.jvm,
-    cmd.jvm
+    cmd.jvm,
   )
 
 inThisBuild(
@@ -60,17 +60,17 @@ inThisBuild(
   )
 )
 
-lazy val common = crossProject(JSPlatform, JVMPlatform)
+lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .settings(
     libraryDependencies ++= Seq(
       Deps.`scodec-bits`.value,
       Deps.`cats-effect`.value,
-      Deps.ip4s.value
+      Deps.ip4s.value,
     )
   )
 
-lazy val bittorrent = crossProject(JVMPlatform)
+lazy val bittorrent = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(common)
   .settings(
@@ -81,11 +81,11 @@ lazy val bittorrent = crossProject(JVMPlatform)
       Deps.`fs2-io`.value,
       Deps.`monocle-core`.value,
       Deps.`monocle-macro`.value,
-      Deps.`woof-core`.value
+      Deps.`woof-core`.value,
     )
   )
 
-lazy val dht = crossProject(JVMPlatform)
+lazy val dht = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(common)
   .settings(
@@ -95,7 +95,7 @@ lazy val dht = crossProject(JVMPlatform)
       Deps.`cats-core`.value,
       Deps.`cats-effect`.value,
       Deps.`fs2-io`.value,
-      Deps.`woof-core`.value
+      Deps.`woof-core`.value,
     )
   )
 
@@ -108,7 +108,7 @@ lazy val cmd = crossProject(JVMPlatform)
   .settings(
     libraryDependencies ++= Seq(
       Deps.decline.value,
-      Deps.`woof-core`.value
+      Deps.`woof-core`.value,
     )
   )
   .enablePlugins(JavaAppPackaging)
