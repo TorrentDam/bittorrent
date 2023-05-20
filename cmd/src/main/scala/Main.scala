@@ -1,24 +1,37 @@
-import cats.syntax.all.*
+import cats.effect.std.Random
 import cats.effect.syntax.all.*
+import cats.effect.ExitCode
+import cats.effect.IO
 import cats.effect.Resource
 import cats.effect.ResourceIO
-import cats.effect.std.Random
-import cats.effect.{ExitCode, IO}
+import cats.syntax.all.*
 import com.comcast.ip4s.SocketAddress
 import com.github.lavrov.bittorrent.dht.*
-import com.github.lavrov.bittorrent.wire.{Connection, Download, DownloadMetadata, RequestDispatcher, Swarm, Torrent}
-import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo}
-import com.monovore.decline.Opts
+import com.github.lavrov.bittorrent.wire.Connection
+import com.github.lavrov.bittorrent.wire.Download
+import com.github.lavrov.bittorrent.wire.DownloadMetadata
+import com.github.lavrov.bittorrent.wire.RequestDispatcher
+import com.github.lavrov.bittorrent.wire.Swarm
+import com.github.lavrov.bittorrent.wire.Torrent
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerId
+import com.github.lavrov.bittorrent.PeerInfo
 import com.monovore.decline.effect.CommandIOApp
-import fs2.io.file.{Flags, Path}
-import fs2.{Chunk, Stream}
-import org.legogroup.woof.{*, given}
-import java.util.concurrent.{Executors, ThreadFactory}
-import scala.concurrent.duration.DurationInt
-
-import cps.{async, await}
+import com.monovore.decline.Opts
+import cps.async
+import cps.await
+import cps.monads.catsEffect.asyncScope
+import cps.monads.catsEffect.given
 import cps.syntax.*
-import cps.monads.catsEffect.{asyncScope, given}
+import fs2.io.file.Flags
+import fs2.io.file.Path
+import fs2.Chunk
+import fs2.Stream
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
+import org.legogroup.woof.*
+import org.legogroup.woof.given
+import scala.concurrent.duration.DurationInt
 
 object Main
     extends CommandIOApp(
@@ -73,7 +86,6 @@ object Main
               val node = !Node(selfId, QueryHandler(selfId, table))
               !RoutingTableBootstrap(table, node.client)
               val discovery = !PeerDiscovery.make(table, node.client)
-
 
               val swarm = !Swarm(
                 discovery.discover(infoHash),

@@ -1,17 +1,18 @@
 package com.github.lavrov.bittorrent.dht
 
 import cats.*
-import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.kernel.Deferred
+import cats.effect.kernel.Ref
 import cats.effect.kernel.Temporal
 import cats.effect.syntax.all.*
-import cats.effect.{Concurrent, Resource}
+import cats.effect.Concurrent
+import cats.effect.Resource
 import cats.syntax.all.*
+import com.comcast.ip4s.*
 import com.github.lavrov.bittorrent.dht.RequestResponse.Timeout
 import com.github.torrentdam.bencode.Bencode
-import scodec.bits.ByteVector
-import com.comcast.ip4s.*
-
 import scala.concurrent.duration.*
+import scodec.bits.ByteVector
 
 trait RequestResponse[F[_]] {
   def sendQuery(address: SocketAddress[IpAddress], query: Query): F[Response]
@@ -25,9 +26,8 @@ object RequestResponse {
     receiveMessage: F[
       (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ]
-  )(
-    using
-    F: Temporal[F],
+  )(using
+    F: Temporal[F]
   ): Resource[F, RequestResponse[F]] =
     Resource {
       for {
@@ -60,8 +60,7 @@ object RequestResponse {
       (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
     ],
     continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
-  )(
-    using
+  )(using
     F: Monad[F]
   ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
@@ -99,8 +98,9 @@ object CallbackRegistry {
 
   private class Impl[F[_]](
     ref: Ref[F, Map[ByteVector, Either[Throwable, Response] => F[Boolean]]]
-  )(using F: Temporal[F]) extends CallbackRegistry[F] {
-    def add(transactionId: ByteVector): F[Either[Throwable, Response]] ={
+  )(using F: Temporal[F])
+      extends CallbackRegistry[F] {
+    def add(transactionId: ByteVector): F[Either[Throwable, Response]] = {
       F.deferred[Either[Throwable, Response]].flatMap { deferred =>
         val update =
           ref.update { map =>
@@ -118,7 +118,7 @@ object CallbackRegistry {
       ref.get.flatMap { map =>
         map.get(transactionId) match {
           case Some(callback) => callback(result)
-          case None => false.pure[F]
+          case None           => false.pure[F]
         }
       }
   }

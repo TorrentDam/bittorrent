@@ -1,12 +1,13 @@
 package com.github.lavrov.bittorrent.dht
 
 import cats.implicits.*
-import com.github.torrentdam.bencode.Bencode
-import com.github.torrentdam.bencode.format.*
-import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
-import scodec.Codec
-import scodec.bits.ByteVector
 import com.comcast.ip4s.*
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerInfo
+import com.github.torrentdam.bencode.format.*
+import com.github.torrentdam.bencode.Bencode
+import scodec.bits.ByteVector
+import scodec.Codec
 
 enum Message:
   case QueryMessage(transactionId: ByteVector, query: Query)
@@ -49,22 +50,22 @@ object Message {
     field[(NodeId, NodeId)]("a")(
       (field[NodeId]("id"), field[NodeId]("target")).tupled
     )
-    ).imap[Query.SampleInfoHashes](Query.SampleInfoHashes.apply)(v => (v.queryingNodeId, v.target))
+  ).imap[Query.SampleInfoHashes](Query.SampleInfoHashes.apply)(v => (v.queryingNodeId, v.target))
 
   val QueryFormat: BencodeFormat[Query] =
     field[String]("q").choose(
       {
-        case "ping" => PingQueryFormat.upcast
-        case "find_node" => FindNodeQueryFormat.upcast
-        case "get_peers" => GetPeersQueryFormat.upcast
-        case "announce_peer" => AnnouncePeerQueryFormat.upcast
+        case "ping"              => PingQueryFormat.upcast
+        case "find_node"         => FindNodeQueryFormat.upcast
+        case "get_peers"         => GetPeersQueryFormat.upcast
+        case "announce_peer"     => AnnouncePeerQueryFormat.upcast
         case "sample_infohashes" => SampleInfoHashesQueryFormat.upcast
       },
       {
-        case _: Query.Ping => "ping"
-        case _: Query.FindNode => "find_node"
-        case _: Query.GetPeers => "get_peers"
-        case _: Query.AnnouncePeer => "announce_peer"
+        case _: Query.Ping             => "ping"
+        case _: Query.FindNode         => "find_node"
+        case _: Query.GetPeers         => "get_peers"
+        case _: Query.AnnouncePeer     => "announce_peer"
         case _: Query.SampleInfoHashes => "sample_infohashes"
       }
     )
@@ -77,12 +78,11 @@ object Message {
   val InetSocketAddressCodec: Codec[SocketAddress[IpAddress]] = {
     import scodec.codecs.*
     (bytes(4) :: bytes(2)).xmap(
-      {
-        case (address, port) =>
-          SocketAddress(
-            IpAddress.fromBytes(address.toArray).get,
-            Port.fromInt(port.toInt(signed = false)).get
-          )
+      { case (address, port) =>
+        SocketAddress(
+          IpAddress.fromBytes(address.toArray).get,
+          Port.fromInt(port.toInt(signed = false)).get
+        )
       },
       v => (ByteVector(v.host.toBytes), ByteVector.fromInt(v.port.value, 2))
     )
@@ -92,9 +92,8 @@ object Message {
     import scodec.codecs.*
     list(
       (bytes(20) :: InetSocketAddressCodec).xmap(
-        {
-          case (id, address) =>
-            NodeInfo(NodeId(id), address)
+        { case (id, address) =>
+          NodeInfo(NodeId(id), address)
         },
         v => (v.id.bytes, v.address)
       )
@@ -127,20 +126,21 @@ object Message {
     field[NodeId]("id"),
     fieldOptional[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec)),
     field[List[InfoHash]]("samples")(encodedString(CompactInfoHashCodec))
-    ).imapN[Response.SampleInfoHashes](Response.SampleInfoHashes.apply)(v => (v.id, v.nodes, v.samples))
+  ).imapN[Response.SampleInfoHashes](Response.SampleInfoHashes.apply)(v => (v.id, v.nodes, v.samples))
 
   val ResponseFormat: BencodeFormat[Response] =
     BencodeFormat(
       BencodeFormat.dictionaryFormat.read.flatMap {
         case Bencode.BDictionary(dictionary) if dictionary.contains("values") => PeersResponseFormat.read.widen
-        case Bencode.BDictionary(dictionary) if dictionary.contains("samples") => SampleInfoHashesResponseFormat.read.widen
+        case Bencode.BDictionary(dictionary) if dictionary.contains("samples") =>
+          SampleInfoHashesResponseFormat.read.widen
         case Bencode.BDictionary(dictionary) if dictionary.contains("nodes") => NodesResponseFormat.read.widen
-        case _ => PingResponseFormat.read.widen
+        case _                                                               => PingResponseFormat.read.widen
       },
       BencodeWriter {
-        case value: Response.Peers => PeersResponseFormat.write(value)
-        case value: Response.Nodes => NodesResponseFormat.write(value)
-        case value: Response.Ping => PingResponseFormat.write(value)
+        case value: Response.Peers            => PeersResponseFormat.write(value)
+        case value: Response.Nodes            => NodesResponseFormat.write(value)
+        case value: Response.Ping             => PingResponseFormat.write(value)
         case value: Response.SampleInfoHashes => SampleInfoHashesResponseFormat.write(value)
       }
     )
@@ -165,9 +165,9 @@ object Message {
         case "e" => ErrorMessageFormat.upcast
       },
       {
-        case _: Message.QueryMessage => "q"
+        case _: Message.QueryMessage    => "q"
         case _: Message.ResponseMessage => "r"
-        case _: Message.ErrorMessage => "e"
+        case _: Message.ErrorMessage    => "e"
       }
     )
 }

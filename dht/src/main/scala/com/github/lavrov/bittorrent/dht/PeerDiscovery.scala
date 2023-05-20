@@ -1,15 +1,20 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.Show.Shown
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.{Concurrent, IO, Resource}
+import cats.effect.kernel.Deferred
+import cats.effect.kernel.Ref
+import cats.effect.Concurrent
+import cats.effect.IO
+import cats.effect.Resource
 import cats.instances.all.*
 import cats.syntax.all.*
-import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
+import cats.Show.Shown
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerInfo
 import fs2.Stream
-import org.legogroup.woof.{Logger, given}
-import Logger.withLogContext
+import org.legogroup.woof.given
+import org.legogroup.woof.Logger
 import scala.concurrent.duration.DurationInt
+import Logger.withLogContext
 
 trait PeerDiscovery {
 
@@ -21,8 +26,7 @@ object PeerDiscovery {
   def make(
     routingTable: RoutingTable[IO],
     dhtClient: Client[IO]
-  )(
-    using
+  )(using
     logger: Logger[IO]
   ): Resource[IO, PeerDiscovery] =
     Resource.pure[IO, PeerDiscovery] {
@@ -50,7 +54,7 @@ object PeerDiscovery {
             .flatten
             .onFinalizeCase {
               case Resource.ExitCase.Errored(e) => logger.error(s"Discovery failed with ${e.getMessage}")
-              case _ => IO.unit
+              case _                            => IO.unit
             }
         }
       }
@@ -61,14 +65,14 @@ object PeerDiscovery {
     getPeers: (NodeInfo, InfoHash) => IO[Either[Response.Nodes, Response.Peers]],
     state: DiscoveryState,
     parallelism: Int = 10
-  )(
-    using logger: Logger[IO]
+  )(using
+    logger: Logger[IO]
   ): Stream[IO, PeerInfo] = {
 
     Stream
       .repeatEval(state.next)
       .parEvalMapUnordered(parallelism) { nodeInfo =>
-         getPeers(nodeInfo, infoHash).timeout(5.seconds).attempt <* logger.trace(s"Get peers $nodeInfo")
+        getPeers(nodeInfo, infoHash).timeout(5.seconds).attempt <* logger.trace(s"Get peers $nodeInfo")
       }
       .flatMap {
         case Right(response) =>
@@ -91,36 +95,33 @@ object PeerDiscovery {
     def next: IO[NodeInfo] =
       IO.deferred[NodeInfo]
         .flatMap { deferred =>
-            ref.modify { state =>
-              state.nodesToTry match {
-                case x :: xs => (state.copy(nodesToTry = xs), x.pure[IO])
-                case _ =>
-                  (state.copy(waiters = deferred :: state.waiters), deferred.get)
-              }
-            }.flatten
+          ref.modify { state =>
+            state.nodesToTry match {
+              case x :: xs => (state.copy(nodesToTry = xs), x.pure[IO])
+              case _ =>
+                (state.copy(waiters = deferred :: state.waiters), deferred.get)
+            }
+          }.flatten
         }
 
     def addNodes(nodes: List[NodeInfo]): IO[Unit] = {
-      ref
-        .modify { state =>
-          val (seenNodes, newNodes) = {
-            val newNodes = nodes.filterNot(state.seenNodes)
-            (state.seenNodes ++ newNodes, newNodes)
-          }
-          val nodesToTry = (newNodes ++ state.nodesToTry).sortBy(n => NodeId.distance(n.id, infoHash))
-          val waiters = state.waiters.drop(nodesToTry.size)
-          val newState =
-            state.copy(
-              nodesToTry = nodesToTry.drop(state.waiters.size),
-              seenNodes = seenNodes,
-              waiters = waiters
-            )
-          val io = state.waiters.zip(nodesToTry)
-            .map { case (deferred, nodeInfo) => deferred.complete(nodeInfo) }
-            .sequence_
-          (newState, io)
+      ref.modify { state =>
+        val (seenNodes, newNodes) = {
+          val newNodes = nodes.filterNot(state.seenNodes)
+          (state.seenNodes ++ newNodes, newNodes)
         }
-        .flatten
+        val nodesToTry = (newNodes ++ state.nodesToTry).sortBy(n => NodeId.distance(n.id, infoHash))
+        val waiters = state.waiters.drop(nodesToTry.size)
+        val newState =
+          state.copy(
+            nodesToTry = nodesToTry.drop(state.waiters.size),
+            seenNodes = seenNodes,
+            waiters = waiters
+          )
+        val io =
+          state.waiters.zip(nodesToTry).map { case (deferred, nodeInfo) => deferred.complete(nodeInfo) }.sequence_
+        (newState, io)
+      }.flatten
     }
 
     type NewPeers = List[PeerInfo]

@@ -1,11 +1,11 @@
 package com.github.lavrov.bittorrent
 
-import java.time.Instant
-
-import com.github.torrentdam.bencode
-import com.github.torrentdam.bencode.{Bencode, BencodeFormatException}
-import com.github.torrentdam.bencode.format.*
 import cats.implicits.*
+import com.github.torrentdam.bencode
+import com.github.torrentdam.bencode.format.*
+import com.github.torrentdam.bencode.Bencode
+import com.github.torrentdam.bencode.BencodeFormatException
+import java.time.Instant
 import scodec.bits.ByteVector
 
 case class TorrentMetadata(
@@ -32,7 +32,7 @@ object TorrentMetadata {
     def to(name: String, pieceLength: Long, pieces: ByteVector, length: Option[Long], filesOpt: Option[List[File]]) = {
       val files = length match {
         case Some(length) => List(File(length, List(name)))
-        case None => filesOpt.combineAll
+        case None         => filesOpt.combineAll
       }
       TorrentMetadata(name, pieceLength, pieces, files)
     }

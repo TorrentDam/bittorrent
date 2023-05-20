@@ -1,13 +1,14 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.implicits.*
+import cats.effect.kernel.Concurrent
+import cats.effect.kernel.Ref
 import cats.effect.Sync
-import cats.effect.kernel.{Concurrent, Ref}
-import com.github.lavrov.bittorrent.{InfoHash, PeerInfo}
-import scodec.bits.ByteVector
+import cats.implicits.*
 import com.comcast.ip4s.*
-
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerInfo
 import scala.collection.immutable.ListMap
+import scodec.bits.ByteVector
 
 trait RoutingTable[F[_]] {
 
@@ -59,14 +60,11 @@ object RoutingTable {
                 val splitBucket: TreeNode =
                   Split(center, Bucket(from, center - 1, ListMap.empty), Bucket(center, until, ListMap.empty))
                 nodes.view.map(NodeInfo.apply.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
-              }
-              else {
+              } else {
                 Bucket(from, until, nodes.init)
               }
             tree.insert(node, selfId)
-          }
-          else
-            Bucket(from, until, nodes.updated(node.id, node.address))
+          } else Bucket(from, until, nodes.updated(node.id, node.address))
       }
 
     def remove(nodeId: NodeId): TreeNode =
@@ -131,7 +129,7 @@ object RoutingTable {
         peers.update { map =>
           map.updatedWith(infoHash) {
             case Some(set) => Some(set + peerInfo)
-            case None => Some(Set(peerInfo))
+            case None      => Some(Set(peerInfo))
           }
         }
 

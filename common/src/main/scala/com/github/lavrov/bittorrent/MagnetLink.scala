@@ -11,7 +11,7 @@ object MagnetLink {
   def fromString(source: String): Option[MagnetLink] =
     source match
       case s"magnet:?$query" => fromQueryString(query)
-      case _ => None
+      case _                 => None
 
   private def fromQueryString(str: String) =
     val params = parseQueryString(str)
@@ -26,7 +26,7 @@ object MagnetLink {
   private def getInfoHash(query: Query): Option[InfoHash] =
     query.get("xt").flatMap {
       case List(s"urn:btih:${InfoHash.fromString(ih)}") => Some(ih)
-      case _ => None
+      case _                                            => None
     }
 
   private def getDisplayName(query: Query): Option[String] =

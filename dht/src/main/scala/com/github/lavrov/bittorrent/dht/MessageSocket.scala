@@ -1,15 +1,23 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
 import cats.*
-import cats.effect.{Async, Concurrent, IO, Resource}
+import cats.effect.Async
+import cats.effect.Concurrent
+import cats.effect.IO
+import cats.effect.Resource
 import cats.syntax.all.*
-import com.github.torrentdam.bencode.{decode, encode}
-import com.github.torrentdam.bencode.format.BencodeFormat
-import fs2.Chunk
-import fs2.io.net.{Datagram, DatagramSocket, DatagramSocketGroup, Network}
-import org.legogroup.woof.{Logger, given}
 import com.comcast.ip4s.*
+import com.github.torrentdam.bencode.decode
+import com.github.torrentdam.bencode.encode
+import com.github.torrentdam.bencode.format.BencodeFormat
+import fs2.io.net.Datagram
+import fs2.io.net.DatagramSocket
+import fs2.io.net.DatagramSocketGroup
+import fs2.io.net.Network
+import fs2.Chunk
+import java.net.InetSocketAddress
+import org.legogroup.woof.given
+import org.legogroup.woof.Logger
 
 class MessageSocket(socket: DatagramSocket[IO], logger: Logger[IO]) {
   import MessageSocket.Error
@@ -38,8 +46,7 @@ class MessageSocket(socket: DatagramSocket[IO], logger: Logger[IO]) {
 
 object MessageSocket {
 
-  def apply()(
-    using
+  def apply()(using
     logger: Logger[IO]
   ): Resource[IO, MessageSocket] =
     Network[IO]

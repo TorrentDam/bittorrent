@@ -1,13 +1,13 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.effect.{IO, Resource}
 import cats.effect.std.CountDownLatch
 import cats.effect.syntax.temporal.genTemporalOps_
+import cats.effect.IO
+import cats.effect.Resource
 import com.github.lavrov.bittorrent.wire.RequestDispatcher.WorkQueue
 import com.github.lavrov.bittorrent.wire.RequestDispatcher.WorkQueue.EmptyQueue
-import scodec.bits.ByteVector
-
 import scala.concurrent.duration.DurationInt
+import scodec.bits.ByteVector
 
 class WorkQueueSuite extends munit.CatsEffectSuite {
 
@@ -15,8 +15,7 @@ class WorkQueueSuite extends munit.CatsEffectSuite {
     for
       workQueue <- WorkQueue(Seq(1), _ => IO.unit)
       request <- workQueue.nextRequest.use((request, _) => IO.pure(request))
-    yield
-      assertEquals(request, 1)
+    yield assertEquals(request, 1)
   )
 
   test("put request back into queue if it was not completed")(

@@ -1,23 +1,31 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.*
-import cats.implicits.*
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.syntax.all.*
-import cats.effect.{IO, Outcome, Resource}
+import cats.effect.kernel.Deferred
+import cats.effect.kernel.Ref
 import cats.effect.std.Queue
+import cats.effect.syntax.all.*
+import cats.effect.IO
+import cats.effect.Outcome
+import cats.effect.Resource
+import cats.implicits.*
 import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.wire.ExtensionHandler.ExtensionApi
-import com.github.lavrov.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentMetadata}
-import fs2.concurrent.{Signal, SignallingRef}
-import fs2.io.net.{Network, SocketGroup}
-import org.legogroup.woof.{Logger, given}
-import monocle.Lens
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerId
+import com.github.lavrov.bittorrent.PeerInfo
+import com.github.lavrov.bittorrent.TorrentMetadata
+import fs2.concurrent.Signal
+import fs2.concurrent.SignallingRef
+import fs2.io.net.Network
+import fs2.io.net.SocketGroup
 import monocle.macros.GenLens
-import scodec.bits.ByteVector
-
+import monocle.Lens
+import org.legogroup.woof.given
+import org.legogroup.woof.Logger
 import scala.collection.immutable.BitSet
 import scala.concurrent.duration.*
+import scodec.bits.ByteVector
 
 trait Connection {
   def info: PeerInfo
@@ -44,8 +52,7 @@ object Connection {
   }
   object RequestRegistry {
     def apply(): Resource[IO, RequestRegistry] =
-      for
-        stateRef <- Resource.eval(
+      for stateRef <- Resource.eval(
           IO.ref(Map.empty[Message.Request, Either[Throwable, ByteVector] => IO[Boolean]])
         )
 //        _ <- Resource.onFinalize(
@@ -75,8 +82,7 @@ object Connection {
       }
   }
 
-  def connect(selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(
-    using
+  def connect(selfId: PeerId, peerInfo: PeerInfo, infoHash: InfoHash)(using
     network: Network[IO],
     logger: Logger[IO]
   ): Resource[IO, Connection] =
@@ -97,52 +103,48 @@ object Connection {
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
       closed <- Resource.eval(IO.deferred[Either[Throwable, Unit]])
       _ <-
-          (
-            receiveLoop(
-              requestRegistry,
-              bitfieldRef.update,
-              chokedStatusRef.set,
-              updateLastMessageTime,
-              socket,
-              extensionHandler
-            ),
-            sendLoop(sendQueue, socket),
-            keepAliveLoop(stateRef, sendQueue.offer)
+        (
+          receiveLoop(
+            requestRegistry,
+            bitfieldRef.update,
+            chokedStatusRef.set,
+            updateLastMessageTime,
+            socket,
+            extensionHandler
+          ),
+          sendLoop(sendQueue, socket),
+          keepAliveLoop(stateRef, sendQueue.offer)
+        ).parTupled
+          .guarantee(
+            closed.complete(Right(())).void
           )
-            .parTupled
-            .guarantee(
-              closed.complete(Right(())).void
-            )
-            .background
-    yield
-      new Connection {
-        def info: PeerInfo = peerInfo
-        def extensionProtocol: Boolean = socket.handshake.extensionProtocol
+          .background
+    yield new Connection {
+      def info: PeerInfo = peerInfo
+      def extensionProtocol: Boolean = socket.handshake.extensionProtocol
 
-        def interested: IO[Unit] =
-          for
-            interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
-            _ <- IO.whenA(!interested)(sendQueue.offer(Message.Interested))
-          yield ()
+      def interested: IO[Unit] =
+        for
+          interested <- stateRef.modify(s => (State.interested.replace(true)(s), s.interested))
+          _ <- IO.whenA(!interested)(sendQueue.offer(Message.Interested))
+        yield ()
 
-        def request(request: Message.Request): IO[ByteVector] =
-          sendQueue.offer(request) >>
-          requestRegistry.register(request).flatMap { bytes =>
-            if bytes.length == request.length
-            then
-              bytes.pure[IO]
-            else
-              Error.InvalidBlockLength(request, bytes.length).raiseError[IO, ByteVector]
-          }
+      def request(request: Message.Request): IO[ByteVector] =
+        sendQueue.offer(request) >>
+        requestRegistry.register(request).flatMap { bytes =>
+          if bytes.length == request.length
+          then bytes.pure[IO]
+          else Error.InvalidBlockLength(request, bytes.length).raiseError[IO, ByteVector]
+        }
 
-        def choked: Signal[IO, Boolean] = chokedStatusRef
+      def choked: Signal[IO, Boolean] = chokedStatusRef
 
-        def availability: Signal[IO, BitSet] = bitfieldRef
+      def availability: Signal[IO, BitSet] = bitfieldRef
 
-        def disconnected: IO[Either[Throwable, Unit]] = closed.get
+      def disconnected: IO[Either[Throwable, Unit]] = closed.get
 
-        def extensionApi: IO[ExtensionApi[IO]] = initExtension.init
-      }
+      def extensionApi: IO[ExtensionApi[IO]] = initExtension.init
+    }
     end for
 
   case class ConnectionClosed() extends Throwable
@@ -167,8 +169,8 @@ object Connection {
         case Message.Have(index) =>
           updateBitfield(_ incl index.toInt)
         case Message.Bitfield(bytes) =>
-          val indices = bytes.toBitVector.toIndexedSeq.zipWithIndex.collect {
-            case (true, i) => i
+          val indices = bytes.toBitVector.toIndexedSeq.zipWithIndex.collect { case (true, i) =>
+            i
           }
           updateBitfield(_ => BitSet(indices*))
         case m: Message.Extended =>

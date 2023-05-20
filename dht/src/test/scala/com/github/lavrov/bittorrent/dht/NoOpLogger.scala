@@ -1,9 +1,11 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.syntax.all.given
 import cats.effect.IO
+import cats.syntax.all.given
+import org.legogroup.woof.LogInfo
+import org.legogroup.woof.LogLevel
+import org.legogroup.woof.Logger
 import org.legogroup.woof.Logger.StringLocal
-import org.legogroup.woof.{LogInfo, LogLevel, Logger}
 
 class NoOpLogger extends Logger[IO] {
   val stringLocal: StringLocal[IO] = NoOpLocal()

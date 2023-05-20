@@ -1,12 +1,13 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.effect.{IO, SyncIO}
 import cats.effect.kernel.Ref
-import com.github.lavrov.bittorrent.PeerInfo
-import com.github.lavrov.bittorrent.InfoHash
-import scodec.bits.ByteVector
+import cats.effect.IO
+import cats.effect.SyncIO
 import com.comcast.ip4s.*
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerInfo
 import org.legogroup.woof.Logger
+import scodec.bits.ByteVector
 
 class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
@@ -66,13 +67,12 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
 
     for {
       state <- PeerDiscovery.DiscoveryState(
-        initialNodes =
-          List(
-            NodeInfo(
-              nodeId("a"),
-              SocketAddress(ip"1.1.1.1", port"1")
-            )
-          ),
+        initialNodes = List(
+          NodeInfo(
+            nodeId("a"),
+            SocketAddress(ip"1.1.1.1", port"1")
+          )
+        ),
         infoHash = infoHash
       )
       list <- PeerDiscovery.start(infoHash, getPeers, state, 1).take(1).compile.toList

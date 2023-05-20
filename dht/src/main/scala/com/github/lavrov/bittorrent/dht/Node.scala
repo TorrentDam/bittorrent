@@ -1,13 +1,18 @@
 package com.github.lavrov.bittorrent.dht
 
-import java.net.InetSocketAddress
-import cats.implicits.*
 import cats.effect.implicits.*
-import cats.effect.{Async, IO, Resource, Sync}
-import cats.effect.std.{Queue, Random}
-import fs2.io.net.DatagramSocketGroup
+import cats.effect.std.Queue
+import cats.effect.std.Random
+import cats.effect.Async
+import cats.effect.IO
+import cats.effect.Resource
+import cats.effect.Sync
+import cats.implicits.*
 import com.comcast.ip4s.*
-import org.legogroup.woof.{Logger, given}
+import fs2.io.net.DatagramSocketGroup
+import java.net.InetSocketAddress
+import org.legogroup.woof.given
+import org.legogroup.woof.Logger
 import scodec.bits.ByteVector
 
 trait Node {
@@ -19,8 +24,7 @@ object Node {
   def apply(
     selfId: NodeId,
     queryHandler: QueryHandler[IO]
-  )(
-    using
+  )(using
     random: Random[IO],
     logger: Logger[IO]
   ): Resource[IO, Node] =
@@ -48,17 +52,15 @@ object Node {
                     messageSocket.writeMessage(a, responseMessage)
                   }
                 case (a, m: Message.ResponseMessage) => responses.offer((a, m.asRight))
-                case (a, m: Message.ErrorMessage) => responses.offer((a, m.asLeft))
+                case (a, m: Message.ErrorMessage)    => responses.offer((a, m.asLeft))
               }
-              .recoverWith {
-                case e: Throwable =>
-                  logger.trace(s"Failed to read message: $e")
+              .recoverWith { case e: Throwable =>
+                logger.trace(s"Failed to read message: $e")
               }
               .foreverM
               .start
           )(_.cancel)
-    yield
-      new Node {
-        def client: Client[IO] = client0
-      }
+    yield new Node {
+      def client: Client[IO] = client0
+    }
 }

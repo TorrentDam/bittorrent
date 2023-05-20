@@ -1,9 +1,9 @@
 package com.github.lavrov.bittorrent.dht
 
-import cats.Monad
 import cats.implicits.*
-import com.github.lavrov.bittorrent.PeerInfo
+import cats.Monad
 import com.comcast.ip4s.*
+import com.github.lavrov.bittorrent.PeerInfo
 
 trait QueryHandler[F[_]] {
   def apply(address: SocketAddress[IpAddress], query: Query): F[Response]

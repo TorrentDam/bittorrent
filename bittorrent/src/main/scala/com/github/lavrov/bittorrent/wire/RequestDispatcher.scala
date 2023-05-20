@@ -1,26 +1,28 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.implicits.*
 import cats.data.Chain
-import cats.effect.IO
-import cats.effect.Resource
-import cats.effect.Ref
 import cats.effect.kernel.Deferred
-import cats.effect.std.Semaphore
 import cats.effect.std.Dequeue
-import com.github.lavrov.bittorrent.{PeerInfo, TorrentMetadata}
-import com.github.lavrov.bittorrent.protocol.message.Message
-import fs2.Stream
-import fs2.concurrent.{Signal, SignallingRef}
-import org.legogroup.woof.{Logger, given}
-import scodec.bits.ByteVector
+import cats.effect.std.Semaphore
+import cats.effect.IO
+import cats.effect.Ref
+import cats.effect.Resource
+import cats.implicits.*
 import com.comcast.ip4s.*
+import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.protocol.message.Message.Request
-
+import com.github.lavrov.bittorrent.PeerInfo
+import com.github.lavrov.bittorrent.TorrentMetadata
+import fs2.concurrent.Signal
+import fs2.concurrent.SignallingRef
+import fs2.Stream
 import java.util.UUID
+import org.legogroup.woof.given
+import org.legogroup.woof.Logger
 import scala.collection.immutable.BitSet
 import scala.collection.immutable.TreeMap
 import scala.concurrent.duration.DurationInt
+import scodec.bits.ByteVector
 
 trait RequestDispatcher {
   def downloadPiece(index: Long): IO[ByteVector]

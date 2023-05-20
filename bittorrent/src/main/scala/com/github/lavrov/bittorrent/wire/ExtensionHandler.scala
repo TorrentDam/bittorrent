@@ -1,16 +1,22 @@
 package com.github.lavrov.bittorrent.wire
 
-import cats.implicits.*
-import cats.{Applicative, Monad, MonadError}
-import cats.effect.{Async, Concurrent, Sync}
-import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.kernel.Deferred
+import cats.effect.kernel.Ref
 import cats.effect.std.Queue
+import cats.effect.Async
+import cats.effect.Concurrent
+import cats.effect.Sync
+import cats.implicits.*
+import cats.Applicative
+import cats.Monad
+import cats.MonadError
+import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
+import com.github.lavrov.bittorrent.protocol.extensions.ExtensionHandshake
+import com.github.lavrov.bittorrent.protocol.extensions.Extensions
+import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
+import com.github.lavrov.bittorrent.protocol.message.Message
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
-import com.github.lavrov.bittorrent.protocol.extensions.Extensions.MessageId
-import com.github.lavrov.bittorrent.protocol.extensions.metadata.UtMessage
-import com.github.lavrov.bittorrent.protocol.extensions.{ExtensionHandshake, Extensions}
-import com.github.lavrov.bittorrent.protocol.message.Message
 import fs2.Stream
 import scodec.bits.ByteVector
 
@@ -88,8 +94,7 @@ object ExtensionHandler {
       utMetadata: UtMetadata.Create[F],
       handshake: ExtensionHandshake
     )(using F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
-      for
-        (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
+      for (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
       yield
 
         val handler: ExtensionHandler[F] = {
@@ -136,8 +141,7 @@ object ExtensionHandler {
 
         (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled match {
           case Some((messageId, size)) =>
-            for
-              receiveQueue <- Queue.bounded[F, UtMessage](1)
+            for receiveQueue <- Queue.bounded[F, UtMessage](1)
             yield
               def sendUtMessage(utMessage: UtMessage) = {
                 val message: Message.Extended = Message.Extended(messageId, UtMessage.encode(utMessage))

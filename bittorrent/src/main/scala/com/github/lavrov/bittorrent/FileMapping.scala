@@ -1,6 +1,7 @@
 package com.github.lavrov.bittorrent
 
-import com.github.lavrov.bittorrent.FileMapping.{FileSpan, PieceInFile}
+import com.github.lavrov.bittorrent.FileMapping.FileSpan
+import com.github.lavrov.bittorrent.FileMapping.PieceInFile
 import com.github.lavrov.bittorrent.TorrentMetadata
 
 case class FileMapping(value: List[FileSpan], pieceLength: Long) {
@@ -39,15 +40,12 @@ object FileMapping {
     }
     case class State(beginIndex: Long, beginOffset: Long, spans: List[FileSpan])
     val spans =
-      torrentMetadata
-        .files
-        .zipWithIndex
-      .foldLeft(State(0L, 0L, Nil)) {
-        case (state, (file, index)) =>
+      torrentMetadata.files.zipWithIndex
+        .foldLeft(State(0L, 0L, Nil)) { case (state, (file, index)) =>
           val span = forFile(index, state.beginIndex, state.beginOffset, file.length)
           State(span.endIndex, span.endOffset, span :: state.spans)
-      }
-      .spans
-      .reverse
+        }
+        .spans
+        .reverse
     FileMapping(spans, torrentMetadata.pieceLength)
 }

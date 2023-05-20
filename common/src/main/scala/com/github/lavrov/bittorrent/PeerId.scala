@@ -1,8 +1,8 @@
 package com.github.lavrov.bittorrent
 
+import cats.effect.std.Random
 import cats.syntax.all.*
 import cats.Monad
-import cats.effect.std.Random
 import scodec.bits.ByteVector
 
 final case class PeerId(bytes: ByteVector) {
@@ -23,8 +23,6 @@ object PeerId {
   }
 
   def generate[F[_]](using Random[F], Monad[F]): F[PeerId] =
-    for
-      bytes <- Random[F].nextBytes(6)
-    yield
-      PeerId(bytes)
+    for bytes <- Random[F].nextBytes(6)
+    yield PeerId(bytes)
 }

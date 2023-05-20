@@ -1,9 +1,9 @@
 package com.github.lavrov.bittorrent.protocol.message
 
-import com.github.lavrov.bittorrent.{InfoHash, PeerId}
-import scodec.bits.ByteVector
-
+import com.github.lavrov.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.PeerId
 import scala.util.chaining.*
+import scodec.bits.ByteVector
 
 class HandshakeSpec extends munit.FunSuite {
 
@@ -19,17 +19,15 @@ class HandshakeSpec extends munit.FunSuite {
         case Some(bits) =>
           bits
             .splitAt(20 * 8)
-            .pipe {
-              case (_, bits) =>
-                bits.splitAt(64)
+            .pipe { case (_, bits) =>
+              bits.splitAt(64)
             }
-            .pipe {
-              case (reserved, bits) =>
-                assert(reserved.get(42) == false)
-                assert(reserved.get(43) == true)
-                assert(reserved.get(44) == false)
+            .pipe { case (reserved, bits) =>
+              assert(reserved.get(42) == false)
+              assert(reserved.get(43) == true)
+              assert(reserved.get(44) == false)
             }
-            true
+          true
         case _ => false
       }
     )

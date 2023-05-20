@@ -1,16 +1,20 @@
 package com.github.lavrov.bittorrent.wire
 
 import cats.*
-import cats.implicits.*
 import cats.effect.implicits.*
-import cats.effect.{IO, Outcome, Resource}
 import cats.effect.std.Queue
+import cats.effect.IO
+import cats.effect.Outcome
+import cats.effect.Resource
+import cats.implicits.*
 import com.github.lavrov.bittorrent.PeerInfo
+import fs2.concurrent.Signal
+import fs2.concurrent.SignallingRef
+import fs2.concurrent.Topic
 import fs2.Stream
-import fs2.concurrent.{Signal, SignallingRef, Topic}
-import org.legogroup.woof.{*, given}
+import org.legogroup.woof.*
+import org.legogroup.woof.given
 import org.legogroup.woof.Logger.withLogContext
-
 import scala.concurrent.duration.*
 
 trait Swarm {
@@ -61,7 +65,10 @@ object Swarm {
     yield new Impl(stateRef, connectOrReconnect)
     end for
 
-  private class Impl(stateRef: SignallingRef[IO, Map[PeerInfo, Connection]], connectOrReconnect: Resource[IO, Connection]) extends Swarm {
+  private class Impl(
+    stateRef: SignallingRef[IO, Map[PeerInfo, Connection]],
+    connectOrReconnect: Resource[IO, Connection]
+  ) extends Swarm {
     val connect: Resource[IO, Connection] =
       connectOrReconnect.flatTap(connection =>
         Resource.make {
