@@ -1,22 +1,20 @@
 lazy val root = project
   .in(file("."))
   .aggregate(
-    common.jvm,
-    common.js,
+    common.jvm, common.js,
     bittorrent.jvm,
     dht.jvm,
-    cmd.jvm
+    cmd.jvm,
   )
 
 inThisBuild(
   List(
-    scalaVersion := "3.2.2",
+    scalaVersion := "3.3.0",
     scalacOptions ++= List(
       "-source:future",
       "-Ykind-projector:underscores"
     ),
     libraryDependencies ++= List(
-      Deps.`dotty-cps`.value,
       Deps.`munit-cats-effect`.value % Test
     ),
     organization := "io.github.torrentdam.bittorrent",
@@ -60,17 +58,17 @@ inThisBuild(
   )
 )
 
-lazy val common = crossProject(JSPlatform, JVMPlatform)
+lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .settings(
     libraryDependencies ++= Seq(
       Deps.`scodec-bits`.value,
       Deps.`cats-effect`.value,
-      Deps.ip4s.value
+      Deps.ip4s.value,
     )
   )
 
-lazy val bittorrent = crossProject(JVMPlatform)
+lazy val bittorrent = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(common)
   .settings(
@@ -81,11 +79,12 @@ lazy val bittorrent = crossProject(JVMPlatform)
       Deps.`fs2-io`.value,
       Deps.`monocle-core`.value,
       Deps.`monocle-macro`.value,
-      Deps.`woof-core`.value
+      Deps.`woof-core`.value,
+      Deps.`cats-effect-cps`.value,
     )
   )
 
-lazy val dht = crossProject(JVMPlatform)
+lazy val dht = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(common)
   .settings(
@@ -95,11 +94,12 @@ lazy val dht = crossProject(JVMPlatform)
       Deps.`cats-core`.value,
       Deps.`cats-effect`.value,
       Deps.`fs2-io`.value,
-      Deps.`woof-core`.value
+      Deps.`woof-core`.value,
+      Deps.`cats-effect-cps`.value,
     )
   )
 
-lazy val cmd = crossProject(JVMPlatform)
+lazy val cmd = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(
     bittorrent,
@@ -108,8 +108,9 @@ lazy val cmd = crossProject(JVMPlatform)
   .settings(
     libraryDependencies ++= Seq(
       Deps.decline.value,
-      Deps.`woof-core`.value
-    )
+      Deps.`woof-core`.value,
+      Deps.`cats-effect-cps`.value,
+    ),
   )
   .enablePlugins(JavaAppPackaging)
 
@@ -117,14 +118,14 @@ lazy val Versions = new {
   val cats = "2.9.0"
   val `cats-effect` = "3.5.0"
   val ip4s = "3.3.0"
-  val fs2 = "3.7.0"
+  val fs2 = "3.8-a43eaac"
   val epollcat = "0.1.4"
   val monocle = "3.2.0"
   val `scodec-bits` = "1.1.37"
   val bencode = "1.1.0"
   val decline = "2.4.1"
   val woof = "0.6.0"
-  val `dotty-cps` = "0.9.16"
+  val `cats-effect-cps` = "0.4.0"
 }
 
 lazy val Deps = new {
@@ -149,5 +150,5 @@ lazy val Deps = new {
 
   val decline = Def.setting("com.monovore" %%% "decline-effect" % Versions.decline)
 
-  val `dotty-cps` = Def.setting("com.github.rssh" %%% "cps-async-connect-cats-effect" % Versions.`dotty-cps`)
+  val `cats-effect-cps` = Def.setting("org.typelevel" %%% "cats-effect-cps" % Versions.`cats-effect-cps`)
 }

@@ -13,7 +13,6 @@ import fs2.io.net.Network
 import fs2.io.net.Socket
 import fs2.io.net.SocketGroup
 import fs2.Chunk
-import java.nio.channels.InterruptedByTimeoutException
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
 import scala.concurrent.duration.*
@@ -112,12 +111,10 @@ object MessageSocket {
       bytes <-
         socket
           .readN(handshakeMessageSize)
-          .attempt
           .timeout(readTimeout)
-          .rethrow
-          .adaptError { case e: InterruptedByTimeoutException =>
-            Error("Timeout waiting for handshake", e)
-          }
+          .adaptError(e =>
+            Error("Unsuccessful handshake", e)
+          )
       _ <-
         if bytes.size == handshakeMessageSize
         then F.unit
@@ -126,8 +123,8 @@ object MessageSocket {
         Handshake.HandshakeCodec
           .decodeValue(bytes.toBitVector)
           .toEither
-          .leftMap { _ =>
-            Error("Unable to decode handhshake reponse")
+          .leftMap { e =>
+            Error(s"Unable to decode handhshake reponse: ${e.message}")
           }
       )
     yield response

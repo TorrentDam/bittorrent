@@ -6,7 +6,7 @@ import cats.effect.Concurrent
 import cats.effect.IO
 import cats.effect.Resource
 import cats.syntax.all.*
-import com.comcast.ip4s.*
+import com.comcast.ip4s.ip
 import com.github.torrentdam.bencode.decode
 import com.github.torrentdam.bencode.encode
 import com.github.torrentdam.bencode.format.BencodeFormat
@@ -15,6 +15,7 @@ import fs2.io.net.DatagramSocket
 import fs2.io.net.DatagramSocketGroup
 import fs2.io.net.Network
 import fs2.Chunk
+import com.comcast.ip4s.*
 import java.net.InetSocketAddress
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
@@ -36,7 +37,7 @@ class MessageSocket(socket: DatagramSocket[IO], logger: Logger[IO]) {
       _ <- logger.trace(s"<<< ${datagram.remote} $message")
     } yield (datagram.remote, message)
 
-  def writeMessage(address: SocketAddress[IpAddress], message: Message): IO[Unit] = {
+  def writeMessage(address: SocketAddress[IpAddress], message: Message): IO[Unit] = IO.defer {
     val bc = summon[BencodeFormat[Message]].write(message).toOption.get
     val bytes = encode(bc)
     val packet = Datagram(address, Chunk.byteVector(bytes.bytes))
@@ -50,7 +51,7 @@ object MessageSocket {
     logger: Logger[IO]
   ): Resource[IO, MessageSocket] =
     Network[IO]
-      .openDatagramSocket()
+      .openDatagramSocket(Some(ip"0.0.0.0"))
       .map(socket => new MessageSocket(socket, logger))
 
   object Error {
