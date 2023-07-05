@@ -2,9 +2,9 @@ lazy val root = project
   .in(file("."))
   .aggregate(
     common.jvm, common.js,
-    bittorrent.jvm, bittorrent.native,
-    dht.jvm, dht.native,
-    cmd.jvm, cmd.native,
+    bittorrent.jvm,
+    dht.jvm,
+    cmd.jvm,
   )
 
 inThisBuild(
