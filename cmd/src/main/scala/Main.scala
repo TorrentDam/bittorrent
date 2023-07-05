@@ -18,10 +18,7 @@ import com.github.lavrov.bittorrent.PeerId
 import com.github.lavrov.bittorrent.PeerInfo
 import com.monovore.decline.effect.CommandIOApp
 import com.monovore.decline.Opts
-import cps.async
-import cps.await
-import cps.monads.catsEffect.asyncScope
-import cps.monads.catsEffect.given
+import cats.effect.cps.{*, given}
 import cps.syntax.*
 import fs2.io.file.Flags
 import fs2.io.file.Path
@@ -44,19 +41,19 @@ object Main
       Opts.subcommand("dht", "discover peers") {
         Opts.option[String]("info-hash", "Info-hash").map { infoHash0 =>
           withLogger {
-            asyncScope[IO] {
-              given Random[IO] = !Random.scalaUtilRandom[IO]
-              val selfId = !NodeId.generate[IO]
-              val infoHash = await {
+            async[ResourceIO] {
+              given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+              val selfId = Resource.eval(NodeId.generate[IO]).await
+              val infoHash = Resource.eval(
                 InfoHash.fromString
                   .unapply(infoHash0)
                   .liftTo[IO](new Exception("Malformed info-hash"))
-              }
-              val table = !RoutingTable[IO](selfId)
-              val node = !Node(selfId, QueryHandler(selfId, table))
-              !RoutingTableBootstrap(table, node.client)
-              val discovery = !PeerDiscovery.make(table, node.client)
-              !discovery
+              ).await
+              val table = Resource.eval(RoutingTable[IO](selfId)).await
+              val node = Node(selfId, QueryHandler(selfId, table)).await
+              Resource.eval(RoutingTableBootstrap(table, node.client)).await
+              val discovery = PeerDiscovery.make(table, node.client).await
+              discovery
                 .discover(infoHash)
                 .evalTap { peerInfo =>
                   Logger[IO].trace(s"Discovered peer ${peerInfo.address}")
@@ -64,7 +61,7 @@ object Main
                 .compile
                 .drain
                 .as(ExitCode.Success)
-            }
+            }.useEval
           }
         }
       }
@@ -73,28 +70,29 @@ object Main
       Opts.subcommand("metadata", "download metadata") {
         Opts.option[String]("info-hash", "Info-hash").map { infoHash0 =>
           withLogger {
-            asyncScope[IO] {
-              given Random[IO] = !Random.scalaUtilRandom[IO]
+            async[ResourceIO] {
+              given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
 
-              val selfId = !NodeId.generate[IO]
-              val selfPeerId = !PeerId.generate[IO]
-              val infoHash =
-                !InfoHash.fromString
+              val selfId = Resource.eval(NodeId.generate[IO]).await
+              val selfPeerId = Resource.eval(PeerId.generate[IO]).await
+              val infoHash = Resource.eval(
+                InfoHash.fromString
                   .unapply(infoHash0)
                   .liftTo[IO](new Exception("Malformed info-hash"))
-              val table = !RoutingTable[IO](selfId)
-              val node = !Node(selfId, QueryHandler(selfId, table))
-              !RoutingTableBootstrap(table, node.client)
-              val discovery = !PeerDiscovery.make(table, node.client)
+              ).await
+              val table = Resource.eval(RoutingTable[IO](selfId)).await
+              val node = Node(selfId, QueryHandler(selfId, table)).await
+              Resource.eval(RoutingTableBootstrap[IO](table, node.client)).await
+              val discovery = PeerDiscovery.make(table, node.client).await
 
-              val swarm = !Swarm(
+              val swarm = Swarm(
                 discovery.discover(infoHash),
                 Connection.connect(selfPeerId, _, infoHash)
-              )
-              !DownloadMetadata(swarm)
+              ).await
+              DownloadMetadata(swarm)
                 .flatMap(metadata => Logger[IO].info(s"Downloaded metadata $metadata"))
                 .as(ExitCode.Success)
-            }
+            }.useEval
           }
         }
       }
@@ -105,36 +103,32 @@ object Main
           (Opts.option[String]("info-hash", "Info-hash"), Opts.option[String]("peer", "Peer address").orNone).tupled
         options.map { case (infoHash0, peerAddress0) =>
           withLogger {
-            asyncScope[IO] {
-              given Random[IO] = !Random.scalaUtilRandom[IO]
-              val selfId = !NodeId.generate[IO]
-              val selfPeerId = !PeerId.generate[IO]
-              val infoHash =
-                !InfoHash.fromString
+            async[ResourceIO] {
+              given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+              val selfId = Resource.eval(NodeId.generate[IO]).await
+              val selfPeerId = Resource.eval(PeerId.generate[IO]).await
+              val infoHash = Resource.eval(
+                InfoHash.fromString
                   .unapply(infoHash0)
                   .liftTo[IO](new Exception("Malformed info-hash"))
+              ).await
               val peerAddress = peerAddress0.flatMap(SocketAddress.fromStringIp)
-              val peers: Stream[IO, PeerInfo] = !async[ResourceIO] {
+              val peers: Stream[IO, PeerInfo] =
                 peerAddress match
                   case Some(peerAddress) =>
                     Stream.emit(PeerInfo(peerAddress)).covary[IO]
                   case None =>
-                    val table = !Resource.eval {
-                      RoutingTable[IO](selfId)
-                    }
-                    val node = !Node(selfId, QueryHandler(selfId, table))
-                    !Resource.eval {
-                      RoutingTableBootstrap(table, node.client)
-                    }
-                    val discovery = !PeerDiscovery.make(table, node.client)
+                    val table = Resource.eval(RoutingTable[IO](selfId)).await
+                    val node = Node(selfId, QueryHandler(selfId, table)).await
+                    Resource.eval(RoutingTableBootstrap(table, node.client)).await
+                    val discovery = PeerDiscovery.make(table, node.client).await
                     discovery.discover(infoHash)
-              }
-              val swarm = !Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash))
-              val metadata = !DownloadMetadata(swarm)
-              val torrent = !Torrent.make(metadata, swarm)
+              val swarm = Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash)).await
+              val metadata = Resource.eval(DownloadMetadata(swarm)).await
+              val torrent = Torrent.make(metadata, swarm).await
               val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
-              val counter = !IO.ref(0)
-              !Stream
+              val counter = Resource.eval(IO.ref(0)).await
+              Stream
                 .range(0L, total)
                 .parEvalMap(10)(index =>
                   async[IO] {
@@ -151,8 +145,8 @@ object Main
                 )
                 .compile
                 .drain
-              ExitCode.Success
-            }
+                .as(ExitCode.Success)
+            }.useEval
           }
         }
       }
