@@ -19,15 +19,18 @@ import com.github.lavrov.bittorrent.PeerInfo
 import com.monovore.decline.effect.CommandIOApp
 import com.monovore.decline.Opts
 import cats.effect.cps.{*, given}
+import com.github.lavrov.bittorrent.files.Writer
 import cps.syntax.*
 import fs2.io.file.Flags
 import fs2.io.file.Path
 import fs2.Chunk
 import fs2.Stream
+
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import org.legogroup.woof.*
 import org.legogroup.woof.given
+
 import scala.concurrent.duration.DurationInt
 
 object Main
@@ -128,6 +131,16 @@ object Main
               val torrent = Torrent.make(metadata, swarm).await
               val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
               val counter = Resource.eval(IO.ref(0)).await
+              val writer = Writer.fromTorrent(metadata.parsed)
+              val createDirectories = metadata.parsed.files
+                .filter(_.path.length > 1)
+                .map(_.path)
+                .distinct
+                .traverse { path =>
+                  val dir = path.foldLeft(Path("."))(_ / _)
+                  fs2.io.file.Files[IO].createDirectories(dir)
+                }
+              Resource.eval(createDirectories).await
               Stream
                 .range(0L, total)
                 .parEvalMap(10)(index =>
@@ -136,12 +149,17 @@ object Main
                     val count = !counter.updateAndGet(_ + 1)
                     val percent = ((count.toDouble / total) * 100).toInt
                     !Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")
-                    Chunk.byteVector(piece)
+                    Chunk.iterable(writer.write(index, piece))
                   }
                 )
                 .unchunks
-                .through(
-                  fs2.io.file.Files[IO].writeAll(Path("downloaded.data"), Flags.Write)
+                .evalMap(write =>
+                  val path = write.file.path.foldLeft(Path("."))(_ / _)
+                  fs2.io.file.Files[IO]
+                    .writeCursor(path, Flags.Append)
+                    .use(cursor =>
+                      cursor.seek(write.offset).write(Chunk.byteVector(write.bytes))
+                    )
                 )
                 .compile
                 .drain

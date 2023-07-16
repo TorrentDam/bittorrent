@@ -99,11 +99,26 @@ lazy val dht = crossProject(JVMPlatform, NativePlatform)
     )
   )
 
+lazy val files = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .dependsOn(common, bittorrent)
+  .settings(
+    libraryDependencies ++= Seq(
+      Deps.`scodec-bits`.value,
+      Deps.`cats-core`.value,
+      Deps.`cats-effect`.value,
+      Deps.`fs2-io`.value,
+      Deps.`woof-core`.value,
+      Deps.`cats-effect-cps`.value,
+    )
+  )
+
 lazy val cmd = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .dependsOn(
     bittorrent,
-    dht
+    dht,
+    files,
   )
   .settings(
     libraryDependencies ++= Seq(
