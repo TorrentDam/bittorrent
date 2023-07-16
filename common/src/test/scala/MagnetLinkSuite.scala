@@ -1,4 +1,4 @@
-import com.github.lavrov.bittorrent.*
+import com.github.torrentdam.bittorrent.*
 
 class MagnetLinkSuite extends munit.FunSuite {
 
