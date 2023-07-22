@@ -22,10 +22,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sbt compile
-      - name: Build Native
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: sbt cmdNative/nativeLink
       - name: Test
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,6 +46,43 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/torrentdam/cmd:latest
+
+  build-native:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cache/coursier/v1
+          key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sbt') }}
+      - name: Set up java
+        uses: actions/setup-java@v2.1.0
+        with:
+          distribution: adopt
+          java-version: 17
+          java-package: jre
+      - name: Build Native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sbt -J-Xmx4g cmdNative/nativeLink
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@master
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push cmd images
+        uses: docker/build-push-action@v2
+        with:
+          context: cmd
+          file: cmd/Dockerfile-native
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/torrentdam/cmd-native:latest
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
