@@ -134,7 +134,7 @@ object Main
               val writer = Writer.fromTorrent(metadata.parsed)
               val createDirectories = metadata.parsed.files
                 .filter(_.path.length > 1)
-                .map(_.path)
+                .map(_.path.init)
                 .distinct
                 .traverse { path =>
                   val dir = path.foldLeft(Path("."))(_ / _)
