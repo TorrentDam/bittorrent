@@ -121,7 +121,7 @@ lazy val cmd = crossProject(JVMPlatform, NativePlatform)
     files,
   )
   .settings(
-    nativeMode := "release-full",
+    nativeMode := "release-fast",
     libraryDependencies ++= Seq(
       Deps.decline.value,
       Deps.`woof-core`.value,
