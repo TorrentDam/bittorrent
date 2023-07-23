@@ -21,8 +21,7 @@ import com.monovore.decline.Opts
 import cats.effect.cps.{*, given}
 import com.github.torrentdam.bittorrent.files.Writer
 import cps.syntax.*
-import fs2.io.file.Flags
-import fs2.io.file.Path
+import fs2.io.file.{Flag, Flags, Path}
 import fs2.Chunk
 import fs2.Stream
 
@@ -156,7 +155,7 @@ object Main
                 .evalMap(write =>
                   val path = write.file.path.foldLeft(Path("."))(_ / _)
                   fs2.io.file.Files[IO]
-                    .writeCursor(path, Flags.Append)
+                    .writeCursor(path, Flags(Flag.Create, Flag.Write))
                     .use(cursor =>
                       cursor.seek(write.offset).write(Chunk.byteVector(write.bytes))
                     )
