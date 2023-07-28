@@ -15,8 +15,8 @@ class WriterSpec extends munit.FunSuite {
       List(file),
       1
     )
-    val writes = writer.write(0, ByteVector(0))
-    assertEquals(writes, List(Writer.WriteBytes(file, 0, ByteVector(0))))
+    val writes = writer.write(0, ByteVector(1))
+    assertEquals(writes, List(Writer.WriteBytes(file, 0, ByteVector(1))))
   }
 
   test("write piece to second file") {
@@ -35,8 +35,8 @@ class WriterSpec extends munit.FunSuite {
       files,
       1
     )
-    val writes = writer.write(1, ByteVector(0))
-    assertEquals(writes, List(Writer.WriteBytes(files(1), 0, ByteVector(0))))
+    val writes = writer.write(1, ByteVector(2))
+    assertEquals(writes, List(Writer.WriteBytes(files(1), 0, ByteVector(2))))
   }
 
   test("write piece to both files") {
@@ -55,12 +55,12 @@ class WriterSpec extends munit.FunSuite {
       files,
       2
     )
-    val writes = writer.write(0, ByteVector(0, 0))
+    val writes = writer.write(0, ByteVector(0, 1))
     assertEquals(
       writes,
       List(
         Writer.WriteBytes(files(0), 0, ByteVector(0)),
-        Writer.WriteBytes(files(1), 0, ByteVector(0))
+        Writer.WriteBytes(files(1), 0, ByteVector(1))
       )
     )
   }
@@ -81,12 +81,12 @@ class WriterSpec extends munit.FunSuite {
       files,
       2
     )
-    val writes = writer.write(1, ByteVector(0, 0))
+    val writes = writer.write(1, ByteVector(0, 1))
     assertEquals(
       writes,
       List(
         Writer.WriteBytes(files(0), 2, ByteVector(0)),
-        Writer.WriteBytes(files(1), 0, ByteVector(0))
+        Writer.WriteBytes(files(1), 0, ByteVector(1))
       )
     )
   }
