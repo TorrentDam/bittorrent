@@ -2,4 +2,4 @@ FROM ubuntu:22.04
 
 COPY ./.native/target/scala-3.3.0/cmd-out /opt/torrentdam
 
-ENTRYPOINT ["/opt/torrentdam", "-Dcats.effect.tracing.mode=none"]
+ENTRYPOINT ["/opt/torrentdam"]
