@@ -79,7 +79,7 @@ object TorrentFile {
   private given BencodeFormat[Instant] =
     BencodeFormat.LongFormat.imap(Instant.ofEpochMilli)(_.toEpochMilli)
 
-  private val torrentFileFormat: BencodeFormat[TorrentFile] = {
+  given torrentFileFormat: BencodeFormat[TorrentFile] = {
     (
       field[TorrentMetadata.Lossless]("info"),
       fieldOptional[Instant]("creationDate")
