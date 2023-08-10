@@ -19,6 +19,7 @@ import com.github.torrentdam.bittorrent.TorrentMetadata.Lossless
 import com.github.torrentdam.bittorrent.protocol.message.Message
 import fs2.Stream
 import scodec.bits.ByteVector
+import com.github.torrentdam.bittorrent.CrossPlatform
 
 trait ExtensionHandler[F[_]] {
 
@@ -186,8 +187,7 @@ object ExtensionHandler {
           .compile
           .lastOrError
           .ensure(InvalidMetadata()) { metadata =>
-//            metadata.digest("SHA-1") == infoHash.bytes
-            true
+            CrossPlatform.sha1(metadata) == infoHash.bytes
           }
           .flatMap { bytes =>
             Lossless.fromBytes(bytes).liftTo[F]

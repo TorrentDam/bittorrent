@@ -76,13 +76,18 @@ case class TorrentFile(
 
 object TorrentFile {
 
-  given BencodeFormat[Instant] =
+  private given BencodeFormat[Instant] =
     BencodeFormat.LongFormat.imap(Instant.ofEpochMilli)(_.toEpochMilli)
 
-  given BencodeFormat[TorrentFile] = {
+  private val torrentFileFormat: BencodeFormat[TorrentFile] = {
     (
       field[TorrentMetadata.Lossless]("info"),
       fieldOptional[Instant]("creationDate")
     ).imapN(TorrentFile(_, _))(v => (v.info, v.creationDate))
   }
+
+  def fromBencode(bcode: Bencode): Either[BencodeFormatException, TorrentFile] =
+    torrentFileFormat.read(bcode)
+  def fromBytes(bytes: ByteVector): Either[Throwable, TorrentFile] =
+    bencode.decode(bytes.bits).flatMap(fromBencode)
 }

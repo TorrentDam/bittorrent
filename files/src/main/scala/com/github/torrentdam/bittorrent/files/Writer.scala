@@ -13,21 +13,9 @@ trait Writer {
 object Writer {
 
   def fromTorrent(torrent: TorrentMetadata): Writer = apply(torrent.files, torrent.pieceLength)
+  case class WriteBytes(file: TorrentMetadata.File, offset: Long, bytes: ByteVector)
   private[files] def apply(files: List[TorrentMetadata.File], pieceLength: Long): Writer =
-    val fileOffsets =
-      Array
-        .ofDim[FileRange](files.length)
-        .tap: array =>
-          var currentOffset: Long = 0
-          files.iterator.zipWithIndex.foreach(
-            (file, index) =>
-              array(index) = FileRange(file, currentOffset, currentOffset + file.length)
-              currentOffset += file.length
-          )
-    def matchFiles(start: Long, end: Long): Iterator[FileRange] =
-      fileOffsets.iterator
-        .dropWhile(_.endOffset <= start)
-        .takeWhile(_.startOffset < end)
+    val fileOffsets = createFileOffsets(files)
 
     def distribute(pieceOffset: Long, byteVector: ByteVector, files: Iterator[FileRange]): Iterator[WriteBytes] =
       var remainingBytes = byteVector
@@ -44,13 +32,10 @@ object Writer {
           bytesToWrite
         )
     new {
-      def write(index: Long, bytes: ByteVector): List[WriteBytes] =
-        val pieceOffset = index * pieceLength
-        val files = matchFiles(pieceOffset, pieceOffset + bytes.length)
+      def write(pieceIndex: Long, bytes: ByteVector): List[WriteBytes] =
+        val pieceOffset = pieceIndex * pieceLength
+        val files = fileOffsets.matchFiles(pieceOffset, pieceOffset + bytes.length)
         val writes = distribute(pieceOffset, bytes, files)
         writes.toList
     }
-
-  private case class FileRange(file: TorrentMetadata.File, startOffset: Long, endOffset: Long)
-  case class WriteBytes(file: TorrentMetadata.File, offset: Long, bytes: ByteVector)
 }

@@ -13,15 +13,14 @@ import com.github.torrentdam.bittorrent.wire.DownloadMetadata
 import com.github.torrentdam.bittorrent.wire.RequestDispatcher
 import com.github.torrentdam.bittorrent.wire.Swarm
 import com.github.torrentdam.bittorrent.wire.Torrent
-import com.github.torrentdam.bittorrent.InfoHash
-import com.github.torrentdam.bittorrent.PeerId
-import com.github.torrentdam.bittorrent.PeerInfo
+import com.github.torrentdam.bittorrent.{InfoHash, PeerId, PeerInfo, TorrentFile, TorrentMetadata}
+import com.github.torrentdam.bittorrent.CrossPlatform
 import com.monovore.decline.effect.CommandIOApp
 import com.monovore.decline.Opts
 import cats.effect.cps.{*, given}
-import com.github.torrentdam.bittorrent.files.Writer
+import com.github.torrentdam.bittorrent.files.{Reader, Writer}
 import cps.syntax.*
-import fs2.io.file.{Flag, Flags, Path}
+import fs2.io.file.{Files, Flag, Flags, Path, WriteCursor}
 import fs2.Chunk
 import fs2.Stream
 
@@ -29,6 +28,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import org.legogroup.woof.*
 import org.legogroup.woof.given
+import scodec.bits.ByteVector
+import com.github.torrentdam.bencode
 
 import scala.concurrent.duration.DurationInt
 
@@ -137,9 +138,20 @@ object Main
                 .distinct
                 .traverse { path =>
                   val dir = path.foldLeft(Path("."))(_ / _)
-                  fs2.io.file.Files[IO].createDirectories(dir)
+                  Files[IO].createDirectories(dir)
                 }
               Resource.eval(createDirectories).await
+              val openFiles: Map[TorrentMetadata.File, WriteCursor[IO]] =
+                metadata.parsed
+                  .files
+                  .traverse { file =>
+                    val path = file.path.foldLeft(Path("."))(_ / _)
+                    val flags = Flags(Flag.Create, Flag.Write)
+                    val cursor = Files[IO].writeCursor(path, flags)
+                    cursor.tupleLeft(file)
+                  }
+                  .await
+                  .toMap
               Stream
                 .range(0L, total)
                 .parEvalMap(10)(index =>
@@ -153,12 +165,7 @@ object Main
                 )
                 .unchunks
                 .evalMap(write =>
-                  val path = write.file.path.foldLeft(Path("."))(_ / _)
-                  fs2.io.file.Files[IO]
-                    .writeCursor(path, Flags(Flag.Create, Flag.Write))
-                    .use(cursor =>
-                      cursor.seek(write.offset).write(Chunk.byteVector(write.bytes))
-                    )
+                  openFiles(write.file).seek(write.offset).write(Chunk.byteVector(write.bytes))
                 )
                 .compile
                 .drain
@@ -168,7 +175,65 @@ object Main
         }
       }
 
-    discoverCommand <+> metadataCommand <+> downloadCommand
+    val verifyCommand =
+      Opts.subcommand("verify", "Verify torrent data") {
+        val options: Opts[(String, String)] =
+          (Opts.option[String]("torrent", "Torrent file"), Opts.option[String]("target", "Torrent data directory")).tupled
+        options.map { (torrentFileName, targetDirName) =>
+          withLogger {
+            async[IO] {
+              try
+                val bytes = Files[IO].readAll(Path(torrentFileName)).compile.to(Array).map(ByteVector(_)).await
+                val torrentFile = IO.fromEither(TorrentFile.fromBytes(bytes)).await
+                val infoHash = InfoHash(CrossPlatform.sha1(bencode.encode(torrentFile.info.raw).bytes))
+                Logger[IO].info(s"Info-hash: $infoHash").await
+
+                val reader = Reader.fromTorrent(torrentFile.info.parsed)
+                def readPiece(index: Long): IO[ByteVector] =
+                  val reads = Stream.emits(reader.read(index))
+                  reads
+                    .covary[IO]
+                    .evalMap { read =>
+                      val path = read.file.path.foldLeft(Path(targetDirName))(_ / _)
+                      Files[IO]
+                        .readRange(path, 1024, read.offset, read.endOffset)
+                        .chunks
+                        .map(_.toByteVector)
+                        .compile
+                        .fold(ByteVector.empty)(_ ++ _)
+                    }
+                    .compile
+                    .fold(ByteVector.empty)(_ ++ _)
+
+                Stream
+                  .unfold(torrentFile.info.parsed.pieces)(bytes =>
+                    if bytes.isEmpty then None
+                    else
+                      val (checksum, rest) = bytes.splitAt(20)
+                      Some((checksum, rest))
+                    )
+                    .zipWithIndex
+                    .evalMap { (checksum, index) =>
+                      readPiece(index).map((checksum, index, _))
+                    }
+                    .evalTap { (checksum, index, bytes) =>
+                      if CrossPlatform.sha1(bytes) == checksum then IO.unit
+                      else
+                        Logger[IO].error(s"Piece $index failed") >> IO.raiseError(new Exception)
+                    }
+                    .compile
+                    .drain
+                    .await
+                  Logger[IO].info("All pieces verified").await
+                  ExitCode.Success
+                catch case _ =>
+                  ExitCode.Error
+            }
+          }
+        }
+      }
+
+    discoverCommand <+> metadataCommand <+> downloadCommand <+> verifyCommand
   end main
 
   def withLogger[A](body: Logger[IO] ?=> IO[A]): IO[A] =

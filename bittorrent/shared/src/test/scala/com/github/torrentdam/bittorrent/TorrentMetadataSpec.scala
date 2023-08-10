@@ -2,6 +2,7 @@ package com.github.torrentdam.bittorrent
 
 import com.github.torrentdam.bencode.*
 import com.github.torrentdam.bencode.format.BencodeFormat
+import com.github.torrentdam.bencode.CrossPlatform
 import scodec.bits.Bases
 import scodec.bits.BitVector
 import scodec.bits.ByteVector
@@ -27,7 +28,8 @@ class TorrentMetadataSpec extends munit.FunSuite {
     val decodedResult = summon[BencodeFormat[TorrentFile]].read(bc)
     val result = decodedResult
       .map(_.info.raw)
-      .map(encode(_).digest("SHA-1"))
+      .map(encode)
+      .map(CrossPlatfrom.sha1)
       .map(_.toHex(Bases.Alphabets.HexUppercase))
     val expectation = Right("8C4ADBF9EBE66F1D804FB6A4FB9B74966C3AB609")
     assert(result == expectation)

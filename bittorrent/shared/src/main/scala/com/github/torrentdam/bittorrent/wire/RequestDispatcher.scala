@@ -1,5 +1,6 @@
 package com.github.torrentdam.bittorrent.wire
 
+import cats.effect.cps.*
 import cats.data.Chain
 import cats.effect.kernel.Deferred
 import cats.effect.std.Dequeue
@@ -13,10 +14,10 @@ import com.github.torrentdam.bittorrent.protocol.message.Message.Request
 import com.github.torrentdam.bittorrent.PeerInfo
 import com.github.torrentdam.bittorrent.TorrentMetadata
 import com.github.torrentdam.bittorrent.protocol.message.Message
+import com.github.torrentdam.bittorrent.CrossPlatform
 import fs2.concurrent.Signal
 import fs2.concurrent.SignallingRef
 import fs2.Stream
-
 import java.util.UUID
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
@@ -51,19 +52,26 @@ object RequestDispatcher {
     workGenerator: WorkGenerator,
     queue: Ref[IO, TreeMap[Long, RequestQueue]],
     queueReverse: Ref[IO, TreeMap[Long, RequestQueue]]
-  ) extends RequestDispatcher {
+  )(using Logger[IO]) extends RequestDispatcher {
     def downloadPiece(index: Long): IO[ByteVector] =
-      (
-        for
-          result <- IO.deferred[Map[Request, ByteVector]]
-          pieceWork = workGenerator.pieceWork(index)
-          tracker <- WorkQueue(pieceWork.requests.toList, result.complete)
-          _ <- queue.update(_.updated(index, tracker))
-          _ <- queueReverse.update(_.updated(index, tracker))
-          result <- result.get
-        yield result.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _)
-      ).guarantee(
-        queue.update(_ - index) >> queueReverse.update(_ - index)
+      val pieceWork = workGenerator.pieceWork(index)
+      val attempt = async[IO] {
+        try
+          val result = IO.deferred[Map[Request, ByteVector]].await
+          val requestQueue = WorkQueue(pieceWork.requests.toList, result.complete).await
+          queue.update(_.updated(index, requestQueue)).await
+          queueReverse.update(_.updated(index, requestQueue)).await
+          val completedBlocks = result.get.await
+          val pieceBytes = completedBlocks.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _)
+          pieceBytes
+        finally
+          queue.update(_ - index).await
+          queueReverse.update(_ - index).await
+      }
+      attempt.flatMap(bytes =>
+        if CrossPlatform.sha1(bytes) == pieceWork.checksum then IO.pure(bytes)
+        else
+          Logger[IO].warn(s"Piece $index failed checksum") >> attempt
       )
 
     def stream(

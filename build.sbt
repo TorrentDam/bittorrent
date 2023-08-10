@@ -69,7 +69,7 @@ lazy val common = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   )
 
 lazy val bittorrent = crossProject(JVMPlatform, NativePlatform)
-  .crossType(CrossType.Pure)
+  .in(file("bittorrent"))
   .dependsOn(common)
   .settings(
     libraryDependencies ++= Seq(
@@ -128,7 +128,11 @@ lazy val cmd = crossProject(JVMPlatform, NativePlatform)
       Deps.`cats-effect-cps`.value,
     ),
   )
+
+lazy val cmdJVM = cmd.jvm
   .enablePlugins(JavaAppPackaging)
+
+lazy val cmdNative = cmd.native
 
 lazy val Versions = new {
   val cats = "2.9.0"
