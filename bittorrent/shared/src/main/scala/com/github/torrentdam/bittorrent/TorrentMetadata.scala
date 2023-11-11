@@ -50,7 +50,9 @@ object TorrentMetadata {
   case class Lossless private (
     parsed: TorrentMetadata,
     raw: Bencode
-  )
+  ) {
+    def infoHash: InfoHash = InfoHash(CrossPlatform.sha1(bencode.encode(raw).toByteVector))
+  }
 
   object Lossless {
     def fromBytes(bytes: ByteVector): Either[Throwable, Lossless] =
@@ -90,4 +92,7 @@ object TorrentFile {
     torrentFileFormat.read(bcode)
   def fromBytes(bytes: ByteVector): Either[Throwable, TorrentFile] =
     bencode.decode(bytes.bits).flatMap(fromBencode)
+
+  def toBytes(torrentFile: TorrentFile): ByteVector =
+    bencode.encode(torrentFileFormat.write(torrentFile).right.get).toByteVector
 }
