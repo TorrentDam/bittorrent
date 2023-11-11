@@ -83,6 +83,11 @@ lazy val bittorrent = crossProject(JVMPlatform, NativePlatform)
       Deps.`cats-effect-cps`.value,
     )
   )
+  .platformsSettings(NativePlatform)(
+    libraryDependencies ++= Seq(
+      "com.github.lolgab" %%% "scala-native-crypto" % "0.0.4",
+    )
+  )
 
 lazy val dht = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -121,7 +126,10 @@ lazy val cmd = crossProject(JVMPlatform, NativePlatform)
     files,
   )
   .settings(
-    nativeMode := "release",
+    nativeMode := "release-fast",
+    nativeConfig ~= { c =>
+      c.withLinkingOptions(c.linkingOptions :+ "-L/opt/homebrew/opt/openssl@3/lib")
+    },
     libraryDependencies ++= Seq(
       Deps.decline.value,
       Deps.`woof-core`.value,
