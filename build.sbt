@@ -143,10 +143,10 @@ lazy val cmdJVM = cmd.jvm
 lazy val cmdNative = cmd.native
 
 lazy val Versions = new {
-  val cats = "2.9.0"
-  val `cats-effect` = "3.5.0"
+  val cats = "2.10.0"
+  val `cats-effect` = "3.5.4"
   val ip4s = "3.3.0"
-  val fs2 = "3.8-a43eaac"
+  val fs2 = "3.9.4"
   val epollcat = "0.1.4"
   val monocle = "3.2.0"
   val `scodec-bits` = "1.1.37"
