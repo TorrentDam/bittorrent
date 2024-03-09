@@ -103,6 +103,7 @@ jobs:
           PGP_SECRET_KEY: ${{ secrets.PGP_SECRET_KEY }}
         run: |
           echo ${PGP_SECRET_KEY} | base64 --decode | gpg --import
+          gpg --list-secret-keys
           export VERSION=${GITHUB_REF#*/v} 
           echo Publishing $VERSION
           sbt commonJVM/publishSigned
