@@ -54,8 +54,7 @@ inThisBuild(
       )
     ),
     licenses := List("Unlicense" -> new URL("https://unlicense.org/")),
-    homepage := Some(url("https://torrentdam.github.io/")),
-    pgpSigningKey := Some("CF695CFF903C79FD")
+    homepage := Some(url("https://torrentdam.github.io/"))
   )
 )
 

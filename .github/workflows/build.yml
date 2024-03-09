@@ -108,6 +108,6 @@ jobs:
           echo Publishing $VERSION
           sbt commonJVM/publishSigned
           sbt commonJS/publishSigned
-          sbt bittorrent/publishSigned
-          sbt dht/publishSigned
-          sbt cmd/publishSigned
+          sbt bittorrentJVM/publishSigned
+          sbt dhtJVM/publishSigned
+          sbt cmdJVM/publishSigned
