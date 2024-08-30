@@ -9,7 +9,7 @@ lazy val root = project
 
 inThisBuild(
   List(
-    scalaVersion := "3.3.0",
+    scalaVersion := "3.5.0",
     scalacOptions ++= List(
       "-source:future",
       "-Ykind-projector:underscores"

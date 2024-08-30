@@ -119,7 +119,7 @@ object Message {
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
     field[NodeId]("id"),
-    field[List[PeerInfo]]("values")(BencodeFormat.listFormat(encodedString(CompactPeerInfoCodec)))
+    field[List[PeerInfo]]("values")(using BencodeFormat.listFormat(using encodedString(CompactPeerInfoCodec)))
   ).imapN[Response.Peers](Response.Peers.apply)(v => (v.id, v.peers))
 
   val SampleInfoHashesResponseFormat: BencodeFormat[Response.SampleInfoHashes] = (
