@@ -14,7 +14,7 @@ trait RoutingTable[F[_]] {
 
   def insert(node: NodeInfo): F[Unit]
 
-  def findNodes(nodeId: NodeId): F[Iterable[NodeInfo]]
+  def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]]
 
   def findBucket(nodeId: NodeId): F[List[NodeInfo]]
 
@@ -53,18 +53,26 @@ object RoutingTable {
           else
             b.copy(higher = higher.insert(node, selfId))
         case Bucket(from, until, nodes) =>
-          if (nodes.size == MaxNodes) {
+          if nodes.size == MaxNodes
+          then  
             val tree =
-              if (selfId.int >= from && selfId.int < until) {
+              if selfId.int >= from && selfId.int < until
+              then
+                // split the bucket because it contains the self node
                 val center = (from + until) / 2
                 val splitBucket: TreeNode =
-                  Split(center, Bucket(from, center - 1, ListMap.empty), Bucket(center, until, ListMap.empty))
+                  Split(
+                    center,
+                    lower = Bucket(from, center, ListMap.empty),
+                    higher = Bucket(center, until, ListMap.empty)
+                  )
                 nodes.view.map(NodeInfo.apply.tupled).foldLeft(splitBucket)(_.insert(_, selfId))
-              } else {
+              else
+                // drop one node from the bucket
                 Bucket(from, until, nodes.init)
-              }
             tree.insert(node, selfId)
-          } else Bucket(from, until, nodes.updated(node.id, node.address))
+          else
+            Bucket(from, until, nodes.updated(node.id, node.address))
       }
 
     def remove(nodeId: NodeId): TreeNode =
@@ -98,14 +106,14 @@ object RoutingTable {
         case b: Bucket => b
       }
 
-    def findNodes(nodeId: NodeId): Iterable[NodeInfo] =
+    def findNodes(nodeId: NodeId): LazyList[NodeInfo] =
       bucket match {
         case Split(center, lower, higher) =>
           if (nodeId.int < center)
             lower.findNodes(nodeId) ++ higher.findNodes(nodeId)
           else
             higher.findNodes(nodeId) ++ lower.findNodes(nodeId)
-        case b: Bucket => b.nodes.toIterable.map(NodeInfo.apply.tupled)
+        case b: Bucket => b.nodes.to(LazyList).map(NodeInfo.apply.tupled)
       }
 
   }
@@ -119,7 +127,7 @@ object RoutingTable {
       def insert(node: NodeInfo): F[Unit] =
         treeNodeRef.update(_.insert(node, selfId))
 
-      def findNodes(nodeId: NodeId): F[Iterable[NodeInfo]] =
+      def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]] =
         treeNodeRef.get.map(_.findNodes(nodeId))
 
       def findBucket(nodeId: NodeId): F[List[NodeInfo]] =
