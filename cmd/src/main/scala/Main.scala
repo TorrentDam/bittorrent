@@ -101,12 +101,13 @@ object Main
 
   def downloadCommand =
     Opts.subcommand("download", "download torrent data") {
-      val options: Opts[(Option[String], Option[String], Option[String])] = (
+      val options = (
         Opts.option[String]("info-hash", "Info-hash").orNone,
         Opts.option[String]("torrent", "Torrent file").orNone,
-        Opts.option[String]("peer", "Peer address").orNone
+        Opts.option[String]("peer", "Peer address").orNone,
+        Opts.option[String]("dht-node", "DHT node address").orNone
       ).tupled
-      options.map { case (infoHashOption, torrentFileOption, peerAddressOption) =>
+      options.map { case (infoHashOption, torrentFileOption, peerAddressOption, dhtNodeAddressOption) =>
         withLogger {
           async[ResourceIO] {
             val torrentFile: Option[TorrentFile] = torrentFileOption
@@ -150,9 +151,12 @@ object Main
                 case Some(peerAddress) =>
                   Stream.emit(PeerInfo(peerAddress)).covary[IO]
                 case None =>
+                  val bootstrapNodeAddress = dhtNodeAddressOption
+                    .flatMap(SocketAddress.fromString)
+                    .foldLeft(RoutingTableBootstrap.PublicBootstrapNodes)(_ prepended _)
                   val table = Resource.eval(RoutingTable[IO](selfId)).await
                   val node = Node(selfId, none, QueryHandler(selfId, table)).await
-                  Resource.eval(RoutingTableBootstrap(table, node.client)).await
+                  Resource.eval(RoutingTableBootstrap(table, node.client, bootstrapNodeAddress)).await
                   val discovery = PeerDiscovery.make(table, node.client).await
                   discovery.discover(infoHash)
             val swarm = Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash)).await

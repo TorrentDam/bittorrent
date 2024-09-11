@@ -15,7 +15,8 @@ object RoutingTableBootstrap {
 
   def apply[F[_]](
     table: RoutingTable[F],
-    client: Client[F]
+    client: Client[F],
+    bootstrapNodeAddress: List[SocketAddress[Host]] = PublicBootstrapNodes
   )(using
     F: Temporal[F],
     dns: Dns[F],
@@ -23,20 +24,21 @@ object RoutingTableBootstrap {
   ): F[Unit] =
     for {
       _ <- logger.info("Bootstrapping")
-      seedInfo <- resolveBootstrapNode(client)
+      seedInfo <- resolveBootstrapNode(client, bootstrapNodeAddress)
       response <- client.findNodes(seedInfo, seedInfo.id)
       _ <- response.nodes.traverse(table.insert)
       _ <- logger.info(s"Bootstrap completed with ${response.nodes.size} nodes")
     } yield {}
 
-  def resolveBootstrapNode[F[_]](
-    client: Client[F]
+  private def resolveBootstrapNode[F[_]](
+    client: Client[F],
+    bootstrapNodeAddress: List[SocketAddress[Host]]
   )(using
     F: Temporal[F],
     dns: Dns[F],
     logger: Logger[F]
   ): F[NodeInfo] =
-    def tryThis(hostname: SocketAddress[Hostname]): F[Option[NodeInfo]] =
+    def tryThis(hostname: SocketAddress[Host]): F[Option[NodeInfo]] =
       logger.info(s"Trying $hostname") >>
       hostname.resolve[F].flatMap { seedAddress =>
         client
@@ -48,7 +50,7 @@ object RoutingTableBootstrap {
             logger.info(s"Bootstrap failed $hostname $msg $e").as(none)
           }
       }
-    Stream.emits(SeedNodeAddressList)
+    Stream.emits(bootstrapNodeAddress)
       .covary[F]
       .evalMap(tryThis)
       .collectFirst {
@@ -58,7 +60,7 @@ object RoutingTableBootstrap {
       .lastOrError
       .flatTap(node => logger.info(s"Bootstrap node resolved: $node"))
 
-  private val SeedNodeAddressList = List(
+  val PublicBootstrapNodes: List[SocketAddress[Host]] = List(
     SocketAddress(host"router.bittorrent.com", port"6881"),
     SocketAddress(host"router.utorrent.com", port"6881"),
     SocketAddress(host"dht.transmissionbt.com", port"6881"),
