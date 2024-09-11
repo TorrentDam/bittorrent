@@ -7,6 +7,7 @@ import cats.effect.IO
 import cats.effect.Resource
 import cats.effect.ResourceIO
 import cats.syntax.all.*
+import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 import com.github.torrentdam.bencode
 import com.github.torrentdam.bittorrent.dht.*
@@ -48,10 +49,15 @@ object Main
     ) {
 
   def main: Opts[IO[ExitCode]] =
-    downloadCommand <+> torrentCommand <+>  discoverCommand <+> verifyCommand
+    torrentCommand <+> dhtCommand
 
-  def torrentCommand =
-    Opts.subcommand("torrent", "download torrent file") {
+  def torrentCommand: Opts[IO[ExitCode]] =
+    Opts.subcommand("torrent", "torrent client")(
+      fetchFileCommand <+> downloadCommand <+> verifyCommand
+    )
+
+  def fetchFileCommand =
+    Opts.subcommand("fetch-file", "download torrent file") {
       (
         Opts.option[String]("info-hash", "Info-hash"),
         Opts.option[String]("save", "Save as a torrent file")
@@ -71,7 +77,7 @@ object Main
                 )
                 .await
               val table = Resource.eval(RoutingTable[IO](selfId)).await
-              val node = Node(selfId, QueryHandler(selfId, table)).await
+              val node = Node(selfId, none, QueryHandler(selfId, table)).await
               Resource.eval(RoutingTableBootstrap[IO](table, node.client)).await
               val discovery = PeerDiscovery.make(table, node.client).await
 
@@ -145,7 +151,7 @@ object Main
                   Stream.emit(PeerInfo(peerAddress)).covary[IO]
                 case None =>
                   val table = Resource.eval(RoutingTable[IO](selfId)).await
-                  val node = Node(selfId, QueryHandler(selfId, table)).await
+                  val node = Node(selfId, none, QueryHandler(selfId, table)).await
                   Resource.eval(RoutingTableBootstrap(table, node.client)).await
                   val discovery = PeerDiscovery.make(table, node.client).await
                   discovery.discover(infoHash)
@@ -266,34 +272,23 @@ object Main
       }
     }
 
-  def discoverCommand =
-    Opts.subcommand("discover", "discover peers via DHT") {
-      Opts.option[String]("info-hash", "Info-hash").map { infoHash0 =>
+  def dhtCommand: Opts[IO[ExitCode]] =
+    Opts.subcommand("dht", "DHT client")(
+      startCommand
+    )
+
+  def startCommand =
+    Opts.subcommand("start", "start DHT node") {
+      Opts.option[Int]("port", "UDP port").map { portParam =>
         withLogger {
           async[ResourceIO] {
+            val port = Port.fromInt(portParam).liftTo[ResourceIO](new Exception("Invalid port")).await
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-
             val selfId = Resource.eval(NodeId.generate[IO]).await
-            val infoHash = Resource
-              .eval(
-                InfoHash.fromString
-                  .unapply(infoHash0)
-                  .liftTo[IO](new Exception("Malformed info-hash"))
-              )
-              .await
             val table = Resource.eval(RoutingTable[IO](selfId)).await
-            val node = Node(selfId, QueryHandler(selfId, table)).await
+            val node = Node(selfId, Some(port), QueryHandler(selfId, table)).await
             Resource.eval(RoutingTableBootstrap(table, node.client)).await
-            val discovery = PeerDiscovery.make(table, node.client).await
-            discovery
-              .discover(infoHash)
-              .evalTap { peerInfo =>
-                Logger[IO].trace(s"Discovered peer ${peerInfo.address}")
-              }
-              .compile
-              .drain
-              .as(ExitCode.Success)
-          }.useEval
+          }.useForever
         }
       }
     }

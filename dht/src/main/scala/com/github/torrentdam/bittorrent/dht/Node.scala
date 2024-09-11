@@ -23,6 +23,7 @@ object Node {
 
   def apply(
     selfId: NodeId,
+    port: Option[Port],
     queryHandler: QueryHandler[IO]
   )(using
     random: Random[IO],
@@ -34,7 +35,7 @@ object Node {
       (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).toOption.get)
 
     for
-      messageSocket <- MessageSocket()
+      messageSocket <- MessageSocket(port)
       responses <- Resource.eval {
         Queue.unbounded[IO, (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])]
       }
