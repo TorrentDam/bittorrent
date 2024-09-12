@@ -2,7 +2,7 @@ package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.std.Random
 import cats.syntax.all.*
-import cats.Monad
+import cats.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import scodec.bits.ByteVector
@@ -25,4 +25,6 @@ object NodeId {
     for bytes <- Random[F].nextBytes(20)
     yield NodeId(ByteVector.view(bytes))
   }
+  
+  given Show[NodeId] = nodeId => s"NodeId(${nodeId.bytes.toHex})"
 }

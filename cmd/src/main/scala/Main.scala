@@ -69,13 +69,7 @@ object Main
 
               val selfId = Resource.eval(NodeId.generate[IO]).await
               val selfPeerId = Resource.eval(PeerId.generate[IO]).await
-              val infoHash = Resource
-                .eval(
-                  InfoHash.fromString
-                    .unapply(infoHashOption)
-                    .liftTo[IO](new Exception("Malformed info-hash"))
-                )
-                .await
+              val infoHash = Resource.eval(infoHashFromString(infoHashOption)).await
               val table = Resource.eval(RoutingTable[IO](selfId)).await
               val node = Node(selfId, none, QueryHandler(selfId, table)).await
               Resource.eval(RoutingTableBootstrap[IO](table, node.client)).await
@@ -133,11 +127,7 @@ object Main
                 case None =>
                   infoHashOption match
                     case Some(infoHashOption) =>
-                      InfoHash.fromString
-                        .unapply(infoHashOption)
-                        .liftTo[IO](new Exception("Malformed info-hash"))
-                        .toResource
-                        .await
+                      infoHashFromString(infoHashOption).toResource.await
                     case None =>
                       throw new Exception("Missing info-hash")
 
@@ -278,7 +268,7 @@ object Main
 
   def dhtCommand: Opts[IO[ExitCode]] =
     Opts.subcommand("dht", "DHT client")(
-      startCommand
+      startCommand <+> getPeers
     )
 
   def startCommand =
@@ -297,9 +287,39 @@ object Main
       }
     }
 
+  def getPeers =
+    Opts.subcommand("get-peers", "send single get_peers query") {
+      (
+        Opts.option[String]("host", "DHT node address"),
+        Opts.option[String]("info-hash", "Info-hash"),
+      ).tupled.map { (nodeAddressParam, infoHashParam) =>
+        withLogger {
+          async[ResourceIO] {
+            val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
+            val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
+            given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+            val infoHash = infoHashFromString(infoHashParam).toResource.await
+            val selfId = Resource.eval(NodeId.generate[IO]).await
+            val table = Resource.eval(RoutingTable[IO](selfId)).await
+            val node = Node(selfId, none, QueryHandler(selfId, table)).await
+            async[IO]:
+              val pong = node.client.ping(nodeIpAddress).await
+              val response = node.client.getPeers(NodeInfo(pong.id, nodeIpAddress), infoHash).await
+              IO.println(response).await
+              ExitCode.Success
+          }.useEval
+        }
+      }
+    }
+
   extension (torrentFile: TorrentFile) {
     def infoHash: InfoHash = InfoHash(CrossPlatform.sha1(bencode.encode(torrentFile.info.raw).bytes))
   }
+
+  def infoHashFromString(value: String): IO[InfoHash] =
+    InfoHash.fromString
+      .unapply(value)
+      .liftTo[IO](new Exception("Malformed info-hash"))
 
   def withLogger[A](body: Logger[IO] ?=> IO[A]): IO[A] =
     given Filter = Filter.atLeastLevel(LogLevel.Info)
