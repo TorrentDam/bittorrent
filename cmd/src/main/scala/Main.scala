@@ -152,8 +152,8 @@ object Main
                   Stream.emit(PeerInfo(peerAddress)).covary[IO]
                 case None =>
                   val bootstrapNodeAddress = dhtNodeAddressOption
-                    .flatMap(SocketAddress.fromString)
-                    .foldLeft(RoutingTableBootstrap.PublicBootstrapNodes)(_ prepended _)
+                    .map(SocketAddress.fromString(_).toList)
+                    .getOrElse(RoutingTableBootstrap.PublicBootstrapNodes)
                   val table = Resource.eval(RoutingTable[IO](selfId)).await
                   val node = Node(selfId, none, QueryHandler(selfId, table)).await
                   Resource.eval(RoutingTableBootstrap(table, node.client, bootstrapNodeAddress)).await

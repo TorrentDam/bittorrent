@@ -24,10 +24,11 @@ object RoutingTableBootstrap {
   ): F[Unit] =
     for {
       _ <- logger.info("Bootstrapping")
-      seedInfo <- resolveBootstrapNode(client, bootstrapNodeAddress)
-      response <- client.findNodes(seedInfo, seedInfo.id)
-      _ <- response.nodes.traverse(table.insert)
-      _ <- logger.info(s"Bootstrap completed with ${response.nodes.size} nodes")
+      count <- resolveBootstrapNode(client, bootstrapNodeAddress)
+        .evalMap(table.insert)
+        .compile
+        .count
+      _ <- logger.info(s"Bootstrap completed with $count nodes")
     } yield {}
 
   private def resolveBootstrapNode[F[_]](
@@ -37,28 +38,27 @@ object RoutingTableBootstrap {
     F: Temporal[F],
     dns: Dns[F],
     logger: Logger[F]
-  ): F[NodeInfo] =
+  ): Stream[F, NodeInfo] =
     def tryThis(hostname: SocketAddress[Host]): F[Option[NodeInfo]] =
-      logger.info(s"Trying $hostname") >>
-      hostname.resolve[F].flatMap { seedAddress =>
-        client
-          .ping(seedAddress)
-          .timeout(5.seconds)
-          .map(pong => NodeInfo(pong.id, seedAddress).some)
-          .recoverWith { case e =>
+      logger.info(s"Trying to reach $hostname") >>
+      hostname
+        .resolve[F]
+        .flatMap: seedAddress =>
+          client
+            .ping(seedAddress)
+            .timeout(5.seconds)
+            .map(pong => NodeInfo(pong.id, seedAddress))
+        .map(_.some)
+        .recoverWith:
+          e =>
             val msg = e.getMessage
-            logger.info(s"Bootstrap failed $hostname $msg $e").as(none)
-          }
-      }
+            logger.info(s"Failed to reach $hostname $msg $e").as(none)
     Stream.emits(bootstrapNodeAddress)
       .covary[F]
       .evalMap(tryThis)
-      .collectFirst {
+      .collect {
         case Some(node) => node
       }
-      .compile
-      .lastOrError
-      .flatTap(node => logger.info(s"Bootstrap node resolved: $node"))
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(
     SocketAddress(host"router.bittorrent.com", port"6881"),
