@@ -282,6 +282,7 @@ object Main
             val table = Resource.eval(RoutingTable[IO](selfId)).await
             val node = Node(selfId, Some(port), QueryHandler(selfId, table)).await
             Resource.eval(RoutingTableBootstrap(table, node.client)).await
+            PingRoutine(table, node.client).runForever.background.await
           }.useForever
         }
       }

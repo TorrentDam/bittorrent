@@ -39,26 +39,30 @@ object RoutingTableBootstrap {
     dns: Dns[F],
     logger: Logger[F]
   ): Stream[F, NodeInfo] =
-    def tryThis(hostname: SocketAddress[Host]): F[Option[NodeInfo]] =
-      logger.info(s"Trying to reach $hostname") >>
-      hostname
-        .resolve[F]
-        .flatMap: seedAddress =>
+    def tryThis(hostname: SocketAddress[Host]): Stream[F, NodeInfo] =
+      Stream.eval(logger.info(s"Trying to reach $hostname")) >>
+      Stream
+        .evals(
+          hostname.host.resolveAll[F]
+            .recoverWith: e =>
+              logger.info(s"Failed to resolve $hostname $e").as(List.empty)
+        )
+        .evalMap: ipAddress =>
+          val resolvedAddress = SocketAddress(ipAddress, hostname.port)
           client
-            .ping(seedAddress)
+            .ping(resolvedAddress)
             .timeout(5.seconds)
-            .map(pong => NodeInfo(pong.id, seedAddress))
-        .map(_.some)
-        .recoverWith:
-          e =>
-            val msg = e.getMessage
-            logger.info(s"Failed to reach $hostname $msg $e").as(none)
-    Stream.emits(bootstrapNodeAddress)
+            .map(pong => NodeInfo(pong.id, resolvedAddress))
+            .map(_.some)
+            .recoverWith: e =>
+              logger.info(s"Failed to reach $resolvedAddress $e").as(none)
+        .collect {
+          case Some(node) => node
+        }        
+    Stream
+      .emits(bootstrapNodeAddress)
       .covary[F]
-      .evalMap(tryThis)
-      .collect {
-        case Some(node) => node
-      }
+      .flatMap(tryThis)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(
     SocketAddress(host"router.bittorrent.com", port"6881"),

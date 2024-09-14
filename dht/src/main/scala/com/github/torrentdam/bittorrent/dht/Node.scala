@@ -41,26 +41,24 @@ object Node {
       }
       client0 <- Client(selfId, messageSocket.writeMessage, responses.take, generateTransactionId)
       _ <-
-        Resource
-          .make(
-            messageSocket.readMessage
-              .flatMap {
-                case (a, m: Message.QueryMessage) =>
-                  logger.debug(s"Received $m") >>
-                  queryHandler(a, m.query).flatMap { response =>
-                    val responseMessage = Message.ResponseMessage(m.transactionId, response)
-                    logger.debug(s"Responding with $responseMessage") >>
-                    messageSocket.writeMessage(a, responseMessage)
-                  }
-                case (a, m: Message.ResponseMessage) => responses.offer((a, m.asRight))
-                case (a, m: Message.ErrorMessage)    => responses.offer((a, m.asLeft))
+        messageSocket.readMessage
+          .flatMap {
+            case (a, m: Message.QueryMessage) =>
+              logger.debug(s"Received $m") >>
+              queryHandler(a, m.query).flatMap { response =>
+                val responseMessage = Message.ResponseMessage(m.transactionId, response)
+                logger.debug(s"Responding with $responseMessage") >>
+                messageSocket.writeMessage(a, responseMessage)
               }
-              .recoverWith { case e: Throwable =>
-                logger.trace(s"Failed to read message: $e")
-              }
-              .foreverM
-              .start
-          )(_.cancel)
+            case (a, m: Message.ResponseMessage) => responses.offer((a, m.asRight))
+            case (a, m: Message.ErrorMessage)    => responses.offer((a, m.asLeft))
+          }
+          .recoverWith { case e: Throwable =>
+            logger.trace(s"Failed to read message: $e")
+          }
+          .foreverM
+          .background
+        
     yield new Node {
       def client: Client[IO] = client0
     }
