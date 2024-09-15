@@ -35,7 +35,7 @@ trait Connection {
   def request(request: Message.Request): IO[ByteVector]
   def choked: Signal[IO, Boolean]
   def availability: Signal[IO, BitSet]
-  def disconnected: IO[Either[Throwable, Unit]]
+  def disconnected: IO[Unit]
   def extensionApi: IO[ExtensionApi[IO]]
 }
 
@@ -102,8 +102,7 @@ object Connection {
         )
       )
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
-      closed <- Resource.eval(IO.deferred[Either[Throwable, Unit]])
-      _ <-
+      closed <-
         (
           receiveLoop(
             requestRegistry,
@@ -115,11 +114,7 @@ object Connection {
           ),
           sendLoop(sendQueue, socket),
           keepAliveLoop(stateRef, sendQueue.offer)
-        ).parTupled
-          .guarantee(
-            closed.complete(Right(())).void
-          )
-          .background
+        ).parTupled.background
     yield new Connection {
       def info: PeerInfo = peerInfo
       def extensionProtocol: Boolean = socket.handshake.extensionProtocol
@@ -142,7 +137,7 @@ object Connection {
 
       def availability: Signal[IO, BitSet] = bitfieldRef
 
-      def disconnected: IO[Either[Throwable, Unit]] = closed.get
+      def disconnected: IO[Unit] = closed.void
 
       def extensionApi: IO[ExtensionApi[IO]] = initExtension.init
     }

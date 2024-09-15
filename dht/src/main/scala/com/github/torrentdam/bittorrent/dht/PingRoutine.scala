@@ -21,7 +21,7 @@ class PingRoutine(table: RoutingTable[IO], client: Client)(using logger: Logger[
     val results = queries.parSequence.await
     val (bad, good) = results.partitionMap(identity)
     logger.info(s"Got ${good.size} good nodes and ${bad.size} bad nodes").await
-    table.updateGoodness(good.toSet, bad.toSet)
+    table.updateGoodness(good.toSet, bad.toSet).await
   
   def runForever: IO[Unit] =
     run
