@@ -86,9 +86,17 @@ object Node {
           case Left(_) => IO.unit
         }
     }
-    
+
   private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable[IO])(using Logger[IO]) =
-    nodes.take.flatMap(pingCandidate(_, client, routingTable).attempt.void).foreverM
+    nodes
+      .tryTakeN(none)
+      .flatMap(candidates => 
+        candidates
+          .distinct
+          .traverse_(pingCandidate(_, client, routingTable).attempt.void)
+      )
+      .productR(IO.sleep(1.minute))
+      .foreverM
 
 
   private def reportingQueryHandler(queue: Queue[IO, NodeInfo], next: QueryHandler[IO]): QueryHandler[IO] = (address, query) =>
