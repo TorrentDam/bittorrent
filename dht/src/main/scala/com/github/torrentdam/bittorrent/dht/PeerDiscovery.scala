@@ -23,42 +23,36 @@ trait PeerDiscovery {
 
 object PeerDiscovery {
 
-  def make(
+  def apply(
     routingTable: RoutingTable[IO],
-    dhtClient: Client[IO]
+    dhtClient: Client
   )(using
     logger: Logger[IO]
-  ): Resource[IO, PeerDiscovery] =
-    Resource.pure[IO, PeerDiscovery] {
-
-      new PeerDiscovery {
-
-        def discover(infoHash: InfoHash): Stream[IO, PeerInfo] = {
-
-          Stream
-            .eval {
-              for {
-                _ <- logger.info("Start discovery")
-                initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
-                initialNodes <- initialNodes.take(100).toList.pure[IO]
-                _ <- logger.info(s"Got ${initialNodes.size} from routing table")
-                state <- DiscoveryState(initialNodes, infoHash)
-              } yield {
-                start(
-                  infoHash,
-                  dhtClient.getPeers,
-                  state
-                )
-              }
-            }
-            .flatten
-            .onFinalizeCase {
-              case Resource.ExitCase.Errored(e) => logger.error(s"Discovery failed with ${e.getMessage}")
-              case _                            => IO.unit
-            }
+  ): PeerDiscovery = new {
+    def discover(infoHash: InfoHash): Stream[IO, PeerInfo] = {
+      Stream
+        .eval {
+          for {
+            _ <- logger.info("Start discovery")
+            initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
+            initialNodes <- initialNodes.take(100).toList.pure[IO]
+            _ <- logger.info(s"Got ${initialNodes.size} from routing table")
+            state <- DiscoveryState(initialNodes, infoHash)
+          } yield {
+            start(
+              infoHash,
+              dhtClient.getPeers,
+              state
+            )
+          }
         }
-      }
+        .flatten
+        .onFinalizeCase {
+          case Resource.ExitCase.Errored(e) => logger.error(s"Discovery failed with ${e.getMessage}")
+          case _                            => IO.unit
+        }
     }
+  }
 
   private[dht] def start(
     infoHash: InfoHash,

@@ -3,8 +3,10 @@ package com.github.torrentdam.bittorrent.dht
 import cats.effect.kernel.Temporal
 import cats.implicits.*
 import cats.MonadError
+import cats.effect.IO
 import cats.effect.implicits.*
 import com.comcast.ip4s.*
+import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
 import fs2.Stream
@@ -13,37 +15,37 @@ import scala.concurrent.duration.*
 
 object RoutingTableBootstrap {
 
-  def apply[F[_]](
-    table: RoutingTable[F],
-    client: Client[F],
+  def apply(
+    table: RoutingTable[IO],
+    client: Client,
+    discovery: PeerDiscovery,
     bootstrapNodeAddress: List[SocketAddress[Host]] = PublicBootstrapNodes
   )(using
-    F: Temporal[F],
-    dns: Dns[F],
-    logger: Logger[F]
-  ): F[Unit] =
+    dns: Dns[IO],
+    logger: Logger[IO]
+  ): IO[Unit] =
     for {
       _ <- logger.info("Bootstrapping")
-      count <- resolveBootstrapNode(client, bootstrapNodeAddress)
-        .evalMap(table.insert)
-        .compile
-        .count
-      _ <- logger.info(s"Bootstrap completed with $count nodes")
+      count <- resolveNodes(client, bootstrapNodeAddress).compile.count
+      _ <- logger.info(s"Pinged $count bootstrap nodes")
+      _ <- logger.info("Discover self to fill up routing table")
+      _ <- discovery.discover(InfoHash(client.id.bytes)).take(10).compile.drain
+      nodeCount <- table.allNodes.map(_.size)
+      _ <- logger.info(s"Bootstrapping finished with $nodeCount nodes")
     } yield {}
 
-  private def resolveBootstrapNode[F[_]](
-    client: Client[F],
+  private def resolveNodes(
+    client: Client,
     bootstrapNodeAddress: List[SocketAddress[Host]]
   )(using
-    F: Temporal[F],
-    dns: Dns[F],
-    logger: Logger[F]
-  ): Stream[F, NodeInfo] =
-    def tryThis(hostname: SocketAddress[Host]): Stream[F, NodeInfo] =
+    dns: Dns[IO],
+    logger: Logger[IO]
+  ): Stream[IO, NodeInfo] =
+    def tryThis(hostname: SocketAddress[Host]): Stream[IO, NodeInfo] =
       Stream.eval(logger.info(s"Trying to reach $hostname")) >>
       Stream
         .evals(
-          hostname.host.resolveAll[F]
+          hostname.host.resolveAll[IO]
             .recoverWith: e =>
               logger.info(s"Failed to resolve $hostname $e").as(List.empty)
         )
@@ -61,7 +63,7 @@ object RoutingTableBootstrap {
         }        
     Stream
       .emits(bootstrapNodeAddress)
-      .covary[F]
+      .covary[IO]
       .flatMap(tryThis)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(

@@ -24,7 +24,7 @@ object RequestResponse {
     generateTransactionId: F[ByteVector],
     sendQuery: (SocketAddress[IpAddress], Message.QueryMessage) => F[Unit],
     receiveMessage: F[
-      (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
+      (SocketAddress[IpAddress], Message.ErrorMessage | Message.ResponseMessage)
     ]
   )(using
     F: Temporal[F]
@@ -57,16 +57,16 @@ object RequestResponse {
 
   private def receiveLoop[F[_]](
     receive: F[
-      (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])
+      (SocketAddress[IpAddress], Message.ErrorMessage | Message.ResponseMessage)
     ],
     continue: (ByteVector, Either[Throwable, Response]) => F[Boolean]
   )(using
     F: Monad[F]
   ): F[Unit] = {
     val step = receive.map(_._2).flatMap {
-      case Right(Message.ResponseMessage(transactionId, response)) =>
+      case Message.ResponseMessage(transactionId, response) =>
         continue(transactionId, response.asRight)
-      case Left(Message.ErrorMessage(transactionId, details)) =>
+      case Message.ErrorMessage(transactionId, details) =>
         continue(transactionId, ErrorResponse(details).asLeft)
     }
     step.foreverM[Unit]

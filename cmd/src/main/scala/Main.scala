@@ -67,16 +67,12 @@ object Main
             async[ResourceIO] {
               given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
 
-              val selfId = Resource.eval(NodeId.generate[IO]).await
               val selfPeerId = Resource.eval(PeerId.generate[IO]).await
               val infoHash = Resource.eval(infoHashFromString(infoHashOption)).await
-              val table = Resource.eval(RoutingTable[IO](selfId)).await
-              val node = Node(selfId, none, QueryHandler(selfId, table)).await
-              Resource.eval(RoutingTableBootstrap[IO](table, node.client)).await
-              val discovery = PeerDiscovery.make(table, node.client).await
+              val node = Node().await
 
               val swarm = Swarm(
-                discovery.discover(infoHash),
+                node.discovery.discover(infoHash),
                 Connection.connect(selfPeerId, _, infoHash)
               ).await
               val metadata = DownloadMetadata(swarm).toResource.await
@@ -132,8 +128,6 @@ object Main
                       throw new Exception("Missing info-hash")
 
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-
-            val selfId = Resource.eval(NodeId.generate[IO]).await
             val selfPeerId = Resource.eval(PeerId.generate[IO]).await
             val peerAddress = peerAddressOption.flatMap(SocketAddress.fromStringIp)
             val peers: Stream[IO, PeerInfo] =
@@ -141,14 +135,9 @@ object Main
                 case Some(peerAddress) =>
                   Stream.emit(PeerInfo(peerAddress)).covary[IO]
                 case None =>
-                  val bootstrapNodeAddress = dhtNodeAddressOption
-                    .map(SocketAddress.fromString(_).toList)
-                    .getOrElse(RoutingTableBootstrap.PublicBootstrapNodes)
-                  val table = Resource.eval(RoutingTable[IO](selfId)).await
-                  val node = Node(selfId, none, QueryHandler(selfId, table)).await
-                  Resource.eval(RoutingTableBootstrap(table, node.client, bootstrapNodeAddress)).await
-                  val discovery = PeerDiscovery.make(table, node.client).await
-                  discovery.discover(infoHash)
+                  val bootstrapNodeAddress = dhtNodeAddressOption.flatMap(SocketAddress.fromString)
+                  val node = Node(none, bootstrapNodeAddress).await
+                  node.discovery.discover(infoHash)
             val swarm = Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash)).await
             val metadata =
               torrentFile match
@@ -278,11 +267,7 @@ object Main
           async[ResourceIO] {
             val port = Port.fromInt(portParam).liftTo[ResourceIO](new Exception("Invalid port")).await
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-            val selfId = Resource.eval(NodeId.generate[IO]).await
-            val table = Resource.eval(RoutingTable[IO](selfId)).await
-            val node = Node(selfId, Some(port), QueryHandler(selfId, table)).await
-            Resource.eval(RoutingTableBootstrap(table, node.client)).await
-            PingRoutine(table, node.client).runForever.background.await
+            Node(Some(port)).await
           }.useForever
         }
       }
@@ -299,13 +284,13 @@ object Main
             val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
             val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-            val infoHash = infoHashFromString(infoHashParam).toResource.await
             val selfId = Resource.eval(NodeId.generate[IO]).await
-            val table = Resource.eval(RoutingTable[IO](selfId)).await
-            val node = Node(selfId, none, QueryHandler(selfId, table)).await
+            val infoHash = infoHashFromString(infoHashParam).toResource.await
+            val messageSocket = MessageSocket(none).await
+            val client = Client(selfId, messageSocket, QueryHandler.noop).await
             async[IO]:
-              val pong = node.client.ping(nodeIpAddress).await
-              val response = node.client.getPeers(NodeInfo(pong.id, nodeIpAddress), infoHash).await
+              val pong = client.ping(nodeIpAddress).await
+              val response = client.getPeers(NodeInfo(pong.id, nodeIpAddress), infoHash).await
               IO.println(response).await
               ExitCode.Success
           }.useEval

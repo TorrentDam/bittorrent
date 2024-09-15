@@ -7,10 +7,13 @@ import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.DurationInt
 
-class PingRoutine(table: RoutingTable[IO], client: Client[IO])(using logger: Logger[IO]):
+class PingRoutine(table: RoutingTable[IO], client: Client)(using logger: Logger[IO]):
   
   def run: IO[Unit] = async[IO]:
-    val nodes = table.allNodes.await
+    val (nodes, desperateNodes) = table.allNodes.await.partition(_.badCount < 3)
+    if desperateNodes.nonEmpty then
+      logger.info(s"Removing ${desperateNodes.size} desperate nodes").await
+      desperateNodes.traverse_(node => table.remove(node.id)).await
     logger.info(s"Pinging ${nodes.size} nodes").await
     val queries = nodes.map { node =>
         client.ping(node.address).timeout(5.seconds).attempt.map(_.bimap(_ => node.id, _ => node.id))

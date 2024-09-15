@@ -9,57 +9,94 @@ import cats.effect.Resource
 import cats.effect.Sync
 import cats.implicits.*
 import com.comcast.ip4s.*
-import fs2.io.net.DatagramSocketGroup
+import fs2.Stream
+import com.github.torrentdam.bittorrent.InfoHash
+
 import java.net.InetSocketAddress
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
 import scodec.bits.ByteVector
 
-trait Node {
-  def client: Client[IO]
-}
+import scala.concurrent.duration.DurationInt
+
+class Node(val id: NodeId, val client: Client, val routingTable: RoutingTable[IO], val discovery: PeerDiscovery)
 
 object Node {
 
   def apply(
-    selfId: NodeId,
-    port: Option[Port],
-    queryHandler: QueryHandler[IO]
+    port: Option[Port] = None,
+    bootstrapNodeAddress: Option[SocketAddress[Host]] = None
   )(using
     random: Random[IO],
     logger: Logger[IO]
   ): Resource[IO, Node] =
-
-    def generateTransactionId: IO[ByteVector] =
-      val nextChar = random.nextAlphaNumeric
-      (nextChar, nextChar).mapN((a, b) => ByteVector.encodeAscii(List(a, b).mkString).toOption.get)
-
     for
+      selfId <- Resource.eval(NodeId.generate[IO])
       messageSocket <- MessageSocket(port)
-      responses <- Resource.eval {
-        Queue.unbounded[IO, (SocketAddress[IpAddress], Either[Message.ErrorMessage, Message.ResponseMessage])]
+      routingTable <- RoutingTable[IO](selfId).toResource
+      queryingNodes <- Queue.unbounded[IO, NodeInfo].toResource
+      queryHandler = reportingQueryHandler(queryingNodes, QueryHandler.simple(selfId, routingTable))
+      client <- Client(selfId, messageSocket, queryHandler)
+      insertingClient = new InsertingClient(client, routingTable)
+      bootstrapNodes = bootstrapNodeAddress.map(List(_)).getOrElse(RoutingTableBootstrap.PublicBootstrapNodes)
+      discovery = PeerDiscovery(routingTable, insertingClient)
+      _ <- RoutingTableBootstrap(routingTable, insertingClient, discovery, bootstrapNodes).toResource
+      _ <- PingRoutine(routingTable, client).runForever.background
+      _ <- pingCandidates(queryingNodes, client, routingTable).background
+    yield new Node(selfId, insertingClient, routingTable, discovery)
+
+  private class InsertingClient(client: Client, routingTable: RoutingTable[IO]) extends Client {
+
+    def id: NodeId = client.id
+
+    def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]] =
+      client.getPeers(nodeInfo, infoHash) <* routingTable.insert(nodeInfo)
+
+    def findNodes(nodeInfo: NodeInfo, target: NodeId): IO[Response.Nodes] =
+      client.findNodes(nodeInfo, target).flatTap { response =>
+        routingTable.insert(NodeInfo(response.id, nodeInfo.address))
       }
-      client0 <- Client(selfId, messageSocket.writeMessage, responses.take, generateTransactionId)
-      _ <-
-        messageSocket.readMessage
-          .flatMap {
-            case (a, m: Message.QueryMessage) =>
-              logger.debug(s"Received $m") >>
-              queryHandler(a, m.query).flatMap { response =>
-                val responseMessage = Message.ResponseMessage(m.transactionId, response)
-                logger.debug(s"Responding with $responseMessage") >>
-                messageSocket.writeMessage(a, responseMessage)
-              }
-            case (a, m: Message.ResponseMessage) => responses.offer((a, m.asRight))
-            case (a, m: Message.ErrorMessage)    => responses.offer((a, m.asLeft))
-          }
-          .recoverWith { case e: Throwable =>
-            logger.trace(s"Failed to read message: $e")
-          }
-          .foreverM
-          .background
-        
-    yield new Node {
-      def client: Client[IO] = client0
+
+    def ping(address: SocketAddress[IpAddress]): IO[Response.Ping] =
+      client.ping(address).flatTap { response =>
+        routingTable.insert(NodeInfo(response.id, address))
+      }
+
+    def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
+      client.sampleInfoHashes(nodeInfo, target).flatTap { response =>
+        routingTable.insert(
+          response match
+            case Left(response) => NodeInfo(response.id, nodeInfo.address)
+            case Right(response) => NodeInfo(response.id, nodeInfo.address)
+        )
+      }
+
+    override def toString: String = s"InsertingClient($client)"
+  }
+
+  private def pingCandidate(node: NodeInfo, client: Client, routingTable: RoutingTable[IO])(using Logger[IO]) =
+    routingTable.lookup(node.id).flatMap {
+      case Some(_) => IO.unit
+      case None =>
+        Logger[IO].info(s"Pinging $node") *>
+        client.ping(node.address).timeout(5.seconds).attempt.flatMap {
+          case Right(_) =>
+            Logger[IO].info(s"Got pong from $node -- insert as good") *>
+            routingTable.insert(node)
+          case Left(_) => IO.unit
+        }
     }
+    
+  private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable[IO])(using Logger[IO]) =
+    nodes.take.flatMap(pingCandidate(_, client, routingTable).attempt.void).foreverM
+
+
+  private def reportingQueryHandler(queue: Queue[IO, NodeInfo], next: QueryHandler[IO]): QueryHandler[IO] = (address, query) =>
+    val nodeInfo = query match
+      case Query.Ping(id) => NodeInfo(id, address)
+      case Query.FindNode(id, _) => NodeInfo(id, address)
+      case Query.GetPeers(id, _) => NodeInfo(id, address)
+      case Query.AnnouncePeer(id, _, _) => NodeInfo(id, address)
+      case Query.SampleInfoHashes(id, _) => NodeInfo(id, address)
+    queue.offer(nodeInfo) *> next(address, query)
 }

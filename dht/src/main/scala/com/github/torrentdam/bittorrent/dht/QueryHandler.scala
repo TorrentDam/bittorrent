@@ -6,44 +6,40 @@ import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.PeerInfo
 
 trait QueryHandler[F[_]] {
-  def apply(address: SocketAddress[IpAddress], query: Query): F[Response]
+  def apply(address: SocketAddress[IpAddress], query: Query): F[Option[Response]]
 }
 
 object QueryHandler {
+  
+  def noop[F[_]: Monad]: QueryHandler[F] = (_, _) => none.pure[F]
 
-  def apply[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] = { (address, query) =>
+  def simple[F[_]: Monad](selfId: NodeId, routingTable: RoutingTable[F]): QueryHandler[F] = { (address, query) =>
     query match {
-      case Query.Ping(nodeId) =>
-        routingTable.insert(NodeInfo(nodeId, address)).as {
-          Response.Ping(selfId): Response
-        }
-      case Query.FindNode(nodeId, target) =>
-        routingTable.insert(NodeInfo(nodeId, address)) >>
+      case Query.Ping(_) =>
+        Response.Ping(selfId).some.pure[F]
+      case Query.FindNode(_, target) =>
         routingTable.findBucket(target).map { nodes =>
-          Response.Nodes(selfId, nodes): Response
+          Response.Nodes(selfId, nodes).some
         }
-      case Query.GetPeers(nodeId, infoHash) =>
-        routingTable.insert(NodeInfo(nodeId, address)) >>
+      case Query.GetPeers(_, infoHash) =>
         routingTable.findPeers(infoHash).flatMap {
           case Some(peers) =>
-            Response.Peers(selfId, peers.toList).pure[F].widen[Response]
+            Response.Peers(selfId, peers.toList).some.pure[F]
           case None =>
             routingTable
               .findBucket(NodeId(infoHash.bytes))
               .map { nodes =>
-                Response.Nodes(selfId, nodes)
+                Response.Nodes(selfId, nodes).some
               }
-              .widen[Response]
         }
-      case Query.AnnouncePeer(nodeId, infoHash, port) =>
-        routingTable.insert(NodeInfo(nodeId, address)) >>
-        routingTable.addPeer(infoHash, PeerInfo(SocketAddress(address.host, Port.fromInt(port.toInt).get))).as {
-          Response.Ping(selfId): Response
-        }
+      case Query.AnnouncePeer(_, infoHash, port) =>
+        routingTable
+          .addPeer(infoHash, PeerInfo(SocketAddress(address.host, Port.fromInt(port.toInt).get)))
+          .as(
+            Response.Ping(selfId).some
+          )
       case Query.SampleInfoHashes(_, _) =>
-        (Response.SampleInfoHashes(selfId, None, List.empty): Response).pure[F]
+        Response.SampleInfoHashes(selfId, None, List.empty).some.pure[F]
     }
   }
-
-  def fromFunction[F[_]](f: (SocketAddress[IpAddress], Query) => F[Response]): QueryHandler[F] = f(_, _)
 }

@@ -16,6 +16,8 @@ import scala.annotation.tailrec
 trait RoutingTable[F[_]] {
 
   def insert(node: NodeInfo): F[Unit]
+  
+  def remove(nodeId: NodeId): F[Unit]
 
   def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]]
 
@@ -28,6 +30,8 @@ trait RoutingTable[F[_]] {
   def allNodes: F[LazyList[RoutingTable.Node]]
 
   def updateGoodness(good: Set[NodeId], bad: Set[NodeId]): F[Unit]
+  
+  def lookup(nodeId: NodeId): F[Option[RoutingTable.Node]]
 }
 
 object RoutingTable {
@@ -36,7 +40,7 @@ object RoutingTable {
     case Split(center: BigInt, lower: TreeNode, higher: TreeNode)
     case Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, Node])
     
-  case class Node(id: NodeId, address: SocketAddress[IpAddress], isGood: Boolean):
+  case class Node(id: NodeId, address: SocketAddress[IpAddress], isGood: Boolean, badCount: Int = 0):
     def toNodeInfo: NodeInfo = NodeInfo(id, address)
 
   object TreeNode {
@@ -62,7 +66,7 @@ object RoutingTable {
           else
             b.copy(higher = higher.insert(node, selfId))
         case b @ Bucket(from, until, nodes) =>
-          if nodes.size == MaxNodes
+          if nodes.size >= MaxNodes && !nodes.contains(selfId)
           then  
             if selfId.int >= from && selfId.int < until
             then
@@ -140,6 +144,9 @@ object RoutingTable {
 
       def insert(node: NodeInfo): F[Unit] =
         treeNodeRef.update(_.insert(node, selfId))
+        
+      def remove(nodeId: NodeId): F[Unit] =
+        treeNodeRef.update(_.remove(nodeId))
 
       def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]] =
         treeNodeRef.get.map(_.findNodes(nodeId).filter(_.isGood).map(_.toNodeInfo))
@@ -164,10 +171,13 @@ object RoutingTable {
       def updateGoodness(good: Set[NodeId], bad: Set[NodeId]): F[Unit] =
         treeNodeRef.update(
           _.update(node =>
-            if good.contains(node.id) then node.copy(isGood = true)
-            else if bad.contains(node.id) then node.copy(isGood = false)
+            if good.contains(node.id) then node.copy(isGood = true, badCount = 0)
+            else if bad.contains(node.id) then node.copy(isGood = false, badCount = node.badCount + 1)
             else node
           )
         )
+        
+      def lookup(nodeId: NodeId): F[Option[Node]] =
+        treeNodeRef.get.map(_.findBucket(nodeId).nodes.get(nodeId))
     }
 }
