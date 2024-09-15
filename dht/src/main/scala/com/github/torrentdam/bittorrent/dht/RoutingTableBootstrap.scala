@@ -29,7 +29,7 @@ object RoutingTableBootstrap {
       count <- resolveNodes(client, bootstrapNodeAddress).compile.count
       _ <- logger.info(s"Pinged $count bootstrap nodes")
       _ <- logger.info("Discover self to fill up routing table")
-      _ <- discovery.discover(InfoHash(client.id.bytes)).take(10).compile.drain
+      _ <- discovery.discover(InfoHash(client.id.bytes)).take(10).compile.drain.timeout(30.seconds).attempt
       nodeCount <- table.allNodes.map(_.size)
       _ <- logger.info(s"Bootstrapping finished with $nodeCount nodes")
     } yield {}
@@ -51,10 +51,13 @@ object RoutingTableBootstrap {
         )
         .evalMap: ipAddress =>
           val resolvedAddress = SocketAddress(ipAddress, hostname.port)
+          logger.info(s"Resolved to $ipAddress") *>
           client
             .ping(resolvedAddress)
             .timeout(5.seconds)
             .map(pong => NodeInfo(pong.id, resolvedAddress))
+            .flatTap: _ =>
+              logger.info(s"Reached $resolvedAddress node")
             .map(_.some)
             .recoverWith: e =>
               logger.info(s"Failed to reach $resolvedAddress $e").as(none)
