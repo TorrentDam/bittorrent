@@ -24,8 +24,10 @@ class PingRoutine(table: RoutingTable[IO], client: Client)(using logger: Logger[
     table.updateGoodness(good.toSet, bad.toSet).await
   
   def runForever: IO[Unit] =
-    run
+    IO
+      .sleep(10.minutes)
+      .productR(run)
+      .foreverM
       .handleErrorWith: e => 
         logger.error(s"PingRoutine failed: $e")
-      .productR(IO.sleep(10.minutes))
       .foreverM

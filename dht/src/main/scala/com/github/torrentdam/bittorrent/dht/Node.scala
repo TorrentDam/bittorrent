@@ -49,12 +49,21 @@ object Node {
 
     def id: NodeId = client.id
 
-    def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]] =
-      client.getPeers(nodeInfo, infoHash) <* routingTable.insert(nodeInfo)
+    def getPeers(address: SocketAddress[IpAddress], infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]] =
+      client.getPeers(address, infoHash).flatTap { response =>
+        routingTable.insert(
+          NodeInfo(
+            response match
+              case Left(response) => response.id
+              case Right(response) => response.id,
+            address
+          )
+        )
+      }
 
-    def findNodes(nodeInfo: NodeInfo, target: NodeId): IO[Response.Nodes] =
-      client.findNodes(nodeInfo, target).flatTap { response =>
-        routingTable.insert(NodeInfo(response.id, nodeInfo.address))
+    def findNodes(address: SocketAddress[IpAddress], target: NodeId): IO[Response.Nodes] =
+      client.findNodes(address, target).flatTap { response =>
+        routingTable.insert(NodeInfo(response.id, address))
       }
 
     def ping(address: SocketAddress[IpAddress]): IO[Response.Ping] =
@@ -62,12 +71,12 @@ object Node {
         routingTable.insert(NodeInfo(response.id, address))
       }
 
-    def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
-      client.sampleInfoHashes(nodeInfo, target).flatTap { response =>
+    def sampleInfoHashes(address: SocketAddress[IpAddress], target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
+      client.sampleInfoHashes(address, target).flatTap { response =>
         routingTable.insert(
           response match
-            case Left(response) => NodeInfo(response.id, nodeInfo.address)
-            case Right(response) => NodeInfo(response.id, nodeInfo.address)
+            case Left(response) => NodeInfo(response.id, address)
+            case Right(response) => NodeInfo(response.id, address)
         )
       }
 

@@ -5,6 +5,7 @@ import cats.implicits.*
 import cats.MonadError
 import cats.effect.IO
 import cats.effect.implicits.*
+import cats.effect.cps.{given, *}
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.given
@@ -24,15 +25,14 @@ object RoutingTableBootstrap {
     dns: Dns[IO],
     logger: Logger[IO]
   ): IO[Unit] =
-    for {
+    for
       _ <- logger.info("Bootstrapping")
-      count <- resolveNodes(client, bootstrapNodeAddress).compile.count
-      _ <- logger.info(s"Pinged $count bootstrap nodes")
-      _ <- logger.info("Discover self to fill up routing table")
-      _ <- discovery.discover(InfoHash(client.id.bytes)).take(10).compile.drain.timeout(30.seconds).attempt
+      count <- resolveNodes(client, bootstrapNodeAddress).compile.count.iterateUntil(_ > 0)
+      _ <- logger.info(s"Communicated with $count bootstrap nodes")
+      _ <- selfDiscovery(table, client, discovery)
       nodeCount <- table.allNodes.map(_.size)
       _ <- logger.info(s"Bootstrapping finished with $nodeCount nodes")
-    } yield {}
+    yield {}
 
   private def resolveNodes(
     client: Client,
@@ -63,11 +63,24 @@ object RoutingTableBootstrap {
               logger.info(s"Failed to reach $resolvedAddress $e").as(none)
         .collect {
           case Some(node) => node
-        }        
+        }
     Stream
       .emits(bootstrapNodeAddress)
       .covary[IO]
       .flatMap(tryThis)
+
+  private def selfDiscovery(
+    table: RoutingTable[IO],
+    client: Client,
+    discovery: PeerDiscovery
+  )(using Logger[IO]) =
+    def attempt(number: Int): IO[Unit] = async[IO]:
+      Logger[IO].info(s"Discover self to fill up routing table (attempt $number)").await
+      val count = discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.await
+      Logger[IO].info(s"Communicated with $count nodes during self discovery").await
+      val nodeCount = table.allNodes.await.size
+      if nodeCount < 20 then attempt(number + 1).await else IO.unit
+    attempt(1)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(
     SocketAddress(host"router.bittorrent.com", port"6881"),

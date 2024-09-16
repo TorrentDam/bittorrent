@@ -289,8 +289,7 @@ object Main
             val messageSocket = MessageSocket(none).await
             val client = Client(selfId, messageSocket, QueryHandler.noop).await
             async[IO]:
-              val pong = client.ping(nodeIpAddress).await
-              val response = client.getPeers(NodeInfo(pong.id, nodeIpAddress), infoHash).await
+              val response = client.getPeers(nodeIpAddress, infoHash).await
               IO.println(response).await
               ExitCode.Success
           }.useEval

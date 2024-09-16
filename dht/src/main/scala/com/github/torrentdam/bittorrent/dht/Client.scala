@@ -16,13 +16,13 @@ trait Client {
   
   def id: NodeId
 
-  def getPeers(nodeInfo: NodeInfo, infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]]
+  def getPeers(address: SocketAddress[IpAddress], infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]]
 
-  def findNodes(nodeInfo: NodeInfo, target: NodeId): IO[Response.Nodes]
+  def findNodes(address: SocketAddress[IpAddress], target: NodeId): IO[Response.Nodes]
 
   def ping(address: SocketAddress[IpAddress]): IO[Response.Ping]
 
-  def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]]
+  def sampleInfoHashes(address: SocketAddress[IpAddress], target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]]
 }
 
 object Client {
@@ -71,17 +71,17 @@ object Client {
       def id: NodeId = selfId
 
       def getPeers(
-        nodeInfo: NodeInfo,
+        address: SocketAddress[IpAddress],
         infoHash: InfoHash
       ): IO[Either[Response.Nodes, Response.Peers]] =
-        requestResponse.sendQuery(nodeInfo.address, Query.GetPeers(selfId, infoHash)).flatMap {
+        requestResponse.sendQuery(address, Query.GetPeers(selfId, infoHash)).flatMap {
           case nodes: Response.Nodes => nodes.asLeft.pure
           case peers: Response.Peers => peers.asRight.pure
           case _                     => IO.raiseError(InvalidResponse())
         }
 
-      def findNodes(nodeInfo: NodeInfo, target: NodeId): IO[Response.Nodes] =
-        requestResponse.sendQuery(nodeInfo.address, Query.FindNode(selfId, target)).flatMap {
+      def findNodes(address: SocketAddress[IpAddress], target: NodeId): IO[Response.Nodes] =
+        requestResponse.sendQuery(address, Query.FindNode(selfId, target)).flatMap {
           case nodes: Response.Nodes => nodes.pure
           case _                     => IO.raiseError(InvalidResponse())
         }
@@ -91,8 +91,8 @@ object Client {
           case ping: Response.Ping => ping.pure
           case _                   => IO.raiseError(InvalidResponse())
         }
-      def sampleInfoHashes(nodeInfo: NodeInfo, target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
-        requestResponse.sendQuery(nodeInfo.address, Query.SampleInfoHashes(selfId, target)).flatMap {
+      def sampleInfoHashes(address: SocketAddress[IpAddress], target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
+        requestResponse.sendQuery(address, Query.SampleInfoHashes(selfId, target)).flatMap {
           case response: Response.SampleInfoHashes => response.asRight[Response.Nodes].pure
           case response: Response.Nodes            => response.asLeft[Response.SampleInfoHashes].pure
           case _                                   => IO.raiseError(InvalidResponse())

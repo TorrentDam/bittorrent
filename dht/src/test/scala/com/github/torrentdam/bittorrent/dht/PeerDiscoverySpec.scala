@@ -20,10 +20,10 @@ class PeerDiscoverySpec extends munit.CatsEffectSuite {
     given logger: Logger[IO] = NoOpLogger()
 
     def getPeers(
-      nodeInfo: NodeInfo,
+      address: SocketAddress[IpAddress],
       infoHash: InfoHash
     ): IO[Either[Response.Nodes, Response.Peers]] = IO {
-      nodeInfo.address.port.value match {
+      address.port.value match {
         case 1 =>
           Left(
             Response.Nodes(

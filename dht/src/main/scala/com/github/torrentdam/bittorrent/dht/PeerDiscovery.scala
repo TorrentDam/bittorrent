@@ -7,18 +7,23 @@ import cats.effect.IO
 import cats.effect.Resource
 import cats.instances.all.*
 import cats.syntax.all.*
+import cats.effect.cps.{given, *}
 import cats.Show.Shown
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.PeerInfo
 import fs2.Stream
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
+
 import scala.concurrent.duration.DurationInt
 import Logger.withLogContext
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 trait PeerDiscovery {
 
   def discover(infoHash: InfoHash): Stream[IO, PeerInfo]
+  
+  def findNodes(NodeId: NodeId): Stream[IO, NodeInfo]
 }
 
 object PeerDiscovery {
@@ -36,7 +41,7 @@ object PeerDiscovery {
             _ <- logger.info("Start discovery")
             initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
             initialNodes <- initialNodes.take(100).toList.pure[IO]
-            _ <- logger.info(s"Got ${initialNodes.size} from routing table")
+            _ <- logger.info(s"Received ${initialNodes.size} from own routing table")
             state <- DiscoveryState(initialNodes, infoHash)
           } yield {
             start(
@@ -52,13 +57,72 @@ object PeerDiscovery {
           case _                            => IO.unit
         }
     }
+    
+    def findNodes(nodeId: NodeId): Stream[IO, NodeInfo] =
+      Stream
+        .eval(
+          for 
+            _ <- logger.info(s"Start finding nodes for $nodeId")
+            initialNodes <- routingTable.findNodes(nodeId)
+            initialNodes <- initialNodes
+              .take(10)
+              .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, dhtClient.id))
+              .toList.pure[IO]
+          yield
+            FindNodesState(nodeId, initialNodes)
+        )
+        .flatMap { state =>
+          Stream
+            .unfoldEval(state)(_.next)
+            .flatMap(Stream.emits)
+        }
+
+    case class FindNodesState(
+                               targetId: NodeId,
+                               nodesToQuery: List[NodeInfo],
+                               seenNodes: Set[NodeInfo] = Set.empty,
+                               respondedCount: Int = 0
+                             ):
+      def next: IO[Option[(List[NodeInfo], FindNodesState)]] = async[IO]:
+        if nodesToQuery.isEmpty then
+          none
+        else
+          val responses = nodesToQuery
+            .parTraverse(nodeInfo =>
+              dhtClient
+                .findNodes(nodeInfo.address, targetId)
+                .map(_.nodes.some)
+                .timeout(5.seconds)
+                .orElse(none.pure[IO])
+                .tupleLeft(nodeInfo)
+            )
+            .await
+          val respondedNodes = responses.collect { case (nodeInfo, Some(_)) => nodeInfo }
+          val foundNodes = responses.collect { case (_, Some(nodes)) => nodes }.flatten
+          val threshold =
+            if respondedCount > 10
+            then NodeId.distance(nodesToQuery.head.id, targetId)
+            else NodeId.MaxValue
+          val closeNodes = foundNodes
+            .filterNot(seenNodes)
+            .distinct
+            .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
+            .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
+            .take(10)
+          (
+            respondedNodes,
+            copy(
+              nodesToQuery = closeNodes,
+              seenNodes = seenNodes ++ foundNodes,
+              respondedCount = respondedCount + respondedNodes.size)
+          ).some
   }
 
   private[dht] def start(
-    infoHash: InfoHash,
-    getPeers: (NodeInfo, InfoHash) => IO[Either[Response.Nodes, Response.Peers]],
-    state: DiscoveryState,
-    parallelism: Int = 10
+                          infoHash: InfoHash,
+                          getPeers: (SocketAddress[IpAddress], InfoHash) => IO[Either[Response.Nodes, Response.Peers]],
+                          state: DiscoveryState,
+                          parallelism: Int = 10
   )(using
     logger: Logger[IO]
   ): Stream[IO, PeerInfo] = {
@@ -66,7 +130,7 @@ object PeerDiscovery {
     Stream
       .repeatEval(state.next)
       .parEvalMapUnordered(parallelism) { nodeInfo =>
-        getPeers(nodeInfo, infoHash).timeout(5.seconds).attempt <* logger.trace(s"Get peers $nodeInfo")
+        getPeers(nodeInfo.address, infoHash).timeout(5.seconds).attempt <* logger.trace(s"Get peers $nodeInfo")
       }
       .flatMap {
         case Right(response) =>
@@ -100,10 +164,8 @@ object PeerDiscovery {
 
     def addNodes(nodes: List[NodeInfo]): IO[Unit] = {
       ref.modify { state =>
-        val (seenNodes, newNodes) = {
-          val newNodes = nodes.filterNot(state.seenNodes)
-          (state.seenNodes ++ newNodes, newNodes)
-        }
+        val newNodes = nodes.filterNot(state.seenNodes)
+        val seenNodes = state.seenNodes ++ newNodes
         val nodesToTry = (newNodes ++ state.nodesToTry).sortBy(n => NodeId.distance(n.id, infoHash))
         val waiters = state.waiters.drop(nodesToTry.size)
         val newState =

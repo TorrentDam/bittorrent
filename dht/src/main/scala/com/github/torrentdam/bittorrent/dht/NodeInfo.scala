@@ -25,6 +25,8 @@ object NodeId {
     for bytes <- Random[F].nextBytes(20)
     yield NodeId(ByteVector.view(bytes))
   }
-  
+
   given Show[NodeId] = nodeId => s"NodeId(${nodeId.bytes.toHex})"
+
+  val MaxValue: BigInt = BigInt(1, Array.fill(20)(0xff.toByte))
 }
