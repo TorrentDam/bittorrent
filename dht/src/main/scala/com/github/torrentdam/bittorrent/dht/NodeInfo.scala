@@ -21,10 +21,19 @@ object NodeId {
 
   def distance(a: NodeId, b: InfoHash): BigInt = distance(a.bytes, b.bytes)
 
-  def generate[F[_]](using Random[F], Monad[F]): F[NodeId] = {
+  def random[F[_]](using Random[F], Monad[F]): F[NodeId] = {
     for bytes <- Random[F].nextBytes(20)
     yield NodeId(ByteVector.view(bytes))
   }
+  
+  def fromInt(int: BigInt): NodeId = NodeId(ByteVector.view(int.toByteArray).padTo(20))
+  
+  def randomInRange[F[_]](from: BigInt, until: BigInt)(using Random[F], Monad[F]): F[NodeId] =
+    val range = until - from
+    for
+      bytes <- Random[F].nextBytes(range.bitLength / 8)
+      integer = BigInt(1, bytes) + from
+    yield NodeId(ByteVector.view(integer.toByteArray).padLeft(20))
 
   given Show[NodeId] = nodeId => s"NodeId(${nodeId.bytes.toHex})"
 

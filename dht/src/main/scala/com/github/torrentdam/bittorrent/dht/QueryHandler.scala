@@ -18,8 +18,8 @@ object QueryHandler {
       case Query.Ping(_) =>
         Response.Ping(selfId).some.pure[F]
       case Query.FindNode(_, target) =>
-        routingTable.findBucket(target).map { nodes =>
-          Response.Nodes(selfId, nodes).some
+        routingTable.goodNodes(target).map { nodes =>
+          Response.Nodes(selfId, nodes.take(8).toList).some
         }
       case Query.GetPeers(_, infoHash) =>
         routingTable.findPeers(infoHash).flatMap {
@@ -27,9 +27,9 @@ object QueryHandler {
             Response.Peers(selfId, peers.toList).some.pure[F]
           case None =>
             routingTable
-              .findBucket(NodeId(infoHash.bytes))
+              .goodNodes(NodeId(infoHash.bytes))
               .map { nodes =>
-                Response.Nodes(selfId, nodes).some
+                Response.Nodes(selfId, nodes.take(8).toList).some
               }
         }
       case Query.AnnouncePeer(_, infoHash, port) =>

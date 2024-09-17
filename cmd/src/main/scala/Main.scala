@@ -284,7 +284,7 @@ object Main
             val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
             val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-            val selfId = Resource.eval(NodeId.generate[IO]).await
+            val selfId = Resource.eval(NodeId.random[IO]).await
             val infoHash = infoHashFromString(infoHashParam).toResource.await
             val messageSocket = MessageSocket(none).await
             val client = Client(selfId, messageSocket, QueryHandler.noop).await

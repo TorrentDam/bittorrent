@@ -39,8 +39,8 @@ object PeerDiscovery {
         .eval {
           for {
             _ <- logger.info("Start discovery")
-            initialNodes <- routingTable.findNodes(NodeId(infoHash.bytes))
-            initialNodes <- initialNodes.take(100).toList.pure[IO]
+            initialNodes <- routingTable.goodNodes(NodeId(infoHash.bytes))
+            initialNodes <- initialNodes.take(16).toList.pure[IO]
             _ <- logger.info(s"Received ${initialNodes.size} from own routing table")
             state <- DiscoveryState(initialNodes, infoHash)
           } yield {
@@ -63,11 +63,12 @@ object PeerDiscovery {
         .eval(
           for 
             _ <- logger.info(s"Start finding nodes for $nodeId")
-            initialNodes <- routingTable.findNodes(nodeId)
+            initialNodes <- routingTable.goodNodes(nodeId)
             initialNodes <- initialNodes
-              .take(10)
+              .take(16)
+              .toList
               .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, dhtClient.id))
-              .toList.pure[IO]
+              .pure[IO]
           yield
             FindNodesState(nodeId, initialNodes)
         )
@@ -80,7 +81,7 @@ object PeerDiscovery {
     case class FindNodesState(
                                targetId: NodeId,
                                nodesToQuery: List[NodeInfo],
-                               seenNodes: Set[NodeInfo] = Set.empty,
+                               usedNodes: Set[NodeInfo] = Set.empty,
                                respondedCount: Int = 0
                              ):
       def next: IO[Option[(List[NodeInfo], FindNodesState)]] = async[IO]:
@@ -104,7 +105,7 @@ object PeerDiscovery {
             then NodeId.distance(nodesToQuery.head.id, targetId)
             else NodeId.MaxValue
           val closeNodes = foundNodes
-            .filterNot(seenNodes)
+            .filterNot(usedNodes)
             .distinct
             .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
             .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
@@ -113,7 +114,7 @@ object PeerDiscovery {
             respondedNodes,
             copy(
               nodesToQuery = closeNodes,
-              seenNodes = seenNodes ++ foundNodes,
+              usedNodes = usedNodes ++ respondedNodes,
               respondedCount = respondedCount + respondedNodes.size)
           ).some
   }

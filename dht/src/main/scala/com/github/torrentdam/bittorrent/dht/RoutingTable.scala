@@ -19,15 +19,15 @@ trait RoutingTable[F[_]] {
   
   def remove(nodeId: NodeId): F[Unit]
 
-  def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]]
-
-  def findBucket(nodeId: NodeId): F[List[NodeInfo]]
+  def goodNodes(nodeId: NodeId): F[Iterable[NodeInfo]]
 
   def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): F[Unit]
 
   def findPeers(infoHash: InfoHash): F[Option[Iterable[PeerInfo]]]
 
-  def allNodes: F[LazyList[RoutingTable.Node]]
+  def allNodes: F[Iterable[RoutingTable.Node]]
+  
+  def buckets: F[Iterable[RoutingTable.TreeNode.Bucket]]
 
   def updateGoodness(good: Set[NodeId], bad: Set[NodeId]): F[Unit]
   
@@ -38,7 +38,7 @@ object RoutingTable {
 
   enum TreeNode:
     case Split(center: BigInt, lower: TreeNode, higher: TreeNode)
-    case Bucket(from: BigInt, until: BigInt, nodes: ListMap[NodeId, Node])
+    case Bucket(from: BigInt, until: BigInt, nodes: Map[NodeId, Node])
     
   case class Node(id: NodeId, address: SocketAddress[IpAddress], isGood: Boolean, badCount: Int = 0):
     def toNodeInfo: NodeInfo = NodeInfo(id, address)
@@ -49,7 +49,7 @@ object RoutingTable {
       TreeNode.Bucket(
         from = BigInt(0),
         until = BigInt(1, ByteVector.fill(20)(-1: Byte).toArray),
-        ListMap.empty
+        Map.empty
       )
   }
 
@@ -118,7 +118,7 @@ object RoutingTable {
             higher.findBucket(nodeId)
         case b: Bucket => b
 
-    def findNodes(nodeId: NodeId): LazyList[Node] =
+    def findNodes(nodeId: NodeId): Iterable[Node] =
       bucket match
         case Split(center, lower, higher) =>
           if (nodeId.int < center)
@@ -126,6 +126,11 @@ object RoutingTable {
           else
             higher.findNodes(nodeId) ++ lower.findNodes(nodeId)
         case b: Bucket => b.nodes.values.to(LazyList)
+        
+    def buckets: Iterable[Bucket] =
+      bucket match
+        case b: Bucket => Iterable(b)
+        case Split(_, lower, higher) => lower.buckets ++ higher.buckets
         
     def update(fn: Node => Node): TreeNode =
       bucket match
@@ -148,11 +153,8 @@ object RoutingTable {
       def remove(nodeId: NodeId): F[Unit] =
         treeNodeRef.update(_.remove(nodeId))
 
-      def findNodes(nodeId: NodeId): F[LazyList[NodeInfo]] =
+      def goodNodes(nodeId: NodeId): F[Iterable[NodeInfo]] =
         treeNodeRef.get.map(_.findNodes(nodeId).filter(_.isGood).map(_.toNodeInfo))
-
-      def findBucket(nodeId: NodeId): F[List[NodeInfo]] =
-        treeNodeRef.get.map(_.findBucket(nodeId).nodes.values.filter(_.isGood).map(_.toNodeInfo).toList)
 
       def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): F[Unit] =
         peers.update { map =>
@@ -165,8 +167,11 @@ object RoutingTable {
       def findPeers(infoHash: InfoHash): F[Option[Iterable[PeerInfo]]] =
         peers.get.map(_.get(infoHash))
         
-      def allNodes: F[LazyList[Node]] =
+      def allNodes: F[Iterable[Node]] =
         treeNodeRef.get.map(_.findNodes(selfId))
+        
+      def buckets: F[Iterable[TreeNode.Bucket]] =
+        treeNodeRef.get.map(_.buckets)
         
       def updateGoodness(good: Set[NodeId], bad: Set[NodeId]): F[Unit] =
         treeNodeRef.update(
