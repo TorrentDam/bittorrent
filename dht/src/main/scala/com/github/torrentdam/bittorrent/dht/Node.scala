@@ -31,7 +31,7 @@ object Node {
     logger: Logger[IO]
   ): Resource[IO, Node] =
     for
-      selfId <- Resource.eval(NodeId.generate[IO])
+      selfId <- Resource.eval(NodeId.random[IO])
       messageSocket <- MessageSocket(port)
       routingTable <- RoutingTable[IO](selfId).toResource
       queryingNodes <- Queue.unbounded[IO, NodeInfo].toResource
@@ -41,7 +41,7 @@ object Node {
       bootstrapNodes = bootstrapNodeAddress.map(List(_)).getOrElse(RoutingTableBootstrap.PublicBootstrapNodes)
       discovery = PeerDiscovery(routingTable, insertingClient)
       _ <- RoutingTableBootstrap(routingTable, insertingClient, discovery, bootstrapNodes).toResource
-      _ <- PingRoutine(routingTable, client).runForever.background
+      _ <- RoutingTableRefresh(routingTable, client, discovery).runEvery(15.minutes).background
       _ <- pingCandidates(queryingNodes, client, routingTable).background
     yield new Node(selfId, insertingClient, routingTable, discovery)
 
