@@ -248,7 +248,8 @@ object Main
               Logger[IO].info("All pieces verified").await
               ExitCode.Success
             catch
-              case _ =>
+              case e =>
+                Logger[IO].error(e.getMessage).await
                 ExitCode.Error
           }
         }
