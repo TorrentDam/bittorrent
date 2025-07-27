@@ -1,0 +1,123 @@
+//| mill-version: 1.0.1
+//| mill-jvm-version: temurin:21.0.6
+
+import mill.*, scalalib.*, scalanativelib.*
+
+object common extends CommonSettings {
+  def mvnDeps = Seq(
+    Deps.`scodec-bits`,
+    Deps.`cats-effect`,
+    Deps.ip4s,
+  )
+}
+
+object dht extends CommonSettings {
+  def moduleDeps = Seq(common)
+  def mvnDeps = Seq(
+    Deps.bencode,
+    Deps.`scodec-bits`,
+    Deps.`cats-core`,
+    Deps.`cats-effect`,
+    Deps.`fs2-io`,
+    Deps.`woof-core`,
+    Deps.`cats-effect-cps`,
+  )
+}
+
+object bittorrent extends CommonSettings {
+  override def sourceRoots = Seq("shared", "jvm")
+
+  def moduleDeps = Seq(common)
+  def mvnDeps = Seq(
+    Deps.bencode,
+    Deps.`cats-core`,
+    Deps.`cats-effect`,
+    Deps.`fs2-io`,
+    Deps.`monocle-core`,
+    Deps.`monocle-macro`,
+    Deps.`woof-core`,
+    Deps.`cats-effect-cps`,
+  )
+}
+
+object files extends CommonSettings {
+  def moduleDeps = Seq(common, bittorrent)
+  def mvnDeps = Seq(
+    Deps.`scodec-bits`,
+    Deps.`cats-core`,
+    Deps.`cats-effect`,
+    Deps.`fs2-io`,
+    Deps.`woof-core`,
+    Deps.`cats-effect-cps`,
+  )
+}
+
+object cmd extends CommonSettings {
+  def moduleDeps = Seq(bittorrent, dht, files)
+  def mvnDeps = Seq(
+    Deps.decline,
+    Deps.`woof-core`,
+    Deps.`cats-effect-cps`,
+  )
+}
+
+trait CommonSettings extends ScalaModule {
+  def scalaVersion = "3.7.1"
+  def sourceRoots = Seq(os.RelPath("."))
+  def sources = Task.Sources(
+    sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
+  )
+
+  object test extends ScalaTests, TestModule.Munit {
+    def munitVersion = "1.1.1"
+    def sources = Task.Sources(
+      sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "scala")*
+    )
+    def resources = Task.Sources(
+      sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "resources")*
+    )
+
+    def mvnDeps = Seq(
+      Deps.`munit-cats-effect`,
+    )
+  }
+}
+
+object Deps {
+
+  object Versions {
+    val cats = "2.10.0"
+    val `cats-effect` = "3.5.4"
+    val ip4s = "3.3.0"
+    val fs2 = "3.9.4"
+    val epollcat = "0.1.4"
+    val monocle = "3.2.0"
+    val `scodec-bits` = "1.1.37"
+    val bencode = "1.1.0"
+    val decline = "2.4.1"
+    val woof = "0.6.0"
+    val `cats-effect-cps` = "0.4.0"
+  }
+
+  val `cats-core` = mvn"org.typelevel::cats-core::${Versions.cats}"
+  val `cats-effect` = mvn"org.typelevel::cats-effect::${Versions.`cats-effect`}"
+
+  val ip4s = mvn"com.comcast::ip4s-core::${Versions.ip4s}"
+
+  val `fs2-io` = mvn"co.fs2::fs2-io::${Versions.fs2}"
+
+  val `scodec-bits` = mvn"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
+
+  val `woof-core` = mvn"org.legogroup::woof-core::${Versions.woof}"
+
+  val `monocle-core` = mvn"dev.optics::monocle-core::${Versions.monocle}"
+  val `monocle-macro` = mvn"dev.optics::monocle-macro::${Versions.monocle}"
+
+  val bencode = mvn"io.github.torrentdam.bencode::bencode::${Versions.bencode}"
+
+  val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::2.1.0"
+
+  val decline = mvn"com.monovore::decline-effect::${Versions.decline}"
+
+  val `cats-effect-cps` = mvn"org.typelevel::cats-effect-cps::${Versions.`cats-effect-cps`}"
+}

@@ -193,7 +193,7 @@ object Download {
           info.bytes.get.tupleRight(info)
         })
         .flatMap(values =>
-          val sorted = values.sortBy(_._1)(Ordering[Int].reverse).map(_._2)
+          val sorted = values.sortBy(_._1)(using Ordering[Int].reverse).map(_._2)
           val fastCount = (values.size.toDouble * 0.7).ceil.toInt
           val (fast, slow) = sorted.splitAt(fastCount)
           fast.traverse(_.cls.set(SpeedClass.Fast)) >> slow.traverse(_.cls.set(SpeedClass.Slow))

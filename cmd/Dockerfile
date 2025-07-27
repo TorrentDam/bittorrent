@@ -1,5 +1,5 @@
 FROM eclipse-temurin:24-jre-noble
 
-COPY ./.jvm/target/universal/stage /opt/torrentdam
+COPY ./out/cmd/assembly.dest/out.jar /opt/torrentdam/assembly.jar
 
-ENTRYPOINT ["/opt/torrentdam/bin/cmd", "-Dcats.effect.tracing.mode=none", "-J-XX:+UnlockExperimentalVMOptions", "-J-XX:+UseCompactObjectHeaders"]
+ENTRYPOINT [ "java", "-Dcats.effect.tracing.mode=none", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseCompactObjectHeaders", "-jar", "/opt/torrentdam/assembly.jar"]

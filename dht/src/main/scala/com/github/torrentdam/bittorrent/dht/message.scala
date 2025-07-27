@@ -23,12 +23,12 @@ object Message {
     BencodeFormat.ByteVectorFormat.imap(NodeId.apply)(_.bytes)
 
   val PingQueryFormat: BencodeFormat[Query.Ping] = (
-    field[NodeId]("a")(field[NodeId]("id"))
+    field[NodeId]("a")(using field[NodeId]("id"))
   ).imap[Query.Ping](qni => Query.Ping(qni))(v => v.queryingNodeId)
 
   val FindNodeQueryFormat: BencodeFormat[Query.FindNode] = (
     field[(NodeId, NodeId)]("a")(
-      (field[NodeId]("id"), field[NodeId]("target")).tupled
+      using (field[NodeId]("id"), field[NodeId]("target")).tupled
     )
   ).imap[Query.FindNode](Query.FindNode.apply)(v => (v.queryingNodeId, v.target))
 
@@ -36,19 +36,19 @@ object Message {
 
   val GetPeersQueryFormat: BencodeFormat[Query.GetPeers] = (
     field[(NodeId, InfoHash)]("a")(
-      (field[NodeId]("id"), field[InfoHash]("info_hash")).tupled
+      using (field[NodeId]("id"), field[InfoHash]("info_hash")).tupled
     )
   ).imap[Query.GetPeers](Query.GetPeers.apply)(v => (v.queryingNodeId, v.infoHash))
 
   val AnnouncePeerQueryFormat: BencodeFormat[Query.AnnouncePeer] = (
     field[(NodeId, InfoHash, Long)]("a")(
-      (field[NodeId]("id"), field[InfoHash]("info_hash"), field[Long]("port")).tupled
+      using (field[NodeId]("id"), field[InfoHash]("info_hash"), field[Long]("port")).tupled
     )
   ).imap[Query.AnnouncePeer](Query.AnnouncePeer.apply)(v => (v.queryingNodeId, v.infoHash, v.port))
 
   val SampleInfoHashesQueryFormat: BencodeFormat[Query.SampleInfoHashes] = (
     field[(NodeId, NodeId)]("a")(
-      (field[NodeId]("id"), field[NodeId]("target")).tupled
+      using (field[NodeId]("id"), field[NodeId]("target")).tupled
     )
   ).imap[Query.SampleInfoHashes](Query.SampleInfoHashes.apply)(v => (v.queryingNodeId, v.target))
 
@@ -114,7 +114,7 @@ object Message {
 
   val NodesResponseFormat: BencodeFormat[Response.Nodes] = (
     field[NodeId]("id"),
-    field[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec))
+    field[List[NodeInfo]]("nodes")(using encodedString(CompactNodeInfoCodec))
   ).imapN[Response.Nodes](Response.Nodes.apply)(v => (v.id, v.nodes))
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
@@ -124,8 +124,8 @@ object Message {
 
   val SampleInfoHashesResponseFormat: BencodeFormat[Response.SampleInfoHashes] = (
     field[NodeId]("id"),
-    fieldOptional[List[NodeInfo]]("nodes")(encodedString(CompactNodeInfoCodec)),
-    field[List[InfoHash]]("samples")(encodedString(CompactInfoHashCodec))
+    fieldOptional[List[NodeInfo]]("nodes")(using encodedString(CompactNodeInfoCodec)),
+    field[List[InfoHash]]("samples")(using encodedString(CompactInfoHashCodec))
   ).imapN[Response.SampleInfoHashes](Response.SampleInfoHashes.apply)(v => (v.id, v.nodes, v.samples))
 
   val ResponseFormat: BencodeFormat[Response] =
@@ -147,7 +147,7 @@ object Message {
 
   val ResponseMessageFormat: BencodeFormat[Message.ResponseMessage] = (
     field[ByteVector]("t"),
-    field[Response]("r")(ResponseFormat)
+    field[Response]("r")(using ResponseFormat)
   ).imapN[ResponseMessage]((tid, r) => ResponseMessage(tid, r))(v => (v.transactionId, v.response))
 
   val ErrorMessageFormat: BencodeFormat[Message.ErrorMessage] = (
