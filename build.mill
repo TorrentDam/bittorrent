@@ -86,17 +86,17 @@ trait CommonSettings extends ScalaModule {
 object Deps {
 
   object Versions {
-    val cats = "2.10.0"
-    val `cats-effect` = "3.5.4"
-    val ip4s = "3.3.0"
-    val fs2 = "3.9.4"
+    val cats = "2.13.0"
+    val `cats-effect` = "3.6.3"
+    val ip4s = "3.7.0"
+    val fs2 = "3.12.2"
     val epollcat = "0.1.4"
-    val monocle = "3.2.0"
-    val `scodec-bits` = "1.1.37"
+    val monocle = "3.3.0"
+    val `scodec-bits` = "1.2.4"
     val bencode = "1.1.0"
-    val decline = "2.4.1"
-    val woof = "0.6.0"
-    val `cats-effect-cps` = "0.4.0"
+    val decline = "2.6.0"
+    val woof = "0.7.0"
+    val `cats-effect-cps` = "0.5.0"
   }
 
   val `cats-core` = mvn"org.typelevel::cats-core::${Versions.cats}"
