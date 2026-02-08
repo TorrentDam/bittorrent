@@ -1,7 +1,7 @@
 //| mill-version: 1.1.0
 //| mill-jvm-version: temurin:21.0.6
 
-import mill.*, scalalib.*, scalanativelib.*
+import mill.*, scalalib.*, scalanativelib.*, publish.*
 
 object common extends CommonSettings {
   def mvnDeps = Seq(
@@ -61,11 +61,24 @@ object cmd extends CommonSettings {
   )
 }
 
-trait CommonSettings extends ScalaModule {
+trait CommonSettings extends ScalaModule with PublishModule {
   def scalaVersion = "3.7.1"
   def sourceRoots = Seq(os.RelPath("."))
   def sources = Task.Sources(
     sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
+  )
+
+  def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
+
+  def pomSettings = PomSettings(
+    description = "BitTorrent client",
+    organization = "io.github.torrentdam.bittorrent",
+    url = "https://github.com/TorrentDamDev/bittorrent",
+    licenses = Seq(License.`Unlicense`),
+    versionControl = VersionControl.github("TorrentDamDev", "bittorrent"),
+    developers = Seq(
+      Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
+    )
   )
 
   object test extends ScalaTests, TestModule.Munit {

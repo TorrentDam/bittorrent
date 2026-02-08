@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Compile
         run: ./mill _.compile
       - name: Test
@@ -75,24 +75,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - name: Set up java
-        uses: actions/setup-java@v2.1.0
-        with:
-          distribution: adopt
-          java-version: 17
-          java-package: jre
+      - uses: actions/checkout@v3
       - name: Release
         env:
-          SONATYPE_CREDS: ${{ secrets.SONATYPE_CREDS }}
-          PGP_SECRET_KEY: ${{ secrets.PGP_SECRET_KEY }}
+          MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
+          MILL_SONATYPE_PASSWORD: ${{ secrets.MILL_SONATYPE_PASSWORD }}
+          MILL_PGP_SECRET_BASE64: ${{ secrets.MILL_PGP_SECRET_BASE64 }}
+          MILL_PGP_PASSPHRASE: ${{ secrets.MILL_PGP_PASSPHRASE }}
         run: |
-          echo ${PGP_SECRET_KEY} | base64 --decode | gpg --import
-          gpg --list-secret-keys
-          export VERSION=${GITHUB_REF#*/v} 
+          export VERSION=${GITHUB_REF#*/v}
           echo Publishing $VERSION
-          sbt commonJVM/publishSigned
-          sbt commonJS/publishSigned
-          sbt bittorrentJVM/publishSigned
-          sbt dhtJVM/publishSigned
-          sbt cmdJVM/publishSigned
+          ./mill common.publishSonatypeCentral dht.publishSonatypeCentral bittorrent.publishSonatypeCentral cmd.publishSonatypeCentral
