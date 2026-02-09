@@ -291,7 +291,7 @@ object Main
             val client = Client(selfId, messageSocket, QueryHandler.noop).await
             async[IO]:
               val response = client.getPeers(nodeIpAddress, infoHash).await
-              IO.println(response).await
+              // IO.println(response).await
               ExitCode.Success
           }.useEval
         }
