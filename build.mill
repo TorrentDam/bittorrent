@@ -1,4 +1,4 @@
-//| mill-version: 1.1.0
+//| mill-version: 1.1.2
 //| mill-jvm-version: temurin:21.0.6
 
 import mill.*, scalalib.*, scalanativelib.*, publish.*
