@@ -100,10 +100,9 @@ object Deps {
 
   object Versions {
     val cats = "2.13.0"
-    val `cats-effect` = "3.6.3"
-    val ip4s = "3.7.0"
-    val fs2 = "3.12.2"
-    val epollcat = "0.1.4"
+    val `cats-effect` = "3.7.0"
+    val ip4s = "3.8.0"
+    val fs2 = "3.13.0"
     val monocle = "3.3.0"
     val `scodec-bits` = "1.2.4"
     val bencode = "1.1.0"
@@ -128,7 +127,7 @@ object Deps {
 
   val bencode = mvn"io.github.torrentdam.bencode::bencode::${Versions.bencode}"
 
-  val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::2.1.0"
+  val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::2.2.0"
 
   val decline = mvn"com.monovore::decline-effect::${Versions.decline}"
 
