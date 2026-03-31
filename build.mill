@@ -62,7 +62,7 @@ object cmd extends CommonSettings {
 }
 
 trait CommonSettings extends ScalaModule, PublishModule {
-  def scalaVersion = "3.7.1"
+  def scalaVersion = "3.8.3"
   def sourceRoots = Seq(os.RelPath("."))
   def sources = Task.Sources(
     sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
