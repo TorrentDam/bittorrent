@@ -2,19 +2,17 @@ package com.github.torrentdam.bittorrent.wire
 
 import cats.*
 import cats.effect.implicits.*
-import cats.effect.std.Queue
+import cats.effect.std.{Queue, Supervisor}
 import cats.effect.IO
-import cats.effect.Outcome
 import cats.effect.Resource
 import cats.implicits.*
 import com.github.torrentdam.bittorrent.PeerInfo
 import fs2.concurrent.Signal
 import fs2.concurrent.SignallingRef
-import fs2.concurrent.Topic
 import fs2.Stream
 import org.legogroup.woof.*
 import org.legogroup.woof.given
-import org.legogroup.woof.Logger.withLogContext
+
 import scala.concurrent.duration.*
 
 trait Swarm {
@@ -29,6 +27,9 @@ trait Connected {
 
 object Swarm {
 
+  private case class SwarmConnection(connect: Resource[IO, Connection], retries: Int):
+    def retried = copy(retries = retries + 1)
+
   def apply(
     peers: Stream[IO, PeerInfo],
     connect: PeerInfo => Resource[IO, Connection]
@@ -36,13 +37,14 @@ object Swarm {
     logger: Logger[IO]
   ): Resource[IO, Swarm] =
     for
+      supervisor <- Supervisor[IO]
       _ <- Resource.make(logger.info("Starting swarm"))(_ => logger.info("Swarm closed"))
-      stateRef <- Resource.eval(SignallingRef[IO].of(Map.empty[PeerInfo, Connection]))
-      newConnections <- Resource.eval(Queue.bounded[IO, Resource[IO, Connection]](10))
-      reconnects <- Resource.eval(Queue.unbounded[IO, Resource[IO, Connection]])
-      scheduleReconnect = (delay: FiniteDuration) =>
-        (reconnect: Resource[IO, Connection]) => (IO.sleep(delay) >> reconnects.offer(reconnect)).start.void
-      allSeen <- Resource.eval(IO.ref(Set.empty[PeerInfo]))
+      stateRef <- SignallingRef[IO].of(Map.empty[PeerInfo, Connection]).toResource
+      newConnections <- Queue.bounded[IO, SwarmConnection](10).toResource
+      reconnects <- Queue.unbounded[IO, SwarmConnection].toResource
+      scheduleReconnect = (delay: FiniteDuration, connection: SwarmConnection) =>
+        supervisor.supervise(IO.sleep(delay) >> reconnects.offer(connection)).void
+      allSeen <- IO.ref(Set.empty[PeerInfo]).toResource
       _ <- peers
         .evalMap(peerInfo =>
           allSeen.getAndUpdate(_ + peerInfo).flatMap { seen =>
@@ -52,15 +54,21 @@ object Swarm {
           }
         )
         .collect { case Some(peerInfo) => peerInfo }
-        .map(peerInfo => newConnection(connect(peerInfo), scheduleReconnect))
+        .map(peerInfo => SwarmConnection(connect(peerInfo), 0))
         .evalTap(newConnections.offer)
         .compile
         .drain
         .background
       connectOrReconnect =
         for
-          resource <- Resource.eval(newConnections.take race reconnects.take)
-          connection <- resource.merge
+          swarmConnection <- Resource.eval(newConnections.take race reconnects.take).map(_.merge)
+          connection <- swarmConnection.connect.onError(_ =>
+            if swarmConnection.retries >= 24
+            then Resource.unit[IO]
+            else
+              val delay = (10 * swarmConnection.retries).seconds
+              scheduleReconnect(delay, swarmConnection.retried).toResource
+          )
         yield connection
     yield new Impl(stateRef, connectOrReconnect)
     end for
@@ -81,27 +89,5 @@ object Swarm {
       val count: Signal[IO, Int] = stateRef.map(_.size)
       val list: IO[List[Connection]] = stateRef.get.map(_.values.toList)
     }
-  }
-
-  private def newConnection(
-    connect: Resource[IO, Connection],
-    schedule: FiniteDuration => Resource[IO, Connection] => IO[Unit]
-  ): Resource[IO, Connection] = {
-    val maxAttempts = 24
-    def connectWithRetry(attempt: Int): Resource[IO, Connection] =
-      connect
-        .onFinalizeCase {
-          case Resource.ExitCase.Succeeded =>
-            schedule(10.second)(connectWithRetry(1))
-          case Resource.ExitCase.Errored(_) =>
-            if attempt == maxAttempts
-            then IO.unit
-            else
-              val duration = (10 * attempt).seconds
-              schedule(duration)(connectWithRetry(attempt + 1))
-          case _ =>
-            IO.unit
-        }
-    connectWithRetry(1)
   }
 }
