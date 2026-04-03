@@ -38,9 +38,9 @@ object Client {
   )(using Logger[IO], Random[IO]): Resource[IO, Client] = {
     for
       responses <- Resource.eval {
-        Queue.unbounded[IO, (SocketAddress[IpAddress], Message.ErrorMessage | Message.ResponseMessage)]
+        Queue.unbounded[IO, Message.ErrorMessage | Message.ResponseMessage]
       }
-      requestResponse <- RequestResponse.make(
+      rpcClient <- RpcClient.make(
         generateTransactionId,
         messageSocket.writeMessage,
         responses.take
@@ -58,8 +58,8 @@ object Client {
                   case None =>
                     Logger[IO].debug(s"No response for $m")
                 }
-            case (a, m: Message.ResponseMessage) => responses.offer((a, m))
-            case (a, m: Message.ErrorMessage)    => responses.offer((a, m))
+            case (_, m: Message.ResponseMessage) => responses.offer(m)
+            case (_, m: Message.ErrorMessage)    => responses.offer(m)
           }
           .recoverWith { case e: Throwable =>
             Logger[IO].debug(s"Failed to read message: $e")
@@ -74,25 +74,25 @@ object Client {
         address: SocketAddress[IpAddress],
         infoHash: InfoHash
       ): IO[Either[Response.Nodes, Response.Peers]] =
-        requestResponse.sendQuery(address, Query.GetPeers(selfId, infoHash)).flatMap {
+        rpcClient.call(address, Query.GetPeers(selfId, infoHash)).flatMap {
           case nodes: Response.Nodes => nodes.asLeft.pure
           case peers: Response.Peers => peers.asRight.pure
           case _                     => IO.raiseError(InvalidResponse())
         }
 
       def findNodes(address: SocketAddress[IpAddress], target: NodeId): IO[Response.Nodes] =
-        requestResponse.sendQuery(address, Query.FindNode(selfId, target)).flatMap {
+        rpcClient.call(address, Query.FindNode(selfId, target)).flatMap {
           case nodes: Response.Nodes => nodes.pure
           case _                     => IO.raiseError(InvalidResponse())
         }
 
       def ping(address: SocketAddress[IpAddress]): IO[Response.Ping] =
-        requestResponse.sendQuery(address, Query.Ping(selfId)).flatMap {
+        rpcClient.call(address, Query.Ping(selfId)).flatMap {
           case ping: Response.Ping => ping.pure
           case _                   => IO.raiseError(InvalidResponse())
         }
       def sampleInfoHashes(address: SocketAddress[IpAddress], target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
-        requestResponse.sendQuery(address, Query.SampleInfoHashes(selfId, target)).flatMap {
+        rpcClient.call(address, Query.SampleInfoHashes(selfId, target)).flatMap {
           case response: Response.SampleInfoHashes => response.asRight[Response.Nodes].pure
           case response: Response.Nodes            => response.asLeft[Response.SampleInfoHashes].pure
           case _                                   => IO.raiseError(InvalidResponse())
