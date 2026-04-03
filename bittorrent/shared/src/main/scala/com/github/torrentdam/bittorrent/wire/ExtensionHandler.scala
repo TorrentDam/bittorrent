@@ -3,13 +3,8 @@ package com.github.torrentdam.bittorrent.wire
 import cats.effect.kernel.Deferred
 import cats.effect.kernel.Ref
 import cats.effect.std.Queue
-import cats.effect.Async
-import cats.effect.Concurrent
-import cats.effect.Sync
+import cats.effect.IO
 import cats.implicits.*
-import cats.Applicative
-import cats.Monad
-import cats.MonadError
 import com.github.torrentdam.bittorrent.protocol.extensions.metadata.UtMessage
 import com.github.torrentdam.bittorrent.protocol.extensions.ExtensionHandshake
 import com.github.torrentdam.bittorrent.protocol.extensions.Extensions
@@ -21,54 +16,54 @@ import fs2.Stream
 import scodec.bits.ByteVector
 import com.github.torrentdam.bittorrent.CrossPlatform
 
-trait ExtensionHandler[F[_]] {
+trait ExtensionHandler {
 
-  def apply(message: Message.Extended): F[Unit]
+  def apply(message: Message.Extended): IO[Unit]
 }
 
 object ExtensionHandler {
 
-  def noop[F[_]](using F: Applicative[F]): ExtensionHandler[F] = _ => F.unit
+  val noop: ExtensionHandler = _ => IO.unit
 
-  def dynamic[F[_]: Monad](get: F[ExtensionHandler[F]]): ExtensionHandler[F] = message => get.flatMap(_(message))
+  def dynamic(get: IO[ExtensionHandler]): ExtensionHandler = message => get.flatMap(_(message))
 
-  type Send[F[_]] = Message.Extended => F[Unit]
+  type Send = Message.Extended => IO[Unit]
 
-  trait InitExtension[F[_]] {
+  trait InitExtension {
 
-    def init: F[ExtensionApi[F]]
+    def init: IO[ExtensionApi]
   }
 
   object InitExtension {
 
-    def apply[F[_]](
+    def apply(
       infoHash: InfoHash,
-      send: Send[F],
-      utMetadata: UtMetadata.Create[F]
-    )(using F: Concurrent[F]): F[(ExtensionHandler[F], InitExtension[F])] =
+      send: Send,
+      utMetadata: UtMetadata.Create
+    ): IO[(ExtensionHandler, InitExtension)] =
       for
-        apiDeferred <- F.deferred[ExtensionApi[F]]
-        handlerRef <- F.ref[ExtensionHandler[F]](ExtensionHandler.noop)
+        apiDeferred <- IO.deferred[ExtensionApi]
+        handlerRef <- IO.ref[ExtensionHandler](ExtensionHandler.noop)
         _ <- handlerRef.set(
           {
             case Message.Extended(MessageId.Handshake, payload) =>
               for
-                handshake <- F.fromEither(ExtensionHandshake.decode(payload))
-                (handler, extensionApi) <- ExtensionApi[F](infoHash, send, utMetadata, handshake)
+                handshake <- IO.fromEither(ExtensionHandshake.decode(payload))
+                (handler, extensionApi) <- ExtensionApi(infoHash, send, utMetadata, handshake)
                 _ <- handlerRef.set(handler)
                 _ <- apiDeferred.complete(extensionApi)
               yield ()
             case message =>
-              F.raiseError(InvalidMessage(s"Expected Handshake but received ${message.getClass.getSimpleName}"))
+              IO.raiseError(InvalidMessage(s"Expected Handshake but received ${message.getClass.getSimpleName}"))
           }
         )
       yield
 
         val handler = dynamic(handlerRef.get)
 
-        val api = new InitExtension[F] {
+        val api = new InitExtension {
 
-          def init: F[ExtensionApi[F]] = {
+          def init: IO[ExtensionApi] = {
             val message: Message.Extended =
               Message.Extended(
                 MessageId.Handshake,
@@ -82,31 +77,31 @@ object ExtensionHandler {
       end for
   }
 
-  trait ExtensionApi[F[_]] {
+  trait ExtensionApi {
 
-    def utMetadata: Option[UtMetadata[F]]
+    def utMetadata: Option[UtMetadata]
   }
 
   object ExtensionApi {
 
-    def apply[F[_]](
+    def apply(
       infoHash: InfoHash,
-      send: Send[F],
-      utMetadata: UtMetadata.Create[F],
+      send: Send,
+      utMetadata: UtMetadata.Create,
       handshake: ExtensionHandshake
-    )(using F: MonadError[F, Throwable]): F[(ExtensionHandler[F], ExtensionApi[F])] = {
+    ): IO[(ExtensionHandler, ExtensionApi)] = {
       for (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
       yield
 
-        val handler: ExtensionHandler[F] = {
+        val handler: ExtensionHandler = {
           case Message.Extended(Extensions.MessageId.Metadata, messageBytes) =>
-            F.fromEither(UtMessage.decode(messageBytes)) >>= utHandler.apply
+            IO.fromEither(UtMessage.decode(messageBytes)) >>= utHandler.apply
           case Message.Extended(id, _) =>
-            F.raiseError(InvalidMessage(s"Unsupported message id=$id"))
+            IO.raiseError(InvalidMessage(s"Unsupported message id=$id"))
         }
 
-        val api: ExtensionApi[F] = new ExtensionApi[F] {
-          def utMetadata: Option[UtMetadata[F]] = utMetadata0
+        val api: ExtensionApi = new ExtensionApi {
+          def utMetadata: Option[UtMetadata] = utMetadata0
         }
 
         (handler, api)
@@ -115,69 +110,68 @@ object ExtensionHandler {
 
   }
 
-  trait UtMetadata[F[_]] {
+  trait UtMetadata {
 
-    def fetch: F[Lossless]
+    def fetch: IO[Lossless]
   }
 
   object UtMetadata {
 
-    trait Handler[F[_]] {
+    trait Handler {
 
-      def apply(message: UtMessage): F[Unit]
+      def apply(message: UtMessage): IO[Unit]
     }
 
     object Handler {
 
-      def unit[F[_]](using F: Applicative[F]): Handler[F] = _ => F.unit
+      val unit: Handler = _ => IO.unit
     }
 
-    class Create[F[_]](using F: Async[F]) {
+    class Create {
 
       def apply(
         infoHash: InfoHash,
         handshake: ExtensionHandshake,
-        send: Message.Extended => F[Unit]
-      ): F[(Handler[F], Option[UtMetadata[F]])] = {
+        send: Message.Extended => IO[Unit]
+      ): IO[(Handler, Option[UtMetadata])] = {
 
         (handshake.extensions.get("ut_metadata"), handshake.metadataSize).tupled match {
           case Some((messageId, size)) =>
-            for receiveQueue <- Queue.bounded[F, UtMessage](1)
+            for receiveQueue <- Queue.bounded[IO, UtMessage](1)
             yield
               def sendUtMessage(utMessage: UtMessage) = {
                 val message: Message.Extended = Message.Extended(messageId, UtMessage.encode(utMessage))
                 send(message)
               }
 
-              def receiveUtMessage: F[UtMessage] = receiveQueue.take
+              def receiveUtMessage: IO[UtMessage] = receiveQueue.take
 
               (receiveQueue.offer, (new Impl(sendUtMessage, receiveUtMessage, size, infoHash)).some)
             end for
 
           case None =>
-            (Handler.unit[F], Option.empty[UtMetadata[F]]).pure[F]
+            IO.pure((Handler.unit, Option.empty[UtMetadata]))
 
         }
 
       }
     }
 
-    private class Impl[F[_]](
-      send: UtMessage => F[Unit],
-      receive: F[UtMessage],
+    private class Impl(
+      send: UtMessage => IO[Unit],
+      receive: IO[UtMessage],
       size: Long,
       infoHash: InfoHash
-    )(using F: Sync[F])
-        extends UtMetadata[F] {
+    ) extends UtMetadata {
 
-      def fetch: F[Lossless] =
+      def fetch: IO[Lossless] =
         Stream
           .range(0, 100)
           .evalMap { index =>
             send(UtMessage.Request(index)) *> receive.flatMap {
-              case UtMessage.Data(`index`, bytes) => bytes.pure[F]
+              case UtMessage.Data(`index`, bytes) => IO.pure(bytes)
               case m =>
-                F.raiseError[ByteVector](
+                IO.raiseError[ByteVector](
                   InvalidMessage(s"Data message expected but received ${m.getClass.getSimpleName}")
                 )
             }
@@ -190,7 +184,7 @@ object ExtensionHandler {
             CrossPlatform.sha1(metadata) == infoHash.bytes
           }
           .flatMap { bytes =>
-            Lossless.fromBytes(bytes).liftTo[F]
+            Lossless.fromBytes(bytes).liftTo[IO]
           }
     }
   }

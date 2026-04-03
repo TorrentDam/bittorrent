@@ -36,7 +36,7 @@ trait Connection {
   def choked: Signal[IO, Boolean]
   def availability: Signal[IO, BitSet]
   def disconnected: IO[Unit]
-  def extensionApi: IO[ExtensionApi[IO]]
+  def extensionApi: IO[ExtensionApi]
 }
 
 object Connection {
@@ -89,7 +89,7 @@ object Connection {
   ): Resource[IO, Connection] =
     for
       requestRegistry <- RequestRegistry()
-      socket <- MessageSocket.connect[IO](selfId, peerInfo, infoHash)
+      socket <- MessageSocket.connect(selfId, peerInfo, infoHash)
       stateRef <- Resource.eval(IO.ref(State()))
       chokedStatusRef <- Resource.eval(SignallingRef[IO].of(true))
       bitfieldRef <- Resource.eval(SignallingRef[IO].of(BitSet.empty))
@@ -98,7 +98,7 @@ object Connection {
         ExtensionHandler.InitExtension(
           infoHash,
           sendQueue.offer,
-          new ExtensionHandler.UtMetadata.Create[IO]
+          new ExtensionHandler.UtMetadata.Create
         )
       )
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
@@ -139,7 +139,7 @@ object Connection {
 
       def disconnected: IO[Unit] = closed.void
 
-      def extensionApi: IO[ExtensionApi[IO]] = initExtension.init
+      def extensionApi: IO[ExtensionApi] = initExtension.init
     }
     end for
 
@@ -150,8 +150,8 @@ object Connection {
     updateBitfield: (BitSet => BitSet) => IO[Unit],
     updateChokeStatus: Boolean => IO[Unit],
     updateLastMessageAt: Long => IO[Unit],
-    socket: MessageSocket[IO],
-    extensionHandler: ExtensionHandler[IO]
+    socket: MessageSocket,
+    extensionHandler: ExtensionHandler
   ): IO[Nothing] =
     socket.receive
       .flatMap {
@@ -199,7 +199,7 @@ object Connection {
       }
       .foreverM
 
-  private def sendLoop(queue: Queue[IO, Message], socket: MessageSocket[IO]): IO[Nothing] =
+  private def sendLoop(queue: Queue[IO, Message], socket: MessageSocket): IO[Nothing] =
     queue.take.flatMap(socket.send).foreverM
 
   enum Error(message: String) extends Exception(message):
