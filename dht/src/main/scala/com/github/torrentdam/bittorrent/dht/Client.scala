@@ -34,7 +34,7 @@ object Client {
   def apply(
     selfId: NodeId,
     messageSocket: MessageSocket,
-    queryHandler: QueryHandler[IO]
+    queryHandler: QueryHandler
   )(using Logger[IO], Random[IO]): Resource[IO, Client] = {
     for
       responses <- Resource.eval {

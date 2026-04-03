@@ -17,7 +17,7 @@ import scala.concurrent.duration.*
 object RoutingTableBootstrap {
 
   def apply(
-    table: RoutingTable[IO],
+    table: RoutingTable,
     client: Client,
     discovery: PeerDiscovery,
     bootstrapNodeAddress: List[SocketAddress[Host]] = PublicBootstrapNodes
@@ -70,7 +70,7 @@ object RoutingTableBootstrap {
       .flatMap(tryThis)
 
   private def selfDiscovery(
-    table: RoutingTable[IO],
+    table: RoutingTable,
     client: Client,
     discovery: PeerDiscovery
   )(using Logger[IO]) =

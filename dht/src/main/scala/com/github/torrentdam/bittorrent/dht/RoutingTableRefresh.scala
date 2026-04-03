@@ -8,7 +8,7 @@ import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-class RoutingTableRefresh(table: RoutingTable[IO], client: Client, discovery: PeerDiscovery)(using logger: Logger[IO], random: Random[IO]):
+class RoutingTableRefresh(table: RoutingTable, client: Client, discovery: PeerDiscovery)(using logger: Logger[IO], random: Random[IO]):
   
   def runOnce: IO[Unit] = async[IO]:
     val buckets = table.buckets.await

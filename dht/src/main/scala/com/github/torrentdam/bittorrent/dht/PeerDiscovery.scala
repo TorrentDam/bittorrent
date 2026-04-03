@@ -29,7 +29,7 @@ trait PeerDiscovery {
 object PeerDiscovery {
 
   def apply(
-    routingTable: RoutingTable[IO],
+    routingTable: RoutingTable,
     dhtClient: Client
   )(using
     logger: Logger[IO]

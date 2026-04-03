@@ -19,7 +19,7 @@ import scodec.bits.ByteVector
 
 import scala.concurrent.duration.DurationInt
 
-class Node(val id: NodeId, val client: Client, val routingTable: RoutingTable[IO], val discovery: PeerDiscovery)
+class Node(val id: NodeId, val client: Client, val routingTable: RoutingTable, val discovery: PeerDiscovery)
 
 object Node {
 
@@ -33,7 +33,7 @@ object Node {
     for
       selfId <- Resource.eval(NodeId.random[IO])
       messageSocket <- MessageSocket(port)
-      routingTable <- RoutingTable[IO](selfId).toResource
+      routingTable <- RoutingTable(selfId).toResource
       queryingNodes <- Queue.unbounded[IO, NodeInfo].toResource
       queryHandler = reportingQueryHandler(queryingNodes, QueryHandler.simple(selfId, routingTable))
       client <- Client(selfId, messageSocket, queryHandler)
@@ -45,7 +45,7 @@ object Node {
       _ <- pingCandidates(queryingNodes, client, routingTable).background
     yield new Node(selfId, insertingClient, routingTable, discovery)
 
-  private class InsertingClient(client: Client, routingTable: RoutingTable[IO]) extends Client {
+  private class InsertingClient(client: Client, routingTable: RoutingTable) extends Client {
 
     def id: NodeId = client.id
 
@@ -83,7 +83,7 @@ object Node {
     override def toString: String = s"InsertingClient($client)"
   }
 
-  private def pingCandidate(node: NodeInfo, client: Client, routingTable: RoutingTable[IO])(using Logger[IO]) =
+  private def pingCandidate(node: NodeInfo, client: Client, routingTable: RoutingTable)(using Logger[IO]) =
     routingTable.lookup(node.id).flatMap {
       case Some(_) => IO.unit
       case None =>
@@ -96,7 +96,7 @@ object Node {
         }
     }
 
-  private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable[IO])(using Logger[IO]) =
+  private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable)(using Logger[IO]) =
     nodes
       .tryTakeN(none)
       .flatMap(candidates => 
@@ -108,7 +108,7 @@ object Node {
       .foreverM
 
 
-  private def reportingQueryHandler(queue: Queue[IO, NodeInfo], next: QueryHandler[IO]): QueryHandler[IO] = (address, query) =>
+  private def reportingQueryHandler(queue: Queue[IO, NodeInfo], next: QueryHandler): QueryHandler = (address, query) =>
     val nodeInfo = query match
       case Query.Ping(id) => NodeInfo(id, address)
       case Query.FindNode(id, _) => NodeInfo(id, address)
