@@ -1,8 +1,8 @@
 package com.github.torrentdam.bittorrent
 
 import cats.effect.std.Random
+import cats.effect.IO
 import cats.syntax.all.*
-import cats.Monad
 import scodec.bits.ByteVector
 
 final case class PeerId(bytes: ByteVector) {
@@ -22,7 +22,7 @@ object PeerId {
     new PeerId(ByteVector.encodeUtf8("-qB0000-" + hexPart).toOption.get)
   }
 
-  def generate[F[_]](using Random[F], Monad[F]): F[PeerId] =
-    for bytes <- Random[F].nextBytes(6)
+  def generate(using Random[IO]): IO[PeerId] =
+    for bytes <- Random[IO].nextBytes(6)
     yield PeerId(bytes)
 }

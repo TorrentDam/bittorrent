@@ -31,7 +31,7 @@ object Node {
     logger: Logger[IO]
   ): Resource[IO, Node] =
     for
-      selfId <- Resource.eval(NodeId.random[IO])
+      selfId <- Resource.eval(NodeId.random)
       messageSocket <- MessageSocket(port)
       routingTable <- RoutingTable(selfId).toResource
       queryingNodes <- Queue.unbounded[IO, NodeInfo].toResource

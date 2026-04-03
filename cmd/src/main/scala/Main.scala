@@ -67,7 +67,7 @@ object Main
             async[ResourceIO] {
               given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
 
-              val selfPeerId = Resource.eval(PeerId.generate[IO]).await
+              val selfPeerId = Resource.eval(PeerId.generate).await
               val infoHash = Resource.eval(infoHashFromString(infoHashOption)).await
               val node = Node().await
 
@@ -128,7 +128,7 @@ object Main
                       throw new Exception("Missing info-hash")
 
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-            val selfPeerId = Resource.eval(PeerId.generate[IO]).await
+            val selfPeerId = Resource.eval(PeerId.generate).await
             val peerAddress = peerAddressOption.flatMap(SocketAddress.fromStringIp)
             val peers: Stream[IO, PeerInfo] =
               peerAddress match
@@ -285,7 +285,7 @@ object Main
             val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
             val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
             given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
-            val selfId = Resource.eval(NodeId.random[IO]).await
+            val selfId = Resource.eval(NodeId.random).await
             val infoHash = infoHashFromString(infoHashParam).toResource.await
             val messageSocket = MessageSocket(none).await
             val client = Client(selfId, messageSocket, QueryHandler.noop).await

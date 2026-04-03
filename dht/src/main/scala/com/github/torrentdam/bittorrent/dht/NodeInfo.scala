@@ -1,8 +1,9 @@
 package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.std.Random
+import cats.effect.IO
+import cats.Show
 import cats.syntax.all.*
-import cats.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import scodec.bits.ByteVector
@@ -21,17 +22,17 @@ object NodeId {
 
   def distance(a: NodeId, b: InfoHash): BigInt = distance(a.bytes, b.bytes)
 
-  def random[F[_]](using Random[F], Monad[F]): F[NodeId] = {
-    for bytes <- Random[F].nextBytes(20)
+  def random(using Random[IO]): IO[NodeId] = {
+    for bytes <- Random[IO].nextBytes(20)
     yield NodeId(ByteVector.view(bytes))
   }
-  
+
   def fromInt(int: BigInt): NodeId = NodeId(ByteVector.view(int.toByteArray).padTo(20))
-  
-  def randomInRange[F[_]](from: BigInt, until: BigInt)(using Random[F], Monad[F]): F[NodeId] =
+
+  def randomInRange(from: BigInt, until: BigInt)(using Random[IO]): IO[NodeId] =
     val difference = BigDecimal(until - from)
     for
-      randomDouble <- Random[F].nextDouble
+      randomDouble <- Random[IO].nextDouble
       integer = from + (difference * randomDouble).toBigInt
       bigIntBytes = ByteVector(integer.toByteArray)
       vector = if bigIntBytes(0) == 0 then bigIntBytes.tail else bigIntBytes
