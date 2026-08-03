@@ -2,6 +2,8 @@ package com.github.torrentdam.bittorrent.dht
 
 import cats.implicits.*
 import com.comcast.ip4s.*
+import com.github.torrentdam.bittorrent.CompactPeer.InetSocketAddressCodec
+import com.github.torrentdam.bittorrent.CompactPeer.given_BencodeFormat_PeerInfo
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.PeerInfo
 import com.github.torrentdam.bencode.format.*
@@ -75,19 +77,6 @@ object Message {
     QueryFormat
   ).imapN[QueryMessage]((tid, q) => QueryMessage(tid, q))(v => (v.transactionId, v.query))
 
-  val InetSocketAddressCodec: Codec[SocketAddress[IpAddress]] = {
-    import scodec.codecs.*
-    (bytes(4) :: bytes(2)).xmap(
-      { case (address, port) =>
-        SocketAddress(
-          IpAddress.fromBytes(address.toArray).get,
-          Port.fromInt(port.toInt(signed = false)).get
-        )
-      },
-      v => (ByteVector(v.host.toBytes), ByteVector.fromInt(v.port.value, 2))
-    )
-  }
-
   val CompactNodeInfoCodec: Codec[List[NodeInfo]] = {
     import scodec.codecs.*
     list(
@@ -99,8 +88,6 @@ object Message {
       )
     )
   }
-
-  val CompactPeerInfoCodec: Codec[PeerInfo] = InetSocketAddressCodec.xmap(PeerInfo.apply, _.address)
 
   val CompactInfoHashCodec: Codec[List[InfoHash]] = {
     import scodec.codecs.*
@@ -119,7 +106,7 @@ object Message {
 
   val PeersResponseFormat: BencodeFormat[Response.Peers] = (
     field[NodeId]("id"),
-    field[List[PeerInfo]]("values")(using BencodeFormat.listFormat(using encodedString(CompactPeerInfoCodec)))
+    field[List[PeerInfo]]("values")
   ).imapN[Response.Peers](Response.Peers.apply)(v => (v.id, v.peers))
 
   val SampleInfoHashesResponseFormat: BencodeFormat[Response.SampleInfoHashes] = (

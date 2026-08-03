@@ -6,15 +6,20 @@ import cats.effect.std.Queue
 import cats.effect.IO
 import cats.implicits.*
 import com.github.torrentdam.bittorrent.protocol.extensions.metadata.UtMessage
+import com.github.torrentdam.bittorrent.protocol.extensions.pex.PexFlags
+import com.github.torrentdam.bittorrent.protocol.extensions.pex.PexMessage
 import com.github.torrentdam.bittorrent.protocol.extensions.ExtensionHandshake
 import com.github.torrentdam.bittorrent.protocol.extensions.Extensions
 import com.github.torrentdam.bittorrent.protocol.extensions.Extensions.MessageId
 import com.github.torrentdam.bittorrent.InfoHash
+import com.github.torrentdam.bittorrent.PeerInfo
 import com.github.torrentdam.bittorrent.TorrentMetadata.Lossless
 import com.github.torrentdam.bittorrent.protocol.message.Message
 import fs2.Stream
 import scodec.bits.ByteVector
 import com.github.torrentdam.bittorrent.CrossPlatform
+import org.legogroup.woof.Logger
+import org.legogroup.woof.given
 
 trait ExtensionHandler {
 
@@ -39,8 +44,9 @@ object ExtensionHandler {
     def apply(
       infoHash: InfoHash,
       send: Send,
-      utMetadata: UtMetadata.Create
-    ): IO[(ExtensionHandler, InitExtension)] =
+      utMetadata: UtMetadata.Create,
+      utPex: UtPex.Create
+    )(using logger: Logger[IO]): IO[(ExtensionHandler, InitExtension)] =
       for
         apiDeferred <- IO.deferred[ExtensionApi]
         handlerRef <- IO.ref[ExtensionHandler](ExtensionHandler.noop)
@@ -49,7 +55,7 @@ object ExtensionHandler {
             case Message.Extended(MessageId.Handshake, payload) =>
               for
                 handshake <- IO.fromEither(ExtensionHandshake.decode(payload))
-                (handler, extensionApi) <- ExtensionApi(infoHash, send, utMetadata, handshake)
+                (handler, extensionApi) <- ExtensionApi(infoHash, send, utMetadata, utPex, handshake)
                 _ <- handlerRef.set(handler)
                 _ <- apiDeferred.complete(extensionApi)
               yield ()
@@ -80,6 +86,7 @@ object ExtensionHandler {
   trait ExtensionApi {
 
     def utMetadata: Option[UtMetadata]
+    def utPex: Option[UtPex]
   }
 
   object ExtensionApi {
@@ -88,20 +95,26 @@ object ExtensionHandler {
       infoHash: InfoHash,
       send: Send,
       utMetadata: UtMetadata.Create,
+      utPex: UtPex.Create,
       handshake: ExtensionHandshake
-    ): IO[(ExtensionHandler, ExtensionApi)] = {
-      for (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
+    )(using logger: Logger[IO]): IO[(ExtensionHandler, ExtensionApi)] = {
+      for
+        (utHandler, utMetadata0) <- utMetadata(infoHash, handshake, send)
+        (pexHandler, utPex0) <- utPex(handshake, send)
       yield
 
         val handler: ExtensionHandler = {
           case Message.Extended(Extensions.MessageId.Metadata, messageBytes) =>
             IO.fromEither(UtMessage.decode(messageBytes)) >>= utHandler.apply
+          case Message.Extended(Extensions.MessageId.Pex, messageBytes) =>
+            IO.fromEither(PexMessage.decode(messageBytes)) >>= pexHandler.apply
           case Message.Extended(id, _) =>
             IO.raiseError(InvalidMessage(s"Unsupported message id=$id"))
         }
 
         val api: ExtensionApi = new ExtensionApi {
           def utMetadata: Option[UtMetadata] = utMetadata0
+          def utPex: Option[UtPex] = utPex0
         }
 
         (handler, api)
@@ -188,6 +201,74 @@ object ExtensionHandler {
           }
     }
   }
+
+  trait UtPex {
+
+    def discovered: Stream[IO, PeerInfo]
+    def update(connected: List[PeerInfo]): IO[Unit]
+  }
+
+  object UtPex:
+
+    val Noop: UtPex = new UtPex:
+      def discovered: Stream[IO, PeerInfo] = Stream.empty
+      def update(connected: List[PeerInfo]): IO[Unit] = IO.unit
+
+    trait Handler:
+
+      def apply(message: PexMessage): IO[Unit]
+
+    object Handler:
+
+      val unit: Handler = _ => IO.unit
+
+    class Create:
+
+      def apply(
+        handshake: ExtensionHandshake,
+        send: Message.Extended => IO[Unit]
+      )(using logger: Logger[IO]): IO[(Handler, Option[UtPex])] =
+        handshake.extensions.get("ut_pex") match
+          case Some(messageId) =>
+            for discoveredQueue <- Queue.bounded[IO, PeerInfo](50)
+            yield
+              def sendPexMessage(pexMessage: PexMessage) =
+                send(Message.Extended(messageId, PexMessage.encode(pexMessage)))
+
+              val handler: Handler = message =>
+                val allAdded = message.added ++ message.added6
+                logger.trace(
+                  s"PEX <<< added=${message.added.size} added6=${message.added6.size} " +
+                  s"dropped=${message.dropped.size} dropped6=${message.dropped6.size}"
+                ) >>
+                allAdded.traverse_(discoveredQueue.offer)
+
+              val impl = new UtPex:
+                def discovered: Stream[IO, PeerInfo] =
+                  Stream.fromQueueUnterminated(discoveredQueue)
+
+                def update(connected: List[PeerInfo]): IO[Unit] =
+                  val pexMessage = PexMessage(
+                    added = connected.take(MaxPeersPerMessage),
+                    addedFlags = connected.take(MaxPeersPerMessage).map(_ => PexFlags.Empty),
+                    dropped = Nil,
+                    added6 = Nil,
+                    dropped6 = Nil
+                  )
+                  logger.trace(s"PEX >>> added=${pexMessage.added.size} (of ${connected.size} connected)") >>
+                  sendPexMessage(pexMessage)
+
+              (handler, Some(impl))
+            end for
+
+          case None =>
+            IO.pure((Handler.unit, Option.empty[UtPex]))
+
+    end Create
+
+    private val MaxPeersPerMessage = 50
+
+  end UtPex
 
   case class InvalidMessage(message: String) extends Throwable(message)
   case class InvalidMetadata() extends Throwable

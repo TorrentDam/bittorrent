@@ -5,6 +5,7 @@ import mill.*, scalalib.*, scalanativelib.*, publish.*, util.*
 
 object common extends CommonSettings {
   def mvnDeps = Seq(
+    Deps.bencode,
     Deps.`scodec-bits`,
     Deps.`cats-effect`,
     Deps.ip4s,

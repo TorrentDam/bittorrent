@@ -19,6 +19,7 @@ import fs2.concurrent.Signal
 import fs2.concurrent.SignallingRef
 import fs2.io.net.Network
 import fs2.io.net.SocketGroup
+import fs2.Stream
 import monocle.macros.GenLens
 import monocle.Lens
 import org.legogroup.woof.given
@@ -37,6 +38,8 @@ trait Connection {
   def availability: Signal[IO, BitSet]
   def disconnected: IO[Unit]
   def extensionApi: IO[ExtensionApi]
+  def pexPeers: Stream[IO, PeerInfo]
+  def pexUpdate(peers: List[PeerInfo]): IO[Unit]
 }
 
 object Connection {
@@ -94,11 +97,13 @@ object Connection {
       chokedStatusRef <- Resource.eval(SignallingRef[IO].of(true))
       bitfieldRef <- Resource.eval(SignallingRef[IO].of(BitSet.empty))
       sendQueue <- Resource.eval(Queue.bounded[IO, Message](10))
+      pexDeferred <- Resource.eval(IO.deferred[ExtensionHandler.UtPex])
       (extensionHandler, initExtension) <- Resource.eval(
         ExtensionHandler.InitExtension(
           infoHash,
           sendQueue.offer,
-          new ExtensionHandler.UtMetadata.Create
+          new ExtensionHandler.UtMetadata.Create,
+          new ExtensionHandler.UtPex.Create
         )
       )
       updateLastMessageTime = (l: Long) => stateRef.update(State.lastMessageAt.replace(l))
@@ -113,7 +118,8 @@ object Connection {
             extensionHandler
           ),
           sendLoop(sendQueue, socket),
-          keepAliveLoop(stateRef, sendQueue.offer)
+          keepAliveLoop(stateRef, sendQueue.offer),
+          bindPex(initExtension, pexDeferred)
         ).parTupled.background
     yield new Connection {
       def info: PeerInfo = peerInfo
@@ -140,10 +146,26 @@ object Connection {
       def disconnected: IO[Unit] = closed.void
 
       def extensionApi: IO[ExtensionApi] = initExtension.init
+
+      def pexPeers: Stream[IO, PeerInfo] =
+        Stream.eval(pexDeferred.get).flatMap(_.discovered)
+
+      def pexUpdate(peers: List[PeerInfo]): IO[Unit] =
+        pexDeferred.get.flatMap(_.update(peers))
     }
     end for
 
   case class ConnectionClosed() extends Throwable
+
+  private def bindPex(
+    initExtension: ExtensionHandler.InitExtension,
+    pexDeferred: Deferred[IO, ExtensionHandler.UtPex]
+  ): IO[Unit] =
+    initExtension.init.flatMap { api =>
+      api.utPex match
+        case Some(pex) => pexDeferred.complete(pex).void
+        case None      => pexDeferred.complete(ExtensionHandler.UtPex.Noop).void
+    }
 
   private def receiveLoop(
     requestRegistry: RequestRegistry,

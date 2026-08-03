@@ -45,6 +45,12 @@ object Swarm {
       scheduleReconnect = (delay: FiniteDuration, connection: SwarmConnection) =>
         supervisor.supervise(IO.sleep(delay) >> reconnects.offer(connection)).void
       allSeen <- IO.ref(Set.empty[PeerInfo]).toResource
+      discoverPeer = (peerInfo: PeerInfo) =>
+        allSeen.getAndUpdate(_ + peerInfo).flatMap { seen =>
+          if seen(peerInfo)
+          then IO.unit
+          else newConnections.offer(SwarmConnection(connect(peerInfo), 0))
+        }
       _ <- peers
         .evalMap(peerInfo =>
           allSeen.getAndUpdate(_ + peerInfo).flatMap { seen =>
@@ -59,6 +65,18 @@ object Swarm {
         .compile
         .drain
         .background
+      _ <- Stream
+        .fixedRate[IO](PexBroadcastInterval)
+        .evalMap { _ =>
+          for
+            connections <- stateRef.get.map(_.values.toList)
+            connectedPeers = connections.map(_.info)
+            _ <- connections.traverse_(_.pexUpdate(connectedPeers))
+          yield ()
+        }
+        .compile
+        .drain
+        .background
       connectOrReconnect =
         for
           swarmConnection <- Resource.eval(newConnections.take race reconnects.take).map(_.merge)
@@ -70,17 +88,24 @@ object Swarm {
               scheduleReconnect(delay, swarmConnection.retried).toResource
           )
         yield connection
-    yield new Impl(stateRef, connectOrReconnect)
+    yield new Impl(stateRef, connectOrReconnect, supervisor, discoverPeer)
     end for
+
+  private val PexBroadcastInterval: FiniteDuration = 60.seconds
 
   private class Impl(
     stateRef: SignallingRef[IO, Map[PeerInfo, Connection]],
-    connectOrReconnect: Resource[IO, Connection]
+    connectOrReconnect: Resource[IO, Connection],
+    supervisor: Supervisor[IO],
+    discoverPeer: PeerInfo => IO[Unit]
   ) extends Swarm {
     val connect: Resource[IO, Connection] =
       connectOrReconnect.flatTap(connection =>
         Resource.make {
-          stateRef.update(_ + (connection.info -> connection))
+          stateRef.update(_ + (connection.info -> connection)) *>
+          supervisor.supervise(
+            connection.pexPeers.evalMap(discoverPeer).compile.drain
+          ).void
         } { _ =>
           stateRef.update(_ - connection.info)
         }
