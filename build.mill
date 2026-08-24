@@ -1,4 +1,4 @@
-//| mill-version: 1.1.2
+//| mill-version: 1.1.8
 //| mill-jvm-version: temurin:21.0.6
 
 import mill.*, scalalib.*, scalanativelib.*, publish.*, util.*
@@ -63,7 +63,7 @@ object cmd extends CommonSettings {
 }
 
 trait CommonSettings extends ScalaModule, PublishModule {
-  def scalaVersion = "3.8.3"
+  def scalaVersion = "3.8.4"
   def sourceRoots = Seq(os.RelPath("."))
   def sources = Task.Sources(
     sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
@@ -83,7 +83,7 @@ trait CommonSettings extends ScalaModule, PublishModule {
   )
 
   object test extends ScalaTests, TestModule.Munit {
-    def munitVersion = "1.1.1"
+    def munitVersion = "1.3.5"
     def sources = Task.Sources(
       sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "scala")*
     )
@@ -101,14 +101,14 @@ object Deps {
 
   object Versions {
     val cats = "2.13.0"
-    val `cats-effect` = "3.7.0"
+    val `cats-effect` = "3.7.1"
     val ip4s = "3.8.0"
     val fs2 = "3.13.0"
     val monocle = "3.3.0"
     val `scodec-bits` = "1.2.5"
     val bencode = "1.1.0"
     val decline = "2.6.2"
-    val woof = "0.8.1"
+    val woof = "0.9.0"
     val `cats-effect-cps` = "0.5.0"
   }
 
