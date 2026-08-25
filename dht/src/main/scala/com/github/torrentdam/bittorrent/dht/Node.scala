@@ -9,15 +9,13 @@ import cats.effect.Resource
 import cats.effect.Sync
 import cats.implicits.*
 import com.comcast.ip4s.*
-import fs2.Stream
 import com.github.torrentdam.bittorrent.InfoHash
-
+import fs2.Stream
 import java.net.InetSocketAddress
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
-import scodec.bits.ByteVector
-
 import scala.concurrent.duration.DurationInt
+import scodec.bits.ByteVector
 
 class Node(val id: NodeId, val client: Client, val routingTable: RoutingTable, val discovery: PeerDiscovery)
 
@@ -54,8 +52,9 @@ object Node {
         routingTable.insert(
           NodeInfo(
             response match
-              case Left(response) => response.id
-              case Right(response) => response.id,
+              case Left(response)  => response.id
+              case Right(response) => response.id
+            ,
             address
           )
         )
@@ -71,11 +70,14 @@ object Node {
         routingTable.insert(NodeInfo(response.id, address))
       }
 
-    def sampleInfoHashes(address: SocketAddress[IpAddress], target: NodeId): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
+    def sampleInfoHashes(
+      address: SocketAddress[IpAddress],
+      target: NodeId
+    ): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
       client.sampleInfoHashes(address, target).flatTap { response =>
         routingTable.insert(
           response match
-            case Left(response) => NodeInfo(response.id, address)
+            case Left(response)  => NodeInfo(response.id, address)
             case Right(response) => NodeInfo(response.id, address)
         )
       }
@@ -99,21 +101,19 @@ object Node {
   private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable)(using Logger[IO]) =
     nodes
       .tryTakeN(none)
-      .flatMap(candidates => 
-        candidates
-          .distinct
+      .flatMap(candidates =>
+        candidates.distinct
           .traverse_(pingCandidate(_, client, routingTable).attempt.void)
       )
       .productR(IO.sleep(1.minute))
       .foreverM
 
-
   private def reportingQueryHandler(queue: Queue[IO, NodeInfo], next: QueryHandler): QueryHandler = (address, query) =>
     val nodeInfo = query match
-      case Query.Ping(id) => NodeInfo(id, address)
-      case Query.FindNode(id, _) => NodeInfo(id, address)
-      case Query.GetPeers(id, _) => NodeInfo(id, address)
-      case Query.AnnouncePeer(id, _, _) => NodeInfo(id, address)
+      case Query.Ping(id)                => NodeInfo(id, address)
+      case Query.FindNode(id, _)         => NodeInfo(id, address)
+      case Query.GetPeers(id, _)         => NodeInfo(id, address)
+      case Query.AnnouncePeer(id, _, _)  => NodeInfo(id, address)
       case Query.SampleInfoHashes(id, _) => NodeInfo(id, address)
     queue.offer(nodeInfo) *> next(address, query)
 }

@@ -2,9 +2,9 @@ package com.github.torrentdam.bittorrent
 
 import com.comcast.ip4s.*
 import com.github.torrentdam.bencode.format.*
-import scodec.Codec
 import scodec.bits.ByteVector
 import scodec.codecs.*
+import scodec.Codec
 
 object CompactPeer:
 

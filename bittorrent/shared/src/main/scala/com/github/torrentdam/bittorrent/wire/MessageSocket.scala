@@ -5,13 +5,13 @@ import cats.effect.IO
 import cats.effect.Resource
 import cats.syntax.all.*
 import com.github.torrentdam.bittorrent.*
-import com.github.torrentdam.bittorrent.protocol.message.{Handshake, Message}
+import com.github.torrentdam.bittorrent.protocol.message.Handshake
+import com.github.torrentdam.bittorrent.protocol.message.Message
 import fs2.io.net.Network
 import fs2.io.net.Socket
 import fs2.Chunk
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
-
 import scala.concurrent.duration.*
 import scodec.bits.ByteVector
 
@@ -62,7 +62,8 @@ class MessageSocket(
   private def readExactlyN(numBytes: Int): IO[ByteVector] =
     for
       chunk <- socket.readN(numBytes)
-      _ <- if chunk.size == numBytes then IO.unit else IO.raiseError(new Exception("Connection was interrupted by peer"))
+      _ <-
+        if chunk.size == numBytes then IO.unit else IO.raiseError(new Exception("Connection was interrupted by peer"))
     yield chunk.toByteVector
 
 }
@@ -108,9 +109,7 @@ object MessageSocket {
         socket
           .readN(handshakeMessageSize)
           .timeout(readTimeout)
-          .adaptError(e =>
-            Error("Unsuccessful handshake", e)
-          )
+          .adaptError(e => Error("Unsuccessful handshake", e))
       _ <-
         if bytes.size == handshakeMessageSize
         then IO.unit

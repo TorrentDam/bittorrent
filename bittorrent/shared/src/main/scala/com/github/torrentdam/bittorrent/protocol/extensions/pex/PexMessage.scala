@@ -62,15 +62,14 @@ object PexMessage:
       fieldOptional[List[PeerInfo]]("dropped")(using CompactPeerListFormat),
       fieldOptional[List[PeerInfo]]("added6")(using CompactPeer6ListFormat),
       fieldOptional[List[PeerInfo]]("dropped6")(using CompactPeer6ListFormat)
-    ).imapN[PexMessage] {
-      case (added, addedFlags, dropped, added6, dropped6) =>
-        PexMessage(
-          added.getOrElse(Nil),
-          addedFlags.getOrElse(Nil),
-          dropped.getOrElse(Nil),
-          added6.getOrElse(Nil),
-          dropped6.getOrElse(Nil)
-        )
+    ).imapN[PexMessage] { case (added, addedFlags, dropped, added6, dropped6) =>
+      PexMessage(
+        added.getOrElse(Nil),
+        addedFlags.getOrElse(Nil),
+        dropped.getOrElse(Nil),
+        added6.getOrElse(Nil),
+        dropped6.getOrElse(Nil)
+      )
     }(m =>
       (
         m.added.some.filter(_.nonEmpty),

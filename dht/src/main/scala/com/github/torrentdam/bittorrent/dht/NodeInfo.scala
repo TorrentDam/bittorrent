@@ -2,8 +2,8 @@ package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.std.Random
 import cats.effect.IO
-import cats.Show
 import cats.syntax.all.*
+import cats.Show
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import scodec.bits.ByteVector
