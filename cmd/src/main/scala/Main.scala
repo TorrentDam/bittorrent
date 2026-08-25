@@ -95,9 +95,11 @@ object Main
         Opts.option[String]("info-hash", "Info-hash").orNone,
         Opts.option[String]("torrent", "Torrent file").orNone,
         Opts.option[String]("peer", "Peer address").orNone,
-        Opts.option[String]("dht-node", "DHT node address").orNone
+        Opts.option[String]("dht-node", "DHT node address").orNone,
+        Opts.option[String]("events", "Events output file (newline-delimited JSON)").orNone
       ).tupled
-      options.map { case (infoHashOption, torrentFileOption, peerAddressOption, dhtNodeAddressOption) =>
+      options.map {
+        case (infoHashOption, torrentFileOption, peerAddressOption, dhtNodeAddressOption, eventsFileOption) =>
         withLogger {
           async[ResourceIO] {
             val torrentFile: Option[TorrentFile] = torrentFileOption
@@ -168,6 +170,7 @@ object Main
                 }
                 .await
                 .toMap
+            val events = eventsPipe(eventsFileOption).await
             Stream
               .range(0L, total)
               .parEvalMap(10)(index =>
@@ -176,11 +179,18 @@ object Main
                   val count = !counter.updateAndGet(_ + 1)
                   val percent = ((count.toDouble / total) * 100).toInt
                   !Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")
-                  Chunk.iterable(writer.write(index, piece))
+                  (index, piece)
                 }
               )
-              .unchunks
-              .evalMap(write => openFiles(write.file).seek(write.offset).write(Chunk.byteVector(write.bytes)))
+              .evalMap { (index, piece) =>
+                Stream
+                  .emits(writer.write(index, piece))
+                  .evalMap(write => openFiles(write.file).seek(write.offset).write(Chunk.byteVector(write.bytes)))
+                  .compile
+                  .drain
+                  .as(index)
+              }
+              .through(events)
               .compile
               .drain
               .as(ExitCode.Success)
@@ -306,6 +316,18 @@ object Main
     InfoHash.fromString
       .unapply(value)
       .liftTo[IO](new Exception("Malformed info-hash"))
+
+  def eventsPipe(eventsFileOption: Option[String]): Resource[IO, Stream[IO, Long] => Stream[IO, Unit]] =
+    async[ResourceIO]:
+      eventsFileOption match
+        case None => _.void
+        case Some(path) =>
+          val cursor = Files[IO].writeCursor(Path(path), Flags(Flag.Create, Flag.Write)).await
+          _.evalMapAccumulate(cursor) { (acc, index) =>
+            val event = s"""{"type":"PieceDownloaded","payload":{"index":$index}}\n"""
+            val chunk = Chunk.byteVector(ByteVector.view(event.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+            acc.write(chunk).tupleRight(())
+          }.void
 
   def withLogger[A](body: Logger[IO] ?=> IO[A]): IO[A] =
     given Filter = Filter.atLeastLevel(LogLevel.Info)
