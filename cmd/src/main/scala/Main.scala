@@ -170,7 +170,7 @@ object Main
                 }
                 .await
                 .toMap
-            val events = eventsPipe(eventsFileOption).await
+            val events = eventsPipe(eventsFileOption, metadata.parsed).await
             Stream
               .range(0L, total)
               .parEvalMap(10)(index =>
@@ -317,17 +317,25 @@ object Main
       .unapply(value)
       .liftTo[IO](new Exception("Malformed info-hash"))
 
-  def eventsPipe(eventsFileOption: Option[String]): Resource[IO, Stream[IO, Long] => Stream[IO, Unit]] =
+  def eventsPipe(eventsFileOption: Option[String], metadata: TorrentMetadata): Resource[IO, Stream[IO, Long] => Stream[IO, Unit]] =
     async[ResourceIO]:
       eventsFileOption match
         case None => _.void
         case Some(path) =>
           val cursor = Files[IO].writeCursor(Path(path), Flags(Flag.Create, Flag.Write)).await
+          val totalPieces = (metadata.pieces.length.toDouble / 20).ceil.toLong
+          val totalSize = metadata.files.map(_.length).sum
+          val metaEvent = s"""{"type":"TorrentMetadata","payload":{"name":"${escapeJson(metadata.name)}","pieceLength":${metadata.pieceLength},"totalPieces":$totalPieces,"totalSize":$totalSize}}\n"""
+          val metaChunk = Chunk.byteVector(ByteVector.view(metaEvent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+          cursor.write(metaChunk).await
           _.evalMapAccumulate(cursor) { (acc, index) =>
             val event = s"""{"type":"PieceDownloaded","payload":{"index":$index}}\n"""
             val chunk = Chunk.byteVector(ByteVector.view(event.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
             acc.write(chunk).tupleRight(())
           }.void
+
+  def escapeJson(s: String): String =
+    s.replace("\\", "\\\\").replace("\"", "\\\"")
 
   def withLogger[A](body: Logger[IO] ?=> IO[A]): IO[A] =
     given Filter = Filter.atLeastLevel(LogLevel.Info)
