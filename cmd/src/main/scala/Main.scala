@@ -327,7 +327,7 @@ object Main
           val totalSize = metadata.files.map(_.length).sum
           val metaEvent = s"""{"type":"TorrentMetadata","payload":{"name":"${escapeJson(metadata.name)}","pieceLength":${metadata.pieceLength},"totalPieces":$totalPieces,"totalSize":$totalSize}}\n"""
           val metaChunk = Chunk.byteVector(ByteVector.view(metaEvent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-          cursor.write(metaChunk).await
+          Resource.eval(cursor.write(metaChunk)).await
           _.evalMapAccumulate(cursor) { (acc, index) =>
             val event = s"""{"type":"PieceDownloaded","payload":{"index":$index}}\n"""
             val chunk = Chunk.byteVector(ByteVector.view(event.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
