@@ -122,6 +122,7 @@ object MessageSocket {
             Error(s"Unable to decode handhshake reponse: ${e.message}")
           }
       )
+      _ <- IO.raiseUnless(response.infoHash == infoHash)(Error("Unsuccessful handshake: info-hash mismatch"))
     yield response
   }
 
