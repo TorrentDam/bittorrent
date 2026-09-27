@@ -94,7 +94,7 @@ object Swarm {
             }
           )
         yield connection
-    yield new Impl(stateRef, connectOrReconnect, supervisor, discoverPeer)
+    yield new Impl(stateRef, connectOrReconnect, discoverPeer)
     end for
 
   private val PexBroadcastInterval: FiniteDuration = 60.seconds
@@ -104,19 +104,14 @@ object Swarm {
   private class Impl(
     stateRef: SignallingRef[IO, Map[PeerInfo, Connection]],
     connectOrReconnect: Resource[IO, Connection],
-    supervisor: Supervisor[IO],
     discoverPeer: PeerInfo => IO[Unit]
   ) extends Swarm {
     val connect: Resource[IO, Connection] =
       connectOrReconnect.flatTap(connection =>
-        Resource.make {
-          stateRef.update(_ + (connection.info -> connection)) *>
-          supervisor.supervise(
-            connection.pexPeers.evalMap(discoverPeer).compile.drain
-          ).void
-        } { _ =>
+        Resource.make(stateRef.update(_ + (connection.info -> connection)))(_ =>
           stateRef.update(_ - connection.info)
-        }
+        ) >>
+        connection.pexPeers.evalMap(discoverPeer).compile.drain.background
       )
     val connected: Connected = new {
       val count: Signal[IO, Int] = stateRef.map(_.size)
