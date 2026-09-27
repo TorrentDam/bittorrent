@@ -93,7 +93,8 @@ object Connection {
     for
       requestRegistry <- RequestRegistry()
       socket <- MessageSocket.connect(selfId, peerInfo, infoHash)
-      stateRef <- Resource.eval(IO.ref(State()))
+      connectedAt <- Resource.eval(IO.realTime)
+      stateRef <- Resource.eval(IO.ref(State(lastMessageAt = connectedAt.toMillis)))
       chokedStatusRef <- Resource.eval(SignallingRef[IO].of(true))
       bitfieldRef <- Resource.eval(SignallingRef[IO].of(BitSet.empty))
       sendQueue <- Resource.eval(Queue.bounded[IO, Message](10))
@@ -118,7 +119,8 @@ object Connection {
             extensionHandler
           ),
           sendLoop(sendQueue, socket),
-          keepAliveLoop(stateRef, sendQueue.offer),
+          idleTimeoutLoop(stateRef),
+          keepAliveLoop(sendQueue.offer),
           bindPex(initExtension, pexDeferred)
         ).parTupled.background
     yield new Connection {
@@ -156,6 +158,9 @@ object Connection {
     end for
 
   case class ConnectionClosed() extends Throwable
+
+  private val IdleTimeout: FiniteDuration = 2.minutes
+  private val KeepAliveInterval: FiniteDuration = 60.seconds
 
   private def bindPex(
     initExtension: ExtensionHandler.InitExtension,
@@ -203,23 +208,22 @@ object Connection {
       }
       .foreverM
 
-  private def keepAliveLoop(
-    stateRef: Ref[IO, State],
-    send: Message => IO[Unit]
-  ): IO[Nothing] =
+  private def idleTimeoutLoop(stateRef: Ref[IO, State]): IO[Nothing] =
     IO
       .sleep(10.seconds)
       .flatMap { _ =>
         for
           currentTime <- IO.realTime
-          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > 30.seconds)
+          timedOut <- stateRef.get.map(s => (currentTime - s.lastMessageAt.millis) > IdleTimeout)
           _ <- IO.whenA(timedOut) {
             IO.raiseError(Error.ConnectionTimeout())
           }
-          _ <- send(Message.KeepAlive)
         yield ()
       }
       .foreverM
+
+  private def keepAliveLoop(send: Message => IO[Unit]): IO[Nothing] =
+    (IO.sleep(KeepAliveInterval) >> send(Message.KeepAlive)).foreverM
 
   private def sendLoop(queue: Queue[IO, Message], socket: MessageSocket): IO[Nothing] =
     queue.take.flatMap(socket.send).foreverM
