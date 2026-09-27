@@ -5,7 +5,9 @@ import com.github.torrentdam.bittorrent.PeerId
 import scala.util.chaining.*
 import scodec.bits.ByteVector
 import scodec.codecs.*
+import scodec.Attempt
 import scodec.Codec
+import scodec.Err
 
 final case class Handshake(
   extensionProtocol: Boolean,
@@ -45,6 +47,7 @@ enum Message:
   case Cancel(index: Long, begin: Long, length: Long)
   case Port(port: Int)
   case Extended(id: Long, payload: ByteVector)
+  case Unknown(id: Int, payload: ByteVector)
 
 object Message {
 
@@ -68,9 +71,17 @@ object Message {
         .caseP(9) { case Port(port) => port }(Port.apply)(uint16)
         .caseP(20) { case m: Extended => m }(identity)((ulong(8) :: bytes).as)
 
+    val KnownIds = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 20)
+    val UnknownIdCodec: Codec[Int] = uint8.exmap(
+      id => if KnownIds(id) then Attempt.failure(Err(s"Known message id $id")) else Attempt.successful(id),
+      Attempt.successful
+    )
+    val UnknownCodec: Codec[Unknown] = (UnknownIdCodec :: bytes).as
+
     choice(
       KeepAliveCodec.upcast,
-      OtherMessagesCodec
+      OtherMessagesCodec,
+      UnknownCodec.upcast
     )
   }
 
