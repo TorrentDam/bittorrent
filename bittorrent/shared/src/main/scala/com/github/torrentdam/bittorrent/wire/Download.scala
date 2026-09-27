@@ -159,10 +159,7 @@ object Download {
     logger: Logger[IO]
   ): IO[Unit] = {
     def waitChoked = connection.choked.waitUntil(identity)
-    def waitUnchoked =
-      connection.choked
-        .waitUntil(choked => !choked)
-        .timeoutTo(30.seconds, IO.raiseError(Error.TimeoutWaitingForUnchoke(30.seconds)))
+    def waitUnchoked = connection.choked.waitUntil(choked => !choked)
 
     (waitUnchoked >> (f race waitChoked)).foreverM
   }
@@ -202,7 +199,6 @@ object Download {
   }
 
   enum Error(message: String) extends Throwable(message):
-    case TimeoutWaitingForUnchoke(duration: FiniteDuration) extends Error(s"Unchoke timeout $duration")
     case TimeoutWaitingForPiece(duration: FiniteDuration) extends Error(s"Block request timeout $duration")
     case InvalidChecksum() extends Error("Invalid checksum")
     case PeerDoesNotRespond() extends Error("Peer does not respond")
