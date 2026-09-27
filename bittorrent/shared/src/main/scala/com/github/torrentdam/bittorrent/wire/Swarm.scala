@@ -29,6 +29,7 @@ object Swarm {
 
   private case class SwarmConnection(connect: Resource[IO, Connection], retries: Int):
     def retried = copy(retries = retries + 1)
+    def reset = copy(retries = 1)
 
   def apply(
     peers: Stream[IO, PeerInfo],
@@ -77,21 +78,28 @@ object Swarm {
         .compile
         .drain
         .background
+      retry = (swarmConnection: SwarmConnection) =>
+        if swarmConnection.retries >= MaxRetries
+        then IO.unit
+        else scheduleReconnect((10 * swarmConnection.retries).seconds, swarmConnection.retried)
       connectOrReconnect =
         for
           swarmConnection <- Resource.eval(newConnections.take race reconnects.take).map(_.merge)
-          connection <- swarmConnection.connect.onError(_ =>
-            if swarmConnection.retries >= 24
-            then Resource.unit[IO]
-            else
-              val delay = (10 * swarmConnection.retries).seconds
-              scheduleReconnect(delay, swarmConnection.retried).toResource
+          connection <- swarmConnection.connect.onError(_ => retry(swarmConnection).toResource)
+          connectedAt <- IO.monotonic.toResource
+          _ <- Resource.onFinalize(
+            IO.monotonic.flatMap { now =>
+              val shortSession = now - connectedAt < MinSessionDuration
+              retry(if shortSession then swarmConnection.retried else swarmConnection.reset)
+            }
           )
         yield connection
     yield new Impl(stateRef, connectOrReconnect, supervisor, discoverPeer)
     end for
 
   private val PexBroadcastInterval: FiniteDuration = 60.seconds
+  private val MaxRetries = 24
+  private val MinSessionDuration: FiniteDuration = 1.minute
 
   private class Impl(
     stateRef: SignallingRef[IO, Map[PeerInfo, Connection]],
