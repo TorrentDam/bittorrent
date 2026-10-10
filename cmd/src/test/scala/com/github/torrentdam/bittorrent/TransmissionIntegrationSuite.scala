@@ -2,6 +2,7 @@ package com.github.torrentdam.bittorrent
 
 import cats.effect.IO
 import cats.effect.Resource
+import cats.effect.std.Random
 import cats.implicits.*
 import fs2.Chunk
 import fs2.Stream
@@ -11,12 +12,10 @@ import munit.CatsEffectSuite
 import scodec.bits.ByteVector
 
 import java.io.File
-import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URL
 import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.*
 import scala.sys.process.Process
@@ -27,9 +26,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
   override def munitTimeout: Duration = 15.minutes
   override def munitIOTimeout: Duration = 15.minutes
 
-  private val DefaultPayloadUrl =
-    "https://deb.debian.org/debian/pool/main/t/transmission/transmission_4.1.3+dfsg-1.git.tar.xz"
-  private val PayloadUrl = sys.env.getOrElse("TORRENT_TEST_PAYLOAD", DefaultPayloadUrl)
+  private val PayloadSizeBytes = 16 * 1024 * 1024
 
   test("CLI downloads and verifies a file seeded by transmission daemon") {
     val daemon = binary("transmission-daemon")
@@ -43,38 +40,38 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
   }
 
   private def run(daemon: String, create: String, remote: Option[String]): IO[Unit] =
-    fixture(daemon, create, remote).use { case (cliJar, torrentPath, downloadDir, peerPort, logPath) =>
-      val scenario = for
-        payload <- httpGet(PayloadUrl)
-        _ <- runCli(
-          cliJar,
-          Seq(
-            "torrent", "download",
-            "--torrent", torrentPath.toString,
-            "--peer", s"127.0.0.1:$peerPort"
-          ),
-          cwd = downloadDir
-        )
-        downloaded <- Files[IO].readAll(downloadDir / "payload").compile.to(ByteVector)
-        _ <- IO(assertEquals(downloaded, payload))
-        _ <- runCli(
-          cliJar,
-          Seq("torrent", "verify", "--torrent", torrentPath.toString, "--target", downloadDir.toString),
-          cwd = downloadDir
-        )
-      yield ()
-      scenario.handleErrorWith { error =>
-        readTail(logPath).flatMap { log =>
-          IO.raiseError(RuntimeException(s"end-to-end test failed: $error\n--- transmission log ---\n$log"))
+    fixture(daemon, create, remote).use {
+      case (cliJar, torrentPath, downloadDir, peerPort, logPath, payload) =>
+        val scenario = for
+          _ <- runCli(
+            cliJar,
+            Seq(
+              "torrent", "download",
+              "--torrent", torrentPath.toString,
+              "--peer", s"127.0.0.1:$peerPort"
+            ),
+            cwd = downloadDir
+          )
+          downloaded <- Files[IO].readAll(downloadDir / "payload").compile.to(ByteVector)
+          _ <- IO(assertEquals(downloaded, payload))
+          _ <- runCli(
+            cliJar,
+            Seq("torrent", "verify", "--torrent", torrentPath.toString, "--target", downloadDir.toString),
+            cwd = downloadDir
+          )
+        yield ()
+        scenario.handleErrorWith { error =>
+          readTail(logPath).flatMap { log =>
+            IO.raiseError(RuntimeException(s"end-to-end test failed: $error\n--- transmission log ---\n$log"))
+          }
         }
-      }
     }
 
   private def fixture(
       daemon: String,
       create: String,
       remote: Option[String]
-  ): Resource[IO, (Path, Path, Path, Int, Path)] =
+  ): Resource[IO, (Path, Path, Path, Int, Path, ByteVector)] =
     for
       root <- Files[IO].tempDirectory(None, "torrentdam-e2e-", None)
       seedDir = root / "seed"
@@ -85,7 +82,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
         List(seedDir, watchDir, configDir, downloadDir).traverse_(Files[IO].createDirectories)
       )
       cliJar <- Resource.eval(buildCliJar)
-      payload <- Resource.eval(httpGet(PayloadUrl))
+      payload <- Resource.eval(generatePayload)
       payloadPath = seedDir / "payload"
       _ <- Resource.eval {
         Files[IO].writeAll(payloadPath)(Stream.chunk(Chunk.byteVector(payload))).compile.drain
@@ -102,7 +99,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       _ <- Resource.eval(Files[IO].copy(payloadPath, downloadDir / "payload").void)
       _ <- Resource.eval(Files[IO].copy(torrentPath, watchDir / "test.torrent").void)
       _ <- Resource.eval(waitForSeed(remote, rpcPort, 60.seconds))
-    yield (cliJar, torrentPath, downloadDir, peerPort, logPath)
+    yield (cliJar, torrentPath, downloadDir, peerPort, logPath, payload)
 
   private def buildCliJar: IO[Path] =
     sys.env.get("TORRENT_TEST_CMD_JAR") match
@@ -181,17 +178,16 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       )
       .void
 
-  private def httpGet(url: String): IO[ByteVector] =
-    IO.blocking {
-      val connection = new URL(url).openConnection().asInstanceOf[HttpURLConnection]
-      connection.setInstanceFollowRedirects(true)
-      connection.setConnectTimeout(30.seconds.toMillis.toInt)
-      connection.setReadTimeout(2.minutes.toMillis.toInt)
-      try
-        val code = connection.getResponseCode
-        if code != 200 then throw RuntimeException(s"HTTP $code for $url")
-        ByteVector(connection.getInputStream.readAllBytes())
-      finally connection.disconnect()
+  private def generatePayload: IO[ByteVector] =
+    Random.scalaUtilRandom[IO].flatMap { random =>
+      val chunkSize = 256 * 1024
+      val chunks = PayloadSizeBytes / chunkSize
+      fs2.Stream
+        .eval(random.nextBytes(chunkSize))
+        .take(chunks.toLong)
+        .map(ByteVector(_))
+        .compile
+        .fold(ByteVector.empty)(_ ++ _)
     }
 
   private def exec(cmd: Seq[String]): IO[(Int, String)] =

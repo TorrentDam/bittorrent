@@ -50,15 +50,16 @@ nix develop
 
 ### End-to-End Tests
 
-`TransmissionIntegrationSuite` is a true end-to-end test: it seeds a real
-transmission daemon with a small public payload file (~11 MB) and verifies that
-the `torrentdam` CLI downloads it over the peer-to-peer wire protocol using only
-the `--peer` flag (no DHT discovery).
+`TransmissionIntegrationSuite` is a true end-to-end test: it generates a
+random payload (16 MB), seeds it with a real transmission daemon, and verifies
+that the `torrentdam` CLI downloads it over the peer-to-peer wire protocol using
+only the `--peer` flag (no DHT discovery). The test is fully self-contained
+and needs no internet access.
 
 The test needs `transmission-daemon`, `transmission-create`, and
 `transmission-remote` on the `PATH` (all provided by `nix develop`). It builds
 the CLI assembly jar via `./mill cmd.assembly` if `TORRENT_TEST_CMD_JAR` is not
-set. Override the seeded file with `TORRENT_TEST_PAYLOAD` if needed.
+set.
 
 ```bash
 nix develop
