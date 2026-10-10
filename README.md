@@ -40,6 +40,33 @@ torrentdam torrent verify --torrent file.torrent --target /downloads
 
 Run `torrentdam --help` for complete command reference.
 
+## Development
+
+Enter a development environment with JDK 21, Mill, and transmission via Nix:
+
+```bash
+nix develop
+```
+
+### End-to-End Tests
+
+`TransmissionIntegrationSuite` is a true end-to-end test: it seeds a real
+transmission daemon with a small public payload file (~11 MB) and verifies that
+the `torrentdam` CLI downloads it over the peer-to-peer wire protocol using only
+the `--peer` flag (no DHT discovery).
+
+The test needs `transmission-daemon`, `transmission-create`, and
+`transmission-remote` on the `PATH` (all provided by `nix develop`). It builds
+the CLI assembly jar via `./mill cmd.assembly` if `TORRENT_TEST_CMD_JAR` is not
+set. Override the seeded file with `TORRENT_TEST_PAYLOAD` if needed.
+
+```bash
+nix develop
+./mill cmd.assembly
+export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
+./mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
+```
+
 ## License
 
 [Unlicense](LICENSE) - Public Domain
