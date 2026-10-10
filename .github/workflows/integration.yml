@@ -1,0 +1,22 @@
+name: integration
+
+on: [push, pull_request]
+
+jobs:
+
+  transmission-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Build CLI assembly
+        run: |
+          export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
+          echo "TORRENT_TEST_CMD_JAR=$TORRENT_TEST_CMD_JAR" >> "$GITHUB_ENV"
+          ./mill cmd.assembly
+      - name: Run end-to-end test against transmission
+        run: |
+          nix profile install github:NixOS/nixpkgs/nixos-25.05#transmission_4
+          export PATH="$HOME/.nix-profile/bin:$PATH"
+          ./mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
