@@ -74,9 +74,9 @@ trait CommonSettings extends ScalaModule, PublishModule {
   def pomSettings = PomSettings(
     description = "BitTorrent client",
     organization = "io.github.torrentdam.bittorrent",
-    url = "https://github.com/TorrentDamDev/bittorrent",
+    url = "https://github.com/TorrentDam/bittorrent",
     licenses = Seq(License.`Unlicense`),
-    versionControl = VersionControl.github("TorrentDamDev", "bittorrent"),
+    versionControl = VersionControl.github("TorrentDam", "bittorrent"),
     developers = Seq(
       Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
     )
