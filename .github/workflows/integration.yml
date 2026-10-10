@@ -17,6 +17,6 @@ jobs:
           ./mill cmd.assembly
       - name: Run end-to-end test against transmission
         run: |
-          nix profile install nixpkgs/#transmission_4
+          nix profile install github:NixOS/nixpkgs/nixos-25.05#transmission_4
           export PATH="$HOME/.nix-profile/bin:$PATH"
           ./mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
