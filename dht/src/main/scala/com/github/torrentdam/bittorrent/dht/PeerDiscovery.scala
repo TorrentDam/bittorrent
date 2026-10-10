@@ -7,7 +7,7 @@ import cats.effect.IO
 import cats.effect.Resource
 import cats.instances.all.*
 import cats.syntax.all.*
-import cats.effect.cps.{given, *}
+import cats.effect.direct.*
 import cats.Show.Shown
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.PeerInfo

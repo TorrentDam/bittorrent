@@ -2,7 +2,7 @@ package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.IO
 import cats.syntax.all.*
-import cats.effect.cps.{*, given}
+import cats.effect.direct.*
 import cats.effect.std.Random
 import org.legogroup.woof.{Logger, given}
 

@@ -5,7 +5,7 @@ import cats.implicits.*
 import cats.MonadError
 import cats.effect.IO
 import cats.effect.implicits.*
-import cats.effect.cps.{given, *}
+import cats.effect.direct.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.given
@@ -79,7 +79,7 @@ object RoutingTableBootstrap {
       val count = discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.await
       Logger[IO].info(s"Communicated with $count nodes during self discovery").await
       val nodeCount = table.allNodes.await.size
-      if nodeCount < 20 then attempt(number + 1).await else IO.unit
+      if nodeCount < 20 then attempt(number + 1).await else ()
     attempt(1)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(

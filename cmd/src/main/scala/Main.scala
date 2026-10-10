@@ -1,5 +1,4 @@
-import cats.effect.cps.*
-import cats.effect.cps.given
+import cats.effect.direct.*
 import cats.effect.std.Random
 import cats.effect.syntax.all.*
 import cats.effect.ExitCode
@@ -27,7 +26,6 @@ import com.github.torrentdam.bittorrent.TorrentFile
 import com.github.torrentdam.bittorrent.TorrentMetadata
 import com.monovore.decline.effect.CommandIOApp
 import com.monovore.decline.Opts
-import cps.syntax.*
 import fs2.io.file.Files
 import fs2.io.file.Flag
 import fs2.io.file.Flags
@@ -65,7 +63,8 @@ object Main
         .mapN { (infoHashOption, targetFilePath) =>
           withLogger {
             async[ResourceIO] {
-              given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+              val random = Resource.eval(Random.scalaUtilRandom[IO]).await
+              given Random[IO] = random
 
               val selfPeerId = Resource.eval(PeerId.generate).await
               val infoHash = Resource.eval(infoHashFromString(infoHashOption)).await
@@ -84,7 +83,9 @@ object Main
                 .compile
                 .drain
                 .as(ExitCode.Success)
-            }.useEval
+                .toResource
+                .await
+            }.use(IO.pure)
           }
         }
     }
@@ -129,7 +130,8 @@ object Main
                     case None =>
                       throw new Exception("Missing info-hash")
 
-            given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
+            given Random[IO] = random
             val selfPeerId = Resource.eval(PeerId.generate).await
             val peerAddress = peerAddressOption.flatMap(SocketAddress.fromStringIp)
             val peers: Stream[IO, PeerInfo] =
@@ -175,10 +177,10 @@ object Main
               .range(0L, total)
               .parEvalMap(10)(index =>
                 async[IO] {
-                  val piece = !torrent.downloadPiece(index)
-                  val count = !counter.updateAndGet(_ + 1)
+                  val piece = torrent.downloadPiece(index).await
+                  val count = counter.updateAndGet(_ + 1).await
                   val percent = ((count.toDouble / total) * 100).toInt
-                  !Logger[IO].info(s"Downloaded piece $count/$total ($percent%)")
+                  Logger[IO].info(s"Downloaded piece $count/$total ($percent%)").await
                   (index, piece)
                 }
               )
@@ -194,7 +196,9 @@ object Main
               .compile
               .drain
               .as(ExitCode.Success)
-          }.useEval
+              .toResource
+              .await
+          }.use(IO.pure)
         }
       }
     }
@@ -277,7 +281,8 @@ object Main
         withLogger {
           async[ResourceIO] {
             val port = Port.fromInt(portParam).liftTo[ResourceIO](new Exception("Invalid port")).await
-            given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
+            given Random[IO] = random
             Node(Some(port)).await
           }.useForever
         }
@@ -294,7 +299,8 @@ object Main
           async[ResourceIO] {
             val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
             val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
-            given Random[IO] = Resource.eval(Random.scalaUtilRandom[IO]).await
+            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
+            given Random[IO] = random
             val selfId = Resource.eval(NodeId.random).await
             val infoHash = infoHashFromString(infoHashParam).toResource.await
             val messageSocket = MessageSocket(none).await
@@ -303,7 +309,9 @@ object Main
               val response = client.getPeers(nodeIpAddress, infoHash).await
               // IO.println(response).await
               ExitCode.Success
-          }.useEval
+            .toResource
+            .await
+          }.use(IO.pure)
         }
       }
     }

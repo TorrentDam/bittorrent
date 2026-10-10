@@ -1,6 +1,6 @@
 package com.github.torrentdam.bittorrent.wire
 
-import cats.effect.cps.*
+import cats.effect.direct.*
 import cats.data.Chain
 import cats.effect.kernel.Deferred
 import cats.effect.std.Dequeue

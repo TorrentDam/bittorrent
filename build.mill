@@ -21,7 +21,7 @@ object dht extends CommonSettings {
     Deps.`cats-effect`,
     Deps.`fs2-io`,
     Deps.`woof-core`,
-    Deps.`cats-effect-cps`,
+    Deps.`cats-effect-direct`,
   )
 }
 
@@ -37,7 +37,7 @@ object bittorrent extends CommonSettings {
     Deps.`monocle-core`,
     Deps.`monocle-macro`,
     Deps.`woof-core`,
-    Deps.`cats-effect-cps`,
+    Deps.`cats-effect-direct`,
   )
 }
 
@@ -49,7 +49,7 @@ object files extends CommonSettings {
     Deps.`cats-effect`,
     Deps.`fs2-io`,
     Deps.`woof-core`,
-    Deps.`cats-effect-cps`,
+    Deps.`cats-effect-direct`,
   )
 }
 
@@ -58,7 +58,7 @@ object cmd extends CommonSettings {
   def mvnDeps = Seq(
     Deps.decline,
     Deps.`woof-core`,
-    Deps.`cats-effect-cps`,
+    Deps.`cats-effect-direct`,
   )
 }
 
@@ -67,6 +67,11 @@ trait CommonSettings extends ScalaModule, PublishModule {
   def sourceRoots = Seq(os.RelPath("."))
   def sources = Task.Sources(
     sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
+  )
+
+  def forkArgs = Seq(
+    "--add-exports",
+    "java.base/jdk.internal.vm=ALL-UNNAMED"
   )
 
   def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
@@ -84,6 +89,10 @@ trait CommonSettings extends ScalaModule, PublishModule {
 
   object test extends ScalaTests, TestModule.Munit {
     def munitVersion = "1.3.5"
+    def forkArgs = Seq(
+      "--add-exports",
+      "java.base/jdk.internal.vm=ALL-UNNAMED"
+    )
     def sources = Task.Sources(
       sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "scala")*
     )
@@ -109,7 +118,7 @@ object Deps {
     val bencode = "1.1.0"
     val decline = "2.6.2"
     val woof = "0.9.0"
-    val `cats-effect-cps` = "0.5.0"
+    val `cats-effect-direct` = "1.0.0"
   }
 
   val `cats-core` = mvn"org.typelevel::cats-core::${Versions.cats}"
@@ -132,5 +141,5 @@ object Deps {
 
   val decline = mvn"com.monovore::decline-effect::${Versions.decline}"
 
-  val `cats-effect-cps` = mvn"org.typelevel::cats-effect-cps::${Versions.`cats-effect-cps`}"
+  val `cats-effect-direct` = mvn"org.typelevel::cats-effect-direct::${Versions.`cats-effect-direct`}"
 }
