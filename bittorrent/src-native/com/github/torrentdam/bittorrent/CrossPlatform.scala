@@ -7,10 +7,10 @@ object CrossPlatform {
   def sha1(bytes: ByteVector): ByteVector = {
     val data = pad(bytes).toArray
     var h0 = 0x67452301
-    var h1 = 0xEFCDAB89
-    var h2 = 0x98BADCFE
+    var h1 = 0xefcdab89
+    var h2 = 0x98badcfe
     var h3 = 0x10325476
-    var h4 = 0xC3D2E1F0
+    var h4 = 0xc3d2e1f0
     val w = new Array[Int](80)
     val blocks = data.length / 64
     var block = 0
@@ -39,10 +39,10 @@ object CrossPlatform {
           else if t < 60 then (b & c) | (b & d) | (c & d)
           else b ^ c ^ d
         val k =
-          if t < 20 then 0x5A827999
-          else if t < 40 then 0x6ED9EBA1
-          else if t < 60 then 0x8F1BBCDC
-          else 0xCA62C1D6
+          if t < 20 then 0x5a827999
+          else if t < 40 then 0x6ed9eba1
+          else if t < 60 then 0x8f1bbcdc
+          else 0xca62c1d6
         val temp = rotl(a, 5) + f + e + k + w(t)
         e = d
         d = c

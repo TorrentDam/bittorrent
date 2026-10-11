@@ -1,22 +1,28 @@
 name: integration
-
 on: [push, pull_request]
 
 jobs:
-
   transmission-e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [jvm, native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v13
-      - name: Build CLI assembly
+      - name: Build CLI
         run: |
-          export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
-          echo "TORRENT_TEST_CMD_JAR=$TORRENT_TEST_CMD_JAR" >> "$GITHUB_ENV"
-          ./mill cmd.assembly
+          if [ "${{ matrix.platform }}" = "native" ]; then
+            ./mill cmd.native.nativeLink
+            echo "TORRENT_TEST_TARGET=native" >> "$GITHUB_ENV"
+          else
+            ./mill cmd.jvm.assembly
+            echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/jvm/assembly.dest/out.jar" >> "$GITHUB_ENV"
+          fi
       - name: Run end-to-end test against transmission
         run: |
           nix profile install github:NixOS/nixpkgs/nixos-25.05#transmission_4
           export PATH="$HOME/.nix-profile/bin:$PATH"
-          ./mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
+          ./mill cmd.jvm.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite

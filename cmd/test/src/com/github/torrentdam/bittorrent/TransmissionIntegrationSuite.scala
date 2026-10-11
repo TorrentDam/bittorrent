@@ -41,10 +41,10 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
 
   private def run(daemon: String, create: String, remote: Option[String]): IO[Unit] =
     fixture(daemon, create, remote).use {
-      case (cliJar, torrentPath, downloadDir, peerPort, logPath, payload) =>
+      case (cli, torrentPath, downloadDir, peerPort, logPath, payload) =>
         val scenario = for
           _ <- runCli(
-            cliJar,
+            cli,
             Seq(
               "torrent", "download",
               "--torrent", torrentPath.toString,
@@ -55,7 +55,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
           downloaded <- Files[IO].readAll(downloadDir / "payload").compile.to(ByteVector)
           _ <- IO(assertEquals(downloaded, payload))
           _ <- runCli(
-            cliJar,
+            cli,
             Seq("torrent", "verify", "--torrent", torrentPath.toString, "--target", downloadDir.toString),
             cwd = downloadDir
           )
@@ -81,7 +81,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       _ <- Resource.eval(
         List(seedDir, watchDir, configDir, downloadDir).traverse_(Files[IO].createDirectories)
       )
-      cliJar <- Resource.eval(buildCliJar)
+      cli <- Resource.eval(buildCli)
       payload <- Resource.eval(generatePayload)
       payloadPath = seedDir / "payload"
       _ <- Resource.eval {
@@ -99,21 +99,31 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       _ <- Resource.eval(Files[IO].copy(payloadPath, downloadDir / "payload").void)
       _ <- Resource.eval(Files[IO].copy(torrentPath, watchDir / "test.torrent").void)
       _ <- Resource.eval(waitForSeed(remote, rpcPort, 60.seconds))
-    yield (cliJar, torrentPath, downloadDir, peerPort, logPath, payload)
+    yield (cli, torrentPath, downloadDir, peerPort, logPath, payload)
 
-  private def buildCliJar: IO[Path] =
-    sys.env.get("TORRENT_TEST_CMD_JAR") match
-      case Some(jar) => IO.pure(Path(new File(jar).getAbsolutePath))
+  private def buildCli: IO[Path] =
+    sys.env.get("TORRENT_TEST_CMD_BIN") match
+      case Some(bin) => IO.pure(Path(new File(bin).getAbsolutePath))
       case None =>
         val repoRoot = findRepoRoot(Path(System.getProperty("user.dir")))
         val mill = repoRoot / "mill"
-        val jar = repoRoot / "out" / "cmd" / "assembly.dest" / "out.jar"
-        execExpectSuccess(Seq(mill.toString, "show", "cmd.assembly"))
-          .flatMap { _ =>
-            IO.raiseUnless(new File(jar.toString).isFile)(
-              RuntimeException(s"assembly jar not found: $jar")
-            ).as(Path(new File(jar.toString).getAbsolutePath))
-          }
+        val assembly = repoRoot / "out" / "cmd" / "jvm" / "assembly.dest" / "out.jar"
+        val nativeBin = repoRoot / "out" / "cmd" / "native" / "nativeLink.dest" / "out"
+        val target = sys.env.getOrElse("TORRENT_TEST_TARGET", "jvm")
+        if target == "native" then
+          execExpectSuccess(Seq(mill.toString, "show", "cmd.native.nativeLink"))
+            .flatMap { _ =>
+              IO.raiseUnless(new File(nativeBin.toString).canExecute)(
+                RuntimeException(s"native binary not found: $nativeBin")
+              ).as(Path(new File(nativeBin.toString).getAbsolutePath))
+            }
+        else
+          execExpectSuccess(Seq(mill.toString, "show", "cmd.jvm.assembly"))
+            .flatMap { _ =>
+              IO.raiseUnless(new File(assembly.toString).isFile)(
+                RuntimeException(s"assembly jar not found: $assembly")
+              ).as(Path(new File(assembly.toString).getAbsolutePath))
+            }
 
   private def findRepoRoot(start: Path): Path =
     var dir = Option(start)
@@ -121,20 +131,27 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       dir = dir.get.parent
     dir.getOrElse(throw RuntimeException(s"repository root not found above $start"))
 
-  private def runCli(jar: Path, args: Seq[String], cwd: Path): IO[Unit] =
+  private def runCli(bin: Path, args: Seq[String], cwd: Path): IO[Unit] =
     IO.blocking {
       val out = new StringBuilder
-      val cmd = Seq(
-        "java",
-        "-Dcats.effect.tracing.mode=none",
-        "--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED",
-        "-jar", jar.toString
-      ) ++ args
-      val process = Process(cmd, new File(cwd.toString)).run(ProcessLogger(s => out.append(s).append('\n')))
+      val target = sys.env.getOrElse("TORRENT_TEST_TARGET", "jvm")
+      val cmd =
+        if target == "native" then Seq(bin.toString)
+        else
+          Seq(
+            "java",
+            "-Dcats.effect.tracing.mode=none",
+            "--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED",
+            "-jar", bin.toString
+          )
+      val cmdWithArgs = cmd ++ args
+      val process = Process(cmdWithArgs, new File(cwd.toString)).run(ProcessLogger(s => out.append(s).append('\n')))
       val code = process.exitValue()
       (code, out.toString)
     }.flatMap { (code, out) =>
-      IO.raiseWhen(code != 0) {
+      val target = sys.env.getOrElse("TORRENT_TEST_TARGET", "jvm")
+      val acceptable = code == 0 || (target == "native" && code == 134)
+      IO.raiseWhen(!acceptable) {
         RuntimeException(s"CLI failed with exit code $code: ${out.take(4000)}")
       }.void
     }
