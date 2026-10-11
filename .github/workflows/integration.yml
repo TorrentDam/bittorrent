@@ -17,6 +17,7 @@ jobs:
           if [ "${{ matrix.platform }}" = "native" ]; then
             ./mill cmd.native.nativeLink
             echo "TORRENT_TEST_TARGET=native" >> "$GITHUB_ENV"
+            echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/native/nativeLink.dest/out" >> "$GITHUB_ENV"
           else
             ./mill cmd.jvm.assembly
             echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/jvm/assembly.dest/out.jar" >> "$GITHUB_ENV"
