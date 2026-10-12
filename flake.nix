@@ -16,6 +16,7 @@
               pkgs.jdk21
               pkgs.mill
               pkgs.transmission_4
+              pkgs.clang
             ];
           };
         });

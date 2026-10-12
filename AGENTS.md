@@ -3,17 +3,22 @@
 ## Build/Test Commands
 
 ```bash
-# Compile all modules
-./mill _.compile
+# Compile all modules (both platforms)
+./mill __.jvm.compile
+./mill __.native.compile
 
-# Run all tests
-./mill _.test
+# Run all tests (both platforms)
+./mill __.jvm.test
+./mill __.native.test
 
 # Run single test class (example)
-./mill bittorrent.test.testOne io.github.torrentdam.bittorrent.TorrentMetadataSpec
+./mill bittorrent.jvm.test.testOne io.github.torrentdam.bittorrent.TorrentMetadataSpec
 
 # Build CLI executable JAR
-./mill cmd.assembly
+./mill cmd.jvm.assembly
+
+# Build CLI native binary (requires clang)
+./mill cmd.native.nativeLink
 
 # Format code with Scalafmt
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
@@ -24,11 +29,14 @@
 - **build.mill**: Mill build definition (primary)
 - **common/**: Shared types (InfoHash, PeerId, MagnetLink)
 - **dht/**: Distributed Hash Table implementation
-- **bittorrent/**: Core BitTorrent protocol (shared + jvm sources)
+- **bittorrent/**: Core BitTorrent protocol (shared + platform sources)
 - **files/**: File I/O utilities
 - **cmd/**: CLI application entry point
 
-Each module has `src/main/scala/` and `src/test/scala/`
+Each module uses the standard Mill cross-platform layout:
+`<module>/src` (shared), `<module>/src-jvm`, `<module>/src-native`,
+with tests in `<module>/test/src` and resources in `<module>/test/resources`.
+Each module has `jvm` and `native` submodules, e.g. `./mill bittorrent.native.test`.
 
 ## Code Style
 

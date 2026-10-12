@@ -1,8 +1,6 @@
 package com.github.torrentdam.bittorrent
 
 import com.github.torrentdam.bittorrent.InfoHash
-import java.net.URLDecoder
-import java.nio.charset.Charset
 
 case class MagnetLink(infoHash: InfoHash, displayName: Option[String], trackers: List[String])
 
@@ -46,6 +44,19 @@ object MagnetLink {
       }
       .groupMap(_._1)(_._2)
 
-  private def urlDecode(value: String) =
-    URLDecoder.decode(value, Charset.forName("UTF-8"))
+  private def urlDecode(value: String): String =
+    val bytes = scala.collection.mutable.ArrayBuilder.make[Byte]
+    def hex(c: Char): Int = Character.digit(c, 16)
+    var i = 0
+    while i < value.length do
+      value.charAt(i) match
+        case '+' =>
+          bytes += ' '.toByte
+        case '%' if i + 2 < value.length && hex(value.charAt(i + 1)) >= 0 && hex(value.charAt(i + 2)) >= 0 =>
+          bytes += (hex(value.charAt(i + 1)) << 4 | hex(value.charAt(i + 2))).toByte
+          i += 2
+        case c =>
+          bytes += c.toByte
+      i += 1
+    new String(bytes.result(), "UTF-8")
 }

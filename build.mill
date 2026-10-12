@@ -1,145 +1,258 @@
-//| mill-version: 1.1.8
+//| mill-version: 1.1.10
 //| mill-jvm-version: temurin:21.0.6
 
-import mill.*, scalalib.*, scalanativelib.*, publish.*, util.*
+package build
 
-object common extends CommonSettings {
-  def mvnDeps = Seq(
-    Deps.bencode,
-    Deps.`scodec-bits`,
-    Deps.`cats-effect`,
-    Deps.ip4s,
-  )
-}
+import mill.*, mill.api.Result, scalalib.*, scalanativelib.*, publish.*
 
-object dht extends CommonSettings {
-  def moduleDeps = Seq(common)
-  def mvnDeps = Seq(
-    Deps.bencode,
-    Deps.`scodec-bits`,
-    Deps.`cats-core`,
-    Deps.`cats-effect`,
-    Deps.`fs2-io`,
-    Deps.`woof-core`,
-    Deps.`cats-effect-direct`,
-  )
-}
-
-object bittorrent extends CommonSettings {
-  override def sourceRoots = Seq("shared", "jvm")
-
-  def moduleDeps = Seq(common)
-  def mvnDeps = Seq(
-    Deps.bencode,
-    Deps.`cats-core`,
-    Deps.`cats-effect`,
-    Deps.`fs2-io`,
-    Deps.`monocle-core`,
-    Deps.`monocle-macro`,
-    Deps.`woof-core`,
-    Deps.`cats-effect-direct`,
-  )
-}
-
-object files extends CommonSettings {
-  def moduleDeps = Seq(common, bittorrent)
-  def mvnDeps = Seq(
-    Deps.`scodec-bits`,
-    Deps.`cats-core`,
-    Deps.`cats-effect`,
-    Deps.`fs2-io`,
-    Deps.`woof-core`,
-    Deps.`cats-effect-direct`,
-  )
-}
-
-object cmd extends CommonSettings {
-  def moduleDeps = Seq(bittorrent, dht, files)
-  def mvnDeps = Seq(
-    Deps.decline,
-    Deps.`woof-core`,
-    Deps.`cats-effect-direct`,
-  )
-}
-
-trait CommonSettings extends ScalaModule, PublishModule {
-  def scalaVersion = "3.8.4"
-  def sourceRoots = Seq(os.RelPath("."))
-  def sources = Task.Sources(
-    sourceRoots.map(directory => moduleDir / directory / "src" / "main" / "scala")*
-  )
-
-  def forkArgs = Seq(
-    "--add-exports",
-    "java.base/jdk.internal.vm=ALL-UNNAMED"
-  )
-
-  def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
-
-  def pomSettings = PomSettings(
-    description = "BitTorrent client",
-    organization = "io.github.torrentdam.bittorrent",
-    url = "https://github.com/TorrentDam/bittorrent",
-    licenses = Seq(License.`Unlicense`),
-    versionControl = VersionControl.github("TorrentDam", "bittorrent"),
-    developers = Seq(
-      Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
-    )
-  )
-
-  object test extends ScalaTests, TestModule.Munit {
-    def munitVersion = "1.3.5"
-    def forkArgs = Seq(
-      "--add-exports",
-      "java.base/jdk.internal.vm=ALL-UNNAMED"
-    )
-    def sources = Task.Sources(
-      sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "scala")*
-    )
-    def resources = Task.Sources(
-      sourceRoots.map(directory => CommonSettings.this.moduleDir / directory / "src" / "test" / "resources")*
-    )
-
-    def mvnDeps = Seq(
-      Deps.`munit-cats-effect`,
-    )
-  }
+object Versions {
+  val scala = "3.8.4"
+  val scalaNative = "0.5.12"
+  val cats = "2.13.0"
+  val `cats-effect` = "3.7.1"
+  val ip4s = "3.8.0"
+  val fs2 = "3.13.0"
+  val monocle = "3.3.0"
+  val `scodec-bits` = "1.2.5"
+  val bencode = "1.2.0"
+  val decline = "2.6.2"
+  val woof = "0.9.0"
+  val `cats-effect-direct` = "1.0.0"
+  val `munit-cats-effect` = "2.2.0"
 }
 
 object Deps {
-
-  object Versions {
-    val cats = "2.13.0"
-    val `cats-effect` = "3.7.1"
-    val ip4s = "3.8.0"
-    val fs2 = "3.13.0"
-    val monocle = "3.3.0"
-    val `scodec-bits` = "1.2.5"
-    val bencode = "1.1.0"
-    val decline = "2.6.2"
-    val woof = "0.9.0"
-    val `cats-effect-direct` = "1.0.0"
-  }
-
   val `cats-core` = mvn"org.typelevel::cats-core::${Versions.cats}"
   val `cats-effect` = mvn"org.typelevel::cats-effect::${Versions.`cats-effect`}"
-
   val ip4s = mvn"com.comcast::ip4s-core::${Versions.ip4s}"
-
   val `fs2-io` = mvn"co.fs2::fs2-io::${Versions.fs2}"
-
   val `scodec-bits` = mvn"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
-
   val `woof-core` = mvn"org.legogroup::woof-core::${Versions.woof}"
-
   val `monocle-core` = mvn"dev.optics::monocle-core::${Versions.monocle}"
   val `monocle-macro` = mvn"dev.optics::monocle-macro::${Versions.monocle}"
-
   val bencode = mvn"io.github.torrentdam.bencode::bencode::${Versions.bencode}"
-
-  val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::2.2.0"
-
+  val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::${Versions.`munit-cats-effect`}"
   val decline = mvn"com.monovore::decline-effect::${Versions.decline}"
-
   val `cats-effect-direct` = mvn"org.typelevel::cats-effect-direct::${Versions.`cats-effect-direct`}"
+  val `sn-test-interface` = mvn"org.scala-native::test-interface::${Versions.scalaNative}"
+}
+
+object common extends Module {
+
+  trait Shared extends PlatformScalaModule, PublishModule {
+    def scalaVersion = Versions.scala
+    def artifactName = "common"
+    def mvnDeps = Seq(
+      Deps.bencode,
+      Deps.`scodec-bits`,
+      Deps.`cats-effect`,
+      Deps.ip4s,
+    )
+    def pomSettings = PomSettings(
+      description = "BitTorrent client",
+      organization = "io.github.torrentdam.bittorrent",
+      url = "https://github.com/TorrentDam/bittorrent",
+      licenses = Seq(License.`Unlicense`),
+      versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+      developers = Seq(
+        Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
+      )
+    )
+    def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
+  }
+
+  trait SharedTests extends TestModule.Munit {
+    def munitVersion = "1.3.5"
+    def forkArgs = Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED")
+    def mvnDeps = Seq(Deps.`munit-cats-effect`)
+  }
+
+  object jvm extends Shared {
+    object test extends ScalaTests, SharedTests
+  }
+
+  object native extends Shared, ScalaNativeModule {
+    def scalaNativeVersion = Versions.scalaNative
+    object test extends ScalaNativeTests, SharedTests {
+      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
+    }
+
+  }
+}
+
+object dht extends Module {
+
+  trait Shared extends PlatformScalaModule, PublishModule {
+    def scalaVersion = Versions.scala
+    def artifactName = "dht"
+    def mvnDeps = Seq(
+      Deps.bencode,
+      Deps.`scodec-bits`,
+      Deps.`cats-core`,
+      Deps.`cats-effect`,
+      Deps.`fs2-io`,
+      Deps.`woof-core`,
+      Deps.`cats-effect-direct`,
+    )
+    def pomSettings = PomSettings(
+      description = "BitTorrent client",
+      organization = "io.github.torrentdam.bittorrent",
+      url = "https://github.com/TorrentDam/bittorrent",
+      licenses = Seq(License.`Unlicense`),
+      versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+      developers = Seq(
+        Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
+      )
+    )
+    def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
+  }
+
+  trait SharedTests extends TestModule.Munit {
+    def munitVersion = "1.3.5"
+    def forkArgs = Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED")
+    def mvnDeps = Seq(Deps.`munit-cats-effect`)
+  }
+
+  object jvm extends Shared {
+    def moduleDeps = Seq(common.jvm)
+    object test extends ScalaTests, SharedTests
+  }
+
+  object native extends Shared, ScalaNativeModule {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(common.native)
+    object test extends ScalaNativeTests, SharedTests {
+      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
+    }
+  }
+}
+
+object bittorrent extends Module {
+
+  trait Shared extends PlatformScalaModule, PublishModule {
+    def scalaVersion = Versions.scala
+    def artifactName = "bittorrent"
+    def mvnDeps = Seq(
+      Deps.bencode,
+      Deps.`cats-core`,
+      Deps.`cats-effect`,
+      Deps.`fs2-io`,
+      Deps.`monocle-core`,
+      Deps.`monocle-macro`,
+      Deps.`woof-core`,
+      Deps.`cats-effect-direct`,
+    )
+    def pomSettings = PomSettings(
+      description = "BitTorrent client",
+      organization = "io.github.torrentdam.bittorrent",
+      url = "https://github.com/TorrentDam/bittorrent",
+      licenses = Seq(License.`Unlicense`),
+      versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+      developers = Seq(
+        Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
+      )
+    )
+    def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
+  }
+
+  trait SharedTests extends TestModule.Munit {
+    def munitVersion = "1.3.5"
+    def forkArgs = Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED")
+    def mvnDeps = Seq(Deps.`munit-cats-effect`)
+  }
+
+  object jvm extends Shared {
+    def moduleDeps = Seq(common.jvm)
+    object test extends ScalaTests, SharedTests
+  }
+
+  object native extends Shared, ScalaNativeModule {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(common.native)
+    object test extends ScalaNativeTests, SharedTests {
+      override def nativeEmbedResources: T[Boolean] = Task { true }
+      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
+    }
+  }
+}
+
+object files extends Module {
+
+  trait Shared extends PlatformScalaModule, PublishModule {
+    def scalaVersion = Versions.scala
+    def artifactName = "files"
+    def mvnDeps = Seq(
+      Deps.`scodec-bits`,
+      Deps.`cats-core`,
+      Deps.`cats-effect`,
+      Deps.`fs2-io`,
+      Deps.`woof-core`,
+      Deps.`cats-effect-direct`,
+    )
+    def pomSettings = PomSettings(
+      description = "BitTorrent client",
+      organization = "io.github.torrentdam.bittorrent",
+      url = "https://github.com/TorrentDam/bittorrent",
+      licenses = Seq(License.`Unlicense`),
+      versionControl = VersionControl.github("TorrentDam", "bittorrent"),
+      developers = Seq(
+        Developer("lavrov", "Vitaly Lavrov", "https://github.com/lavrov")
+      )
+    )
+    def publishVersion = sys.env.getOrElse("VERSION", "SNAPSHOT")
+  }
+
+  trait SharedTests extends TestModule.Munit {
+    def munitVersion = "1.3.5"
+    def forkArgs = Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED")
+    def mvnDeps = Seq(Deps.`munit-cats-effect`)
+  }
+
+  object jvm extends Shared {
+    def moduleDeps = Seq(common.jvm, bittorrent.jvm)
+    object test extends ScalaTests, SharedTests
+  }
+
+  object native extends Shared, ScalaNativeModule {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(common.native, bittorrent.native)
+    object test extends ScalaNativeTests, SharedTests {
+      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
+    }
+  }
+}
+
+object cmd extends Module {
+
+  trait Shared extends PlatformScalaModule {
+    def scalaVersion = Versions.scala
+    def mvnDeps = Seq(
+      Deps.decline,
+      Deps.`woof-core`,
+      Deps.`cats-effect-direct`,
+    )
+  }
+
+  trait SharedTests extends TestModule.Munit {
+    def munitVersion = "1.3.5"
+    def forkArgs = Seq("--add-exports", "java.base/jdk.internal.vm=ALL-UNNAMED")
+    def mvnDeps = Seq(Deps.`munit-cats-effect`)
+  }
+
+  object jvm extends Shared {
+    def moduleDeps = Seq(bittorrent.jvm, dht.jvm, files.jvm)
+    object test extends ScalaTests, SharedTests
+  }
+
+  object native extends Shared, ScalaNativeModule {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
+    object test extends ScalaNativeTests, SharedTests {
+      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
+    }
+  }
+}
+
+object DepsTop {
+  val unused = 0
 }
