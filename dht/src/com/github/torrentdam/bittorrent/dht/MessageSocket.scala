@@ -49,9 +49,12 @@ object MessageSocket {
 
   def apply(
     port: Option[Port]
-  )(using logger: Logger[IO]): Resource[IO, MessageSocket] =
-    Network[IO]
-      .openDatagramSocket(Some(ip"0.0.0.0"), port)
+  )(using
+    network: Network[IO],
+    logger: Logger[IO]
+  ): Resource[IO, MessageSocket] =
+    network
+      .bindDatagramSocket(SocketAddress(ip"0.0.0.0", port.getOrElse(Port.Wildcard)))
       .map(socket => new MessageSocket(socket, logger))
 
   object Error {

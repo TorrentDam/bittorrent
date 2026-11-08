@@ -48,6 +48,7 @@ object common extends Module {
       Deps.`scodec-bits`,
       Deps.`cats-effect`,
       Deps.ip4s,
+      Deps.`fs2-io`,
     )
     def pomSettings = PomSettings(
       description = "BitTorrent client",

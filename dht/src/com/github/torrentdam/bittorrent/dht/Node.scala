@@ -11,6 +11,7 @@ import cats.implicits.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import fs2.Stream
+import fs2.io.net.Network
 import java.net.InetSocketAddress
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
@@ -26,6 +27,7 @@ object Node {
     bootstrapNodeAddress: Option[SocketAddress[Host]] = None
   )(using
     random: Random[IO],
+    network: Network[IO],
     logger: Logger[IO]
   ): Resource[IO, Node] =
     for
