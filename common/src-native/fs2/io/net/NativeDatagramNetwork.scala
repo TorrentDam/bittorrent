@@ -1,18 +1,30 @@
 package fs2.io.net
 
 import cats.effect.Async
+import cats.effect.FileDescriptorPollHandle
+import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.Resource
+import cats.syntax.all.*
 import com.comcast.ip4s.*
 import fs2.Chunk
 import fs2.Pipe
 import fs2.Stream
-import java.net.DatagramPacket
-import java.net.DatagramSocket as JDatagramSocket
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.SocketAddress as JSocketAddress
+import fs2.io.internal.NativeUtil.*
+import fs2.io.internal.SocketHelpers
 import java.net.UnknownHostException
+import scala.scalanative.meta.LinktimeInfo
+import scala.scalanative.posix.sys.socket.{
+  bind => sbind,
+  connect => sconnect,
+  recvfrom => srecvfrom,
+  send => ssend,
+  sendto => ssendto,
+  *
+}
+import scala.scalanative.posix.sys.socketOps.*
+import scala.scalanative.unsafe.*
+import scala.scalanative.unsigned.*
 
 class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends Network.AsyncNetwork[F] {
 
@@ -31,15 +43,16 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
     Resource
       .eval(resolveIp(address))
       .flatMap { socketAddress =>
-        Resource
-          .make(F.delay(new JDatagramSocket(null.asInstanceOf[JSocketAddress])))(socket => F.delay(socket.close()))
-          .evalTap { socket =>
-            F.delay {
-              options.foreach(applyOption(socket, _))
-              socket.bind(toJava(socketAddress))
-            }
-          }
-          .map(socket => new JavaDatagramSocket[F](socket))
+        val domain = if (socketAddress.host.isInstanceOf[Ipv4Address]) AF_INET else AF_INET6
+        for
+          poller <- Resource.eval(fileDescriptorPoller[F])
+          fd <- SocketHelpers.openNonBlocking[F](domain, SOCK_DGRAM)
+          _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
+          _ <- Resource.eval(F.delay(SocketHelpers.toSockaddr(socketAddress) { (addr, len) =>
+            guard_(sbind(fd, addr, len))
+          }))
+          handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
+        yield new FdPollingDatagramSocket[F](fd, handle, domain, SocketHelpers.getAddress(fd, domain))
       }
 
   private def resolveIp(address: GenSocketAddress): F[SocketAddress[IpAddress]] =
@@ -51,59 +64,42 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
           case None     => F.raiseError(new UnknownHostException(hostname.toString))
         }
       case other => F.raiseError(new UnsupportedOperationException(s"Unsupported address: $other"))
-
-  private def toJava(address: SocketAddress[IpAddress]): InetSocketAddress =
-    new InetSocketAddress(InetAddress.getByAddress(address.host.toBytes), address.port.value)
-
-  private def applyOption(socket: JDatagramSocket, option: SocketOption): Unit =
-    option.key match
-      case SocketOption.ReuseAddress => socket.setReuseAddress(option.value.asInstanceOf[Boolean])
-      case SocketOption.Broadcast    => socket.setBroadcast(option.value.asInstanceOf[Boolean])
-      case _                         => throw new UnsupportedOperationException(s"Unsupported socket option: ${option.key}")
 }
 
-private[net] final class JavaDatagramSocket[F[_]](socket: JDatagramSocket)(using F: Async[F]) extends DatagramSocket[F] {
+private final class FdPollingDatagramSocket[F[_]: LiftIO](
+    fd: CInt,
+    handle: FileDescriptorPollHandle,
+    domain: CInt,
+    val address: GenSocketAddress
+)(implicit F: Async[F])
+    extends DatagramSocket[F] {
 
   private val MaxDatagramSize = 65535
 
-  def address: GenSocketAddress =
-    socket.getLocalSocketAddress match
-      case isa: InetSocketAddress => fromJava(isa)
-      case _ =>
-        SocketAddress(
-          IpAddress.fromBytes(socket.getLocalAddress.getAddress).get,
-          Port.fromInt(socket.getLocalPort).getOrElse(Port.Wildcard)
-        )
-
   def supportedOptions: F[Set[SocketOption.Key[?]]] =
-    F.pure(Set(SocketOption.ReuseAddress, SocketOption.Broadcast))
+    SocketHelpers.supportedOptions
 
   def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
-    F.delay {
-      key match
-        case SocketOption.ReuseAddress => Some(socket.getReuseAddress).asInstanceOf[Option[A]]
-        case SocketOption.Broadcast    => Some(socket.getBroadcast).asInstanceOf[Option[A]]
-        case _                         => None
-    }
+    SocketHelpers.getOption[F, A](fd, key)
 
   def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
-    F.delay {
-      key match
-        case SocketOption.ReuseAddress => socket.setReuseAddress(value.asInstanceOf[Boolean])
-        case SocketOption.Broadcast    => socket.setBroadcast(value.asInstanceOf[Boolean])
-        case _                         => throw new UnsupportedOperationException(s"Unsupported socket option: $key")
-    }
+    SocketHelpers.setOption(fd, key, value)
 
   def read: F[Datagram] =
-    F.blocking {
-      val buffer = new Array[Byte](MaxDatagramSize)
-      val packet = new DatagramPacket(buffer, buffer.length)
-      socket.receive(packet)
-      val remote = fromJava(packet.getSocketAddress.asInstanceOf[InetSocketAddress])
-      val bytes =
-        Chunk.array(java.util.Arrays.copyOfRange(packet.getData, packet.getOffset, packet.getOffset + packet.getLength))
-      Datagram(remote, bytes)
-    }
+    handle
+      .pollReadRec(()) { _ =>
+        IO {
+          val buffer = new Array[Byte](MaxDatagramSize)
+          SocketHelpers.allocateSockaddr(domain) { (addr, addrLen) =>
+            val received = guardSSize(srecvfrom(fd, buffer.atUnsafe(0), MaxDatagramSize.toUSize, 0, addr, addrLen))
+            if (received >= 0) {
+              val remote = SocketHelpers.toSocketAddress(addr, domain).asInstanceOf[SocketAddress[IpAddress]]
+              Right(Datagram(remote, Chunk.array(buffer, 0, received.toInt)))
+            } else Left(())
+          }
+        }
+      }
+      .to
 
   def readGen: F[GenDatagram] =
     read.map(_.toGenDatagram)
@@ -112,29 +108,52 @@ private[net] final class JavaDatagramSocket[F[_]](socket: JDatagramSocket)(using
     Stream.repeatEval(read)
 
   def connect(address: GenSocketAddress): F[Unit] =
-    F.blocking(socket.connect(toJava(address)))
+    F.delay(SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
+      guard_(sconnect(fd, addr, len))
+    })
 
   def disconnect: F[Unit] =
-    F.blocking(socket.disconnect())
-
-  def write(bytes: Chunk[Byte]): F[Unit] =
-    F.blocking(socket.send(new DatagramPacket(bytes.toArray, bytes.size)))
-
-  def write(bytes: Chunk[Byte], address: GenSocketAddress): F[Unit] =
-    F.blocking {
-      val isa = toJava(address)
-      socket.send(new DatagramPacket(bytes.toArray, bytes.size, isa.getAddress, isa.getPort))
+    F.delay {
+      val addr = stackalloc[sockaddr]()
+      addr.sa_family = AF_UNSPEC.toUShort
+      guard_(sconnect(fd, addr, sizeof[sockaddr].toUInt))
     }
 
+  def write(bytes: Chunk[Byte]): F[Unit] =
+    handle
+      .pollWriteRec(()) { _ =>
+        IO {
+          val buffer = bytes.toArray
+          val flags = if (LinktimeInfo.isLinux) MSG_NOSIGNAL else 0
+          val sent = guardSSize(ssend(fd, buffer.atUnsafe(0), buffer.length.toUSize, flags))
+          if (sent >= 0) Right(()) else Left(())
+        }
+      }
+      .to
+
+  def write(bytes: Chunk[Byte], address: GenSocketAddress): F[Unit] =
+    handle
+      .pollWriteRec(()) { _ =>
+        IO {
+          val buffer = bytes.toArray
+          val flags = if (LinktimeInfo.isLinux) MSG_NOSIGNAL else 0
+          SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
+            val sent = guardSSize(ssendto(fd, buffer.atUnsafe(0), buffer.length.toUSize, flags, addr, len))
+            if (sent >= 0) Right(()) else Left(())
+          }
+        }
+      }
+      .to
+
   def writes: Pipe[F, Datagram, Nothing] =
-    _.evalMap(write).drain
+    _.evalMap(datagram => write(datagram)).drain
 
   @deprecated(
     "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]",
     "3.13.0"
   )
   def localAddress: F[SocketAddress[IpAddress]] =
-    F.blocking(fromJava(socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]))
+    F.pure(address.asIpUnsafe)
 
   def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
     F.raiseError(new UnsupportedOperationException("Multicast is not supported on Native"))
@@ -142,19 +161,4 @@ private[net] final class JavaDatagramSocket[F[_]](socket: JDatagramSocket)(using
   @deprecated("Use overload that takes a com.comcast.ip4s.NetworkInterface", "3.13.0")
   def join(join: MulticastJoin[IpAddress], interface: DatagramSocket.NetworkInterface): F[GroupMembership] =
     F.raiseError(new UnsupportedOperationException("Multicast is not supported on Native"))
-
-  private def toJava(address: GenSocketAddress): InetSocketAddress =
-    address match
-      case SocketAddress(ip: IpAddress, port) =>
-        new InetSocketAddress(InetAddress.getByAddress(ip.toBytes), port.value)
-      case SocketAddress(hostname: Hostname, port) =>
-        new InetSocketAddress(hostname.toString, port.value)
-      case other =>
-        throw new UnsupportedOperationException(s"Unsupported address: $other")
-
-  private def fromJava(address: InetSocketAddress): SocketAddress[IpAddress] =
-    SocketAddress(
-      IpAddress.fromBytes(address.getAddress.getAddress).get,
-      Port.fromInt(address.getPort).get
-    )
 }
