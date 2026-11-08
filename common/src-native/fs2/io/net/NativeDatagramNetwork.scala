@@ -2,6 +2,7 @@ package fs2.io.net
 
 import cats.effect.Async
 import cats.effect.FileDescriptorPollHandle
+import cats.effect.FileDescriptorPoller
 import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.Resource
@@ -45,7 +46,7 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
       .flatMap { socketAddress =>
         val domain = if (socketAddress.host.isInstanceOf[Ipv4Address]) AF_INET else AF_INET6
         for
-          poller <- Resource.eval(fileDescriptorPoller[F])
+          poller <- Resource.eval(FileDescriptorPoller.get.to[F])
           fd <- SocketHelpers.openNonBlocking[F](domain, SOCK_DGRAM)
           _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
           _ <- Resource.eval(F.delay(SocketHelpers.toSockaddr(socketAddress) { (addr, len) =>
