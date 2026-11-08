@@ -19,6 +19,13 @@ docker pull ghcr.io/torrentdam/cmd:latest
 docker run --rm ghcr.io/torrentdam/cmd:latest --help
 ```
 
+A native (Scala Native) image built from the CI-produced binary on Ubuntu is also published:
+
+```bash
+docker pull ghcr.io/torrentdam/cmd-native:latest
+docker run --rm ghcr.io/torrentdam/cmd-native:latest --help
+```
+
 ## Quick Start
 
 Download a torrent:

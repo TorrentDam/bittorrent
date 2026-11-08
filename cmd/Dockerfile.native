@@ -1,0 +1,5 @@
+FROM ubuntu:24.04
+
+COPY ./out/cmd/native/nativeLink.dest/out /usr/local/bin/torrentdam
+
+ENTRYPOINT ["/usr/local/bin/torrentdam"]
