@@ -12,6 +12,7 @@ import com.github.torrentdam.bencode
 import com.github.torrentdam.bittorrent.dht.*
 import com.github.torrentdam.bittorrent.files.Reader
 import com.github.torrentdam.bittorrent.files.Writer
+import com.github.torrentdam.bittorrent.net.Networks
 import com.github.torrentdam.bittorrent.wire.Connection
 import com.github.torrentdam.bittorrent.wire.Download
 import com.github.torrentdam.bittorrent.wire.DownloadMetadata
@@ -31,6 +32,7 @@ import fs2.io.file.Flag
 import fs2.io.file.Flags
 import fs2.io.file.Path
 import fs2.io.file.WriteCursor
+import fs2.io.net.Network
 import fs2.Chunk
 import fs2.Stream
 import java.util.concurrent.Executors
@@ -45,6 +47,8 @@ object Main
       name = "torrentdam",
       header = "TorrentDam"
     ) {
+
+  given Network[IO] = Networks.custom[IO]
 
   def main: Opts[IO[ExitCode]] =
     torrentCommand <+> dhtCommand
