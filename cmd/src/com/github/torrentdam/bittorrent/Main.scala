@@ -1,10 +1,8 @@
-import cats.effect.direct.*
 import cats.effect.std.Random
 import cats.effect.syntax.all.*
 import cats.effect.ExitCode
 import cats.effect.IO
 import cats.effect.Resource
-import cats.effect.ResourceIO
 import cats.syntax.all.*
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
@@ -66,30 +64,35 @@ object Main
       )
         .mapN { (infoHashOption, targetFilePath) =>
           withLogger {
-            async[ResourceIO] {
-              val random = Resource.eval(Random.scalaUtilRandom[IO]).await
-              given Random[IO] = random
-
-              val selfPeerId = Resource.eval(PeerId.generate).await
-              val infoHash = Resource.eval(infoHashFromString(infoHashOption)).await
-              val node = Node().await
-
-              val swarm = Swarm(
-                node.discovery.discover(infoHash),
-                Connection.connect(selfPeerId, _, infoHash)
-              ).await
-              val metadata = DownloadMetadata(swarm).toResource.await
-              val torrentFile = TorrentFile(metadata, None)
-              Files[IO]
-                .writeAll(Path(targetFilePath), Flags.Write)(
-                  Stream.chunk(Chunk.byteVector(TorrentFile.toBytes(torrentFile)))
-                )
-                .compile
-                .drain
-                .as(ExitCode.Success)
-                .toResource
-                .await
-            }.use(IO.pure)
+            Resource
+              .eval(Random.scalaUtilRandom[IO])
+              .flatMap { random =>
+                given Random[IO] = random
+                Resource.eval(PeerId.generate).flatMap { selfPeerId =>
+                  Resource.eval(infoHashFromString(infoHashOption)).flatMap { infoHash =>
+                    Node().flatMap { node =>
+                      Swarm(
+                        node.discovery.discover(infoHash),
+                        Connection.connect(selfPeerId, _, infoHash)
+                      ).flatMap { swarm =>
+                        Resource.eval(DownloadMetadata(swarm)).flatMap { metadata =>
+                          val torrentFile = TorrentFile(metadata, None)
+                          Resource.eval(
+                            Files[IO]
+                              .writeAll(Path(targetFilePath), Flags.Write)(
+                                Stream.chunk(Chunk.byteVector(TorrentFile.toBytes(torrentFile)))
+                              )
+                              .compile
+                              .drain
+                              .as(ExitCode.Success)
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              .use(IO.pure)
           }
         }
     }
@@ -105,105 +108,98 @@ object Main
       ).tupled
       options.map {
         case (infoHashOption, torrentFileOption, peerAddressOption, dhtNodeAddressOption, eventsFileOption) =>
-        withLogger {
-          async[ResourceIO] {
-            val torrentFile: Option[TorrentFile] = torrentFileOption
-              .traverse[IO, TorrentFile](torrentFileOption =>
-                async[IO] {
-                  val torrentFileBytes = Files[IO]
-                    .readAll(Path(torrentFileOption))
-                    .compile
-                    .to(ByteVector)
-                    .await
-                  TorrentFile
-                    .fromBytes(torrentFileBytes)
-                    .liftTo[IO]
-                    .await
-                }
-              )
-              .toResource
-              .await
-            val infoHash: InfoHash =
-              torrentFile match
-                case Some(torrentFile) =>
-                  torrentFile.infoHash
-                case None =>
-                  infoHashOption match
-                    case Some(infoHashOption) =>
-                      infoHashFromString(infoHashOption).toResource.await
-                    case None =>
-                      throw new Exception("Missing info-hash")
-
-            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
-            given Random[IO] = random
-            val selfPeerId = Resource.eval(PeerId.generate).await
-            val peerAddress = peerAddressOption.flatMap(SocketAddress.fromStringIp)
-            val peers: Stream[IO, PeerInfo] =
-              peerAddress match
-                case Some(peerAddress) =>
-                  Stream.emit(PeerInfo(peerAddress)).covary[IO]
-                case None =>
-                  val bootstrapNodeAddress = dhtNodeAddressOption.flatMap(SocketAddress.fromString)
-                  val node = Node(none, bootstrapNodeAddress).await
-                  node.discovery.discover(infoHash)
-            val swarm = Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash)).await
-            val metadata =
-              torrentFile match
-                case Some(torrentFile) =>
-                  torrentFile.info
-                case None =>
-                  Resource.eval(DownloadMetadata(swarm)).await
-            val torrent = Torrent.make(metadata, swarm).await
-            val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
-            val counter = Resource.eval(IO.ref(0)).await
-            val writer = Writer.fromTorrent(metadata.parsed)
-            val createDirectories = metadata.parsed.files
-              .filter(_.path.length > 1)
-              .map(_.path.init)
-              .distinct
-              .traverse { path =>
-                val dir = path.foldLeft(Path("."))(_ / _)
-                Files[IO].createDirectories(dir)
+          withLogger {
+            Resource
+              .eval(Random.scalaUtilRandom[IO])
+              .flatMap { random =>
+                given Random[IO] = random
+                for
+                  torrentFile <- Resource.eval(
+                    torrentFileOption.traverse[IO, TorrentFile] { path =>
+                      Files[IO]
+                        .readAll(Path(path))
+                        .compile
+                        .to(ByteVector)
+                        .flatMap(bytes => IO.fromEither(TorrentFile.fromBytes(bytes)))
+                    }
+                  )
+                  infoHash <- Resource.eval(
+                    torrentFile match
+                      case Some(torrentFile) =>
+                        IO.pure(torrentFile.infoHash)
+                      case None =>
+                        infoHashOption match
+                          case Some(infoHashOption) =>
+                            infoHashFromString(infoHashOption)
+                          case None =>
+                            IO.raiseError(new Exception("Missing info-hash"))
+                  )
+                  selfPeerId <- Resource.eval(PeerId.generate)
+                  peers <- {
+                    val peerAddress = peerAddressOption.flatMap(SocketAddress.fromStringIp)
+                    peerAddress match
+                      case Some(peerAddress) =>
+                        Resource.pure(Stream.emit(PeerInfo(peerAddress)).covary[IO])
+                      case None =>
+                        val bootstrapNodeAddress = dhtNodeAddressOption.flatMap(SocketAddress.fromString)
+                        Node(none, bootstrapNodeAddress).map(node => node.discovery.discover(infoHash))
+                  }
+                  swarm <- Swarm(peers, peerInfo => Connection.connect(selfPeerId, peerInfo, infoHash))
+                  metadata <- torrentFile match
+                    case Some(torrentFile) => Resource.pure(torrentFile.info)
+                    case None              => Resource.eval(DownloadMetadata(swarm))
+                  torrent <- Torrent.make(metadata, swarm)
+                  counter <- Resource.eval(IO.ref(0))
+                  _ <- Resource.eval(
+                    metadata.parsed.files
+                      .filter(_.path.length > 1)
+                      .map(_.path.init)
+                      .distinct
+                      .traverse { path =>
+                        val dir = path.foldLeft(Path("."))(_ / _)
+                        Files[IO].createDirectories(dir)
+                      }
+                  )
+                  openFiles <- metadata.parsed.files
+                    .traverse { file =>
+                      val path = file.path.foldLeft(Path("."))(_ / _)
+                      val flags = Flags(Flag.Create, Flag.Write)
+                      Files[IO].writeCursor(path, flags).tupleLeft(file)
+                    }
+                    .map(_.toMap)
+                  events <- eventsPipe(eventsFileOption, metadata.parsed)
+                  exitCode <- Resource.eval {
+                    val total = (metadata.parsed.pieces.length.toDouble / 20).ceil.toLong
+                    val writer = Writer.fromTorrent(metadata.parsed)
+                    Stream
+                      .range(0L, total)
+                      .parEvalMap(10)(index =>
+                        torrent.downloadPiece(index).flatMap { piece =>
+                          counter.updateAndGet(_ + 1).flatMap { count =>
+                            val percent = ((count.toDouble / total) * 100).toInt
+                            Logger[IO].info(s"Downloaded piece $count/$total ($percent%)").as((index, piece))
+                          }
+                        }
+                      )
+                      .evalMap { (index, piece) =>
+                        Stream
+                          .emits(writer.write(index, piece))
+                          .evalMap(write =>
+                            openFiles(write.file).seek(write.offset).write(Chunk.byteVector(write.bytes))
+                          )
+                          .compile
+                          .drain
+                          .as(index)
+                      }
+                      .through(events)
+                      .compile
+                      .drain
+                      .as(ExitCode.Success)
+                  }
+                yield exitCode
               }
-            Resource.eval(createDirectories).await
-            val openFiles: Map[TorrentMetadata.File, WriteCursor[IO]] =
-              metadata.parsed.files
-                .traverse { file =>
-                  val path = file.path.foldLeft(Path("."))(_ / _)
-                  val flags = Flags(Flag.Create, Flag.Write)
-                  val cursor = Files[IO].writeCursor(path, flags)
-                  cursor.tupleLeft(file)
-                }
-                .await
-                .toMap
-            val events = eventsPipe(eventsFileOption, metadata.parsed).await
-            Stream
-              .range(0L, total)
-              .parEvalMap(10)(index =>
-                async[IO] {
-                  val piece = torrent.downloadPiece(index).await
-                  val count = counter.updateAndGet(_ + 1).await
-                  val percent = ((count.toDouble / total) * 100).toInt
-                  Logger[IO].info(s"Downloaded piece $count/$total ($percent%)").await
-                  (index, piece)
-                }
-              )
-              .evalMap { (index, piece) =>
-                Stream
-                  .emits(writer.write(index, piece))
-                  .evalMap(write => openFiles(write.file).seek(write.offset).write(Chunk.byteVector(write.bytes)))
-                  .compile
-                  .drain
-                  .as(index)
-              }
-              .through(events)
-              .compile
-              .drain
-              .as(ExitCode.Success)
-              .toResource
-              .await
-          }.use(IO.pure)
-        }
+              .use(IO.pure)
+          }
       }
     }
 
@@ -216,34 +212,32 @@ object Main
         ).tupled
       options.map { (torrentFileName, targetDirName) =>
         withLogger {
-          async[IO] {
-            try
-              val bytes = Files[IO].readAll(Path(torrentFileName)).compile.to(Array).map(ByteVector(_)).await
-              val torrentFile = IO.fromEither(TorrentFile.fromBytes(bytes)).await
-              val infoHash = InfoHash(CrossPlatform.sha1(bencode.encode(torrentFile.info.raw).bytes))
-              Logger[IO].info(s"Info-hash: $infoHash").await
-
-              val reader = Reader.fromTorrent(torrentFile.info.parsed)
-
-              def readPiece(index: Long): IO[ByteVector] =
-                val reads = Stream.emits(reader.read(index))
-                reads
-                  .covary[IO]
-                  .evalMap { read =>
-                    val path = read.file.path.foldLeft(Path(targetDirName))(_ / _)
-                    Files[IO]
-                      .readRange(path, 1024 * 1024, read.offset, read.endOffset)
-                      .chunks
-                      .map(_.toByteVector)
-                      .compile
-                      .fold(ByteVector.empty)(_ ++ _)
-                  }
+          def readPiece(reader: Reader, index: Long): IO[ByteVector] =
+            val reads = Stream.emits(reader.read(index))
+            reads
+              .covary[IO]
+              .evalMap { read =>
+                val path = read.file.path.foldLeft(Path(targetDirName))(_ / _)
+                Files[IO]
+                  .readRange(path, 1024 * 1024, read.offset, read.endOffset)
+                  .chunks
+                  .map(_.toByteVector)
                   .compile
                   .fold(ByteVector.empty)(_ ++ _)
+              }
+              .compile
+              .fold(ByteVector.empty)(_ ++ _)
 
-              val readByteCount = IO.ref(0L).await
-
-              Stream
+          val program =
+            for
+              bytes <- Files[IO].readAll(Path(torrentFileName)).compile.to(Array).map(ByteVector(_))
+              torrentFile <- IO.fromEither(TorrentFile.fromBytes(bytes))
+              _ <- Logger[IO].info(
+                s"Info-hash: ${InfoHash(CrossPlatform.sha1(bencode.encode(torrentFile.info.raw).bytes))}"
+              )
+              reader = Reader.fromTorrent(torrentFile.info.parsed)
+              readByteCount <- IO.ref(0L)
+              _ <- Stream
                 .unfold(torrentFile.info.parsed.pieces)(bytes =>
                   if bytes.isEmpty then None
                   else
@@ -252,7 +246,7 @@ object Main
                 )
                 .zipWithIndex
                 .evalMap { (checksum, index) =>
-                  readPiece(index).map((checksum, index, _))
+                  readPiece(reader, index).map((checksum, index, _))
                 }
                 .evalTap { (checksum, index, bytes) =>
                   if CrossPlatform.sha1(bytes) == checksum then readByteCount.update(_ + bytes.length)
@@ -260,16 +254,12 @@ object Main
                 }
                 .compile
                 .drain
-                .await
-              val totalBytes = readByteCount.get.await
-              Logger[IO].info(s"Read $totalBytes bytes").await
-              Logger[IO].info("All pieces verified").await
-              ExitCode.Success
-            catch
-              case e =>
-                Logger[IO].error(e.getMessage).await
-                ExitCode.Error
-          }
+              totalBytes <- readByteCount.get
+              _ <- Logger[IO].info(s"Read $totalBytes bytes")
+              _ <- Logger[IO].info("All pieces verified")
+            yield ExitCode.Success
+
+          program.handleErrorWith(e => Logger[IO].error(e.getMessage).as(ExitCode.Error))
         }
       }
     }
@@ -283,12 +273,15 @@ object Main
     Opts.subcommand("start", "start DHT node") {
       Opts.option[Int]("port", "UDP port").map { portParam =>
         withLogger {
-          async[ResourceIO] {
-            val port = Port.fromInt(portParam).liftTo[ResourceIO](new Exception("Invalid port")).await
-            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
-            given Random[IO] = random
-            Node(Some(port)).await
-          }.useForever
+          Resource
+            .eval(Random.scalaUtilRandom[IO])
+            .flatMap { random =>
+              given Random[IO] = random
+              Resource.eval(Port.fromInt(portParam).liftTo[IO](new Exception("Invalid port"))).flatMap { port =>
+                Node(Some(port))
+              }
+            }
+            .useForever
         }
       }
     }
@@ -297,25 +290,28 @@ object Main
     Opts.subcommand("get-peers", "send single get_peers query") {
       (
         Opts.option[String]("host", "DHT node address"),
-        Opts.option[String]("info-hash", "Info-hash"),
+        Opts.option[String]("info-hash", "Info-hash")
       ).tupled.map { (nodeAddressParam, infoHashParam) =>
         withLogger {
-          async[ResourceIO] {
-            val nodeAddress = SocketAddress.fromString(nodeAddressParam).liftTo[ResourceIO](new Exception("Invalid address")).await
-            val nodeIpAddress = nodeAddress.resolve[IO].toResource.await
-            val random = Resource.eval(Random.scalaUtilRandom[IO]).await
-            given Random[IO] = random
-            val selfId = Resource.eval(NodeId.random).await
-            val infoHash = infoHashFromString(infoHashParam).toResource.await
-            val messageSocket = MessageSocket(none).await
-            val client = Client(selfId, messageSocket, QueryHandler.noop).await
-            async[IO]:
-              val response = client.getPeers(nodeIpAddress, infoHash).await
-              // IO.println(response).await
-              ExitCode.Success
-            .toResource
-            .await
-          }.use(IO.pure)
+          Resource
+            .eval(SocketAddress.fromString(nodeAddressParam).liftTo[IO](new Exception("Invalid address")))
+            .flatMap { nodeAddress =>
+              nodeAddress.resolve[IO].toResource.flatMap { nodeIpAddress =>
+                Resource.eval(Random.scalaUtilRandom[IO]).flatMap { random =>
+                  given Random[IO] = random
+                  Resource.eval(NodeId.random).flatMap { selfId =>
+                    Resource.eval(infoHashFromString(infoHashParam)).flatMap { infoHash =>
+                      MessageSocket(none).flatMap { messageSocket =>
+                        Client(selfId, messageSocket, QueryHandler.noop).flatMap { client =>
+                          Resource.eval(client.getPeers(nodeIpAddress, infoHash).as(ExitCode.Success))
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            .use(IO.pure)
         }
       }
     }
@@ -329,22 +325,27 @@ object Main
       .unapply(value)
       .liftTo[IO](new Exception("Malformed info-hash"))
 
-  def eventsPipe(eventsFileOption: Option[String], metadata: TorrentMetadata): Resource[IO, Stream[IO, Long] => Stream[IO, Unit]] =
-    async[ResourceIO]:
-      eventsFileOption match
-        case None => _.void
-        case Some(path) =>
-          val cursor = Files[IO].writeCursor(Path(path), Flags(Flag.Create, Flag.Write)).await
-          val totalPieces = (metadata.pieces.length.toDouble / 20).ceil.toLong
-          val totalSize = metadata.files.map(_.length).sum
-          val metaEvent = s"""{"type":"TorrentMetadata","payload":{"name":"${escapeJson(metadata.name)}","pieceLength":${metadata.pieceLength},"totalPieces":$totalPieces,"totalSize":$totalSize}}\n"""
-          val metaChunk = Chunk.byteVector(ByteVector.view(metaEvent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-          Resource.eval(cursor.write(metaChunk)).await
-          _.evalMapAccumulate(cursor) { (acc, index) =>
-            val event = s"""{"type":"PieceDownloaded","payload":{"index":$index}}\n"""
-            val chunk = Chunk.byteVector(ByteVector.view(event.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-            acc.write(chunk).tupleRight(())
-          }.void
+  def eventsPipe(
+    eventsFileOption: Option[String],
+    metadata: TorrentMetadata
+  ): Resource[IO, Stream[IO, Long] => Stream[IO, Unit]] =
+    eventsFileOption match
+      case None => Resource.pure(_.void)
+      case Some(path) =>
+        val totalPieces = (metadata.pieces.length.toDouble / 20).ceil.toLong
+        val totalSize = metadata.files.map(_.length).sum
+        val metaEvent = s"""{"type":"TorrentMetadata","payload":{"name":"${escapeJson(
+            metadata.name
+          )}","pieceLength":${metadata.pieceLength},"totalPieces":$totalPieces,"totalSize":$totalSize}}\n"""
+        val metaChunk = Chunk.byteVector(ByteVector.view(metaEvent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        for
+          cursor <- Files[IO].writeCursor(Path(path), Flags(Flag.Create, Flag.Write))
+          _ <- Resource.eval(cursor.write(metaChunk))
+        yield _.evalMapAccumulate(cursor) { (acc, index) =>
+          val event = s"""{"type":"PieceDownloaded","payload":{"index":$index}}\n"""
+          val chunk = Chunk.byteVector(ByteVector.view(event.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+          acc.write(chunk).tupleRight(())
+        }.void
 
   def escapeJson(s: String): String =
     s.replace("\\", "\\\\").replace("\"", "\\\"")

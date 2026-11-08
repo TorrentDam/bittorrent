@@ -1,6 +1,5 @@
 package com.github.torrentdam.bittorrent.wire
 
-import cats.effect.direct.*
 import cats.data.Chain
 import cats.effect.kernel.Deferred
 import cats.effect.std.Dequeue
@@ -55,19 +54,15 @@ object RequestDispatcher {
   )(using Logger[IO]) extends RequestDispatcher {
     def downloadPiece(index: Long): IO[ByteVector] =
       val pieceWork = workGenerator.pieceWork(index)
-      val attempt = async[IO] {
-        try
-          val result = IO.deferred[Map[Request, ByteVector]].await
-          val requestQueue = WorkQueue(pieceWork.requests.toList, result.complete).await
-          queue.update(_.updated(index, requestQueue)).await
-          queueReverse.update(_.updated(index, requestQueue)).await
-          val completedBlocks = result.get.await
-          val pieceBytes = completedBlocks.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _)
-          pieceBytes
-        finally
-          queue.update(_ - index).await
-          queueReverse.update(_ - index).await
-      }
+      def attempt: IO[ByteVector] =
+        (for
+          result <- IO.deferred[Map[Request, ByteVector]]
+          requestQueue <- WorkQueue(pieceWork.requests.toList, result.complete)
+          _ <- queue.update(_.updated(index, requestQueue))
+          _ <- queueReverse.update(_.updated(index, requestQueue))
+          completedBlocks <- result.get
+        yield completedBlocks.toList.sortBy(_._1.begin).map(_._2).foldLeft(ByteVector.empty)(_ ++ _))
+          .guarantee(queue.update(_ - index) >> queueReverse.update(_ - index))
       attempt.flatMap(bytes =>
         if CrossPlatform.sha1(bytes) == pieceWork.checksum then IO.pure(bytes)
         else

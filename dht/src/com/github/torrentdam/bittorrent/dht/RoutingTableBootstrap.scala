@@ -5,7 +5,6 @@ import cats.implicits.*
 import cats.MonadError
 import cats.effect.IO
 import cats.effect.implicits.*
-import cats.effect.direct.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.given
@@ -74,12 +73,14 @@ object RoutingTableBootstrap {
     client: Client,
     discovery: PeerDiscovery
   )(using Logger[IO]) =
-    def attempt(number: Int): IO[Unit] = async[IO]:
-      Logger[IO].info(s"Discover self to fill up routing table (attempt $number)").await
-      val count = discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.await
-      Logger[IO].info(s"Communicated with $count nodes during self discovery").await
-      val nodeCount = table.allNodes.await.size
-      if nodeCount < 20 then attempt(number + 1).await else ()
+    def attempt(number: Int): IO[Unit] =
+      Logger[IO].info(s"Discover self to fill up routing table (attempt $number)") >>
+        discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.flatMap { count =>
+          Logger[IO].info(s"Communicated with $count nodes during self discovery") >>
+            table.allNodes.map(_.size).flatMap { nodeCount =>
+              if nodeCount < 20 then attempt(number + 1) else IO.unit
+            }
+        }
     attempt(1)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(

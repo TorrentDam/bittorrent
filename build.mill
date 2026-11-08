@@ -17,7 +17,6 @@ object Versions {
   val bencode = "1.2.0"
   val decline = "2.6.2"
   val woof = "0.9.0"
-  val `cats-effect-direct` = "1.0.0"
   val `munit-cats-effect` = "2.2.0"
 }
 
@@ -33,7 +32,6 @@ object Deps {
   val bencode = mvn"io.github.torrentdam.bencode::bencode::${Versions.bencode}"
   val `munit-cats-effect` = mvn"org.typelevel::munit-cats-effect::${Versions.`munit-cats-effect`}"
   val decline = mvn"com.monovore::decline-effect::${Versions.decline}"
-  val `cats-effect-direct` = mvn"org.typelevel::cats-effect-direct::${Versions.`cats-effect-direct`}"
   val `sn-test-interface` = mvn"org.scala-native::test-interface::${Versions.scalaNative}"
 }
 
@@ -96,7 +94,6 @@ object dht extends Module {
       Deps.`cats-effect`,
       Deps.`fs2-io`,
       Deps.`woof-core`,
-      Deps.`cats-effect-direct`,
     )
     def pomSettings = PomSettings(
       description = "BitTorrent client",
@@ -146,7 +143,6 @@ object bittorrent extends Module {
       Deps.`monocle-core`,
       Deps.`monocle-macro`,
       Deps.`woof-core`,
-      Deps.`cats-effect-direct`,
     )
     def pomSettings = PomSettings(
       description = "BitTorrent client",
@@ -195,7 +191,6 @@ object files extends Module {
       Deps.`cats-effect`,
       Deps.`fs2-io`,
       Deps.`woof-core`,
-      Deps.`cats-effect-direct`,
     )
     def pomSettings = PomSettings(
       description = "BitTorrent client",
@@ -239,7 +234,6 @@ object cmd extends Module {
     def mvnDeps = Seq(
       Deps.decline,
       Deps.`woof-core`,
-      Deps.`cats-effect-direct`,
     )
   }
 

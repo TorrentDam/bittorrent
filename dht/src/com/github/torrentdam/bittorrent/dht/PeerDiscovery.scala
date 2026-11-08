@@ -7,7 +7,6 @@ import cats.effect.IO
 import cats.effect.Resource
 import cats.instances.all.*
 import cats.syntax.all.*
-import cats.effect.direct.*
 import cats.Show.Shown
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.PeerInfo
@@ -84,11 +83,11 @@ object PeerDiscovery {
                                usedNodes: Set[NodeInfo] = Set.empty,
                                respondedCount: Int = 0
                              ):
-      def next: IO[Option[(List[NodeInfo], FindNodesState)]] = async[IO]:
+      def next: IO[Option[(List[NodeInfo], FindNodesState)]] =
         if nodesToQuery.isEmpty then
-          none
+          IO.pure(none)
         else
-          val responses = nodesToQuery
+          nodesToQuery
             .parTraverse(nodeInfo =>
               dhtClient
                 .findNodes(nodeInfo.address, targetId)
@@ -97,26 +96,27 @@ object PeerDiscovery {
                 .orElse(none.pure[IO])
                 .tupleLeft(nodeInfo)
             )
-            .await
-          val respondedNodes = responses.collect { case (nodeInfo, Some(_)) => nodeInfo }
-          val foundNodes = responses.collect { case (_, Some(nodes)) => nodes }.flatten
-          val threshold =
-            if respondedCount > 10
-            then NodeId.distance(nodesToQuery.head.id, targetId)
-            else NodeId.MaxValue
-          val closeNodes = foundNodes
-            .filterNot(usedNodes)
-            .distinct
-            .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
-            .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
-            .take(10)
-          (
-            respondedNodes,
-            copy(
-              nodesToQuery = closeNodes,
-              usedNodes = usedNodes ++ respondedNodes,
-              respondedCount = respondedCount + respondedNodes.size)
-          ).some
+            .map { responses =>
+              val respondedNodes = responses.collect { case (nodeInfo, Some(_)) => nodeInfo }
+              val foundNodes = responses.collect { case (_, Some(nodes)) => nodes }.flatten
+              val threshold =
+                if respondedCount > 10
+                then NodeId.distance(nodesToQuery.head.id, targetId)
+                else NodeId.MaxValue
+              val closeNodes = foundNodes
+                .filterNot(usedNodes)
+                .distinct
+                .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
+                .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
+                .take(10)
+              (
+                respondedNodes,
+                copy(
+                  nodesToQuery = closeNodes,
+                  usedNodes = usedNodes ++ respondedNodes,
+                  respondedCount = respondedCount + respondedNodes.size)
+              ).some
+            }
   }
 
   private[dht] def start(
