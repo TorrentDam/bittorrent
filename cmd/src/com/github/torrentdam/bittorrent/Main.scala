@@ -303,7 +303,11 @@ object Main
                     Resource.eval(infoHashFromString(infoHashParam)).flatMap { infoHash =>
                       MessageSocket(none).flatMap { messageSocket =>
                         Client(selfId, messageSocket, QueryHandler.noop).flatMap { client =>
-                          Resource.eval(client.getPeers(nodeIpAddress, infoHash).as(ExitCode.Success))
+                          Resource.eval(
+                            client.getPeers(nodeIpAddress, infoHash).flatMap { response =>
+                              IO.println(response).as(ExitCode.Success)
+                            }
+                          )
                         }
                       }
                     }
