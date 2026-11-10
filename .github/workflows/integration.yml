@@ -12,15 +12,17 @@ jobs:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Setup dev environment
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Build CLI
         run: |
           if [ "${{ matrix.platform }}" = "native" ]; then
-            nix develop . --command mill cmd.native.nativeLink
+            mill cmd.native.nativeLink
             echo "TORRENT_TEST_TARGET=native" >> "$GITHUB_ENV"
             echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/native/nativeLink.dest/out" >> "$GITHUB_ENV"
           else
-            nix develop . --command mill cmd.jvm.assembly
+            mill cmd.jvm.assembly
             echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/jvm/assembly.dest/out.jar" >> "$GITHUB_ENV"
           fi
       - name: Run end-to-end test against transmission
-        run: nix develop . --command mill cmd.jvm.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
+        run: mill cmd.jvm.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite

@@ -15,16 +15,18 @@ jobs:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Setup dev environment
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Compile
-        run: nix develop . --command mill __.${{ matrix.platform }}.compile
+        run: mill __.${{ matrix.platform }}.compile
       - name: Test
-        run: nix develop . --command mill __.${{ matrix.platform }}.test
+        run: mill __.${{ matrix.platform }}.test
       - name: Build distributable
         if: matrix.platform == 'jvm'
-        run: nix develop . --command mill cmd.jvm.assembly
+        run: mill cmd.jvm.assembly
       - name: Build native binary
         if: matrix.platform == 'native'
-        run: nix develop . --command mill cmd.native.nativeLink
+        run: mill cmd.native.nativeLink
       - name: Set up Docker Buildx
         id: buildx
         if: matrix.platform == 'jvm' || matrix.platform == 'native'
@@ -73,6 +75,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Setup dev environment
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Release
         env:
           MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
@@ -82,4 +86,4 @@ jobs:
         run: |
           export VERSION=${GITHUB_REF#*/v}
           echo Publishing $VERSION
-          nix develop . --command mill mill.javalib.SonatypeCentralPublishModule/
+          mill mill.javalib.SonatypeCentralPublishModule/
