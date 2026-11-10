@@ -17,6 +17,7 @@
               pkgs.mill
               pkgs.transmission_4
               pkgs.clang
+              pkgs.patchelf
             ];
           };
         });

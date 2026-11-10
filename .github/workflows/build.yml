@@ -34,6 +34,12 @@ jobs:
         run: |
           # Scala 3.8.4 compiler has a flaky "tail of empty list" crash; retry once on failure
           mill cmd.native.nativeLink || { mill clean; mill cmd.native.nativeLink; }
+      - name: Patch native binary interpreter for Docker
+        if: matrix.platform == 'native'
+        run: |
+          # Binary is linked on NixOS with a /nix/store interpreter path that doesn't
+          # exist in ubuntu:24.04. Point it at the standard glibc dynamic linker.
+          patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 out/cmd/native/nativeLink.dest/out
       - name: Verify native binary
         if: matrix.platform == 'native'
         run: |
