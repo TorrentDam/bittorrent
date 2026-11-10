@@ -1,6 +1,7 @@
 package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.IO
+import cats.effect.kernel.Clock
 import cats.effect.kernel.Ref
 import cats.implicits.*
 import com.comcast.ip4s.*
@@ -8,6 +9,8 @@ import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.PeerInfo
 
 import scala.collection.immutable.ListMap
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.FiniteDuration
 import scodec.bits.ByteVector
 
 import scala.annotation.tailrec
@@ -53,6 +56,19 @@ object RoutingTable {
   }
 
   val MaxNodes = 8
+
+  /** Maximum number of info hashes with tracked peers. Bounds the peers map so public announce_peer traffic cannot exhaust the heap. */
+  val MaxTrackedInfoHashes = 256
+
+  /** Maximum number of peers tracked per info hash. */
+  val MaxPeersPerInfoHash = 32
+
+  /** How long a peer entry is served; matches the ~30 minute DHT announce TTL. */
+  val PeerEntryTtl: FiniteDuration = 30.minutes
+
+  /** Peers announced for one info hash, in announce order, plus the time of the most recent announce. */
+  case class PeerEntry(announcedAt: FiniteDuration, peers: ListMap[PeerInfo, Unit]):
+    def isFresh(now: FiniteDuration): Boolean = now - announcedAt < PeerEntryTtl
 
   import TreeNode.*
 
@@ -140,10 +156,10 @@ object RoutingTable {
 
   end extension
 
-  def apply(selfId: NodeId): IO[RoutingTable] =
+  def apply(selfId: NodeId)(using clock: Clock[IO]): IO[RoutingTable] =
     for {
       treeNodeRef <- Ref.of[IO, TreeNode](TreeNode.empty)
-      peers <- Ref.of[IO, Map[InfoHash, Set[PeerInfo]]](Map.empty)
+      peers <- Ref.of[IO, ListMap[InfoHash, PeerEntry]](ListMap.empty)
     } yield new RoutingTable {
 
       def insert(node: NodeInfo): IO[Unit] =
@@ -156,15 +172,27 @@ object RoutingTable {
         treeNodeRef.get.map(_.findNodes(nodeId).filter(_.isGood).map(_.toNodeInfo))
 
       def addPeer(infoHash: InfoHash, peerInfo: PeerInfo): IO[Unit] =
-        peers.update { map =>
-          map.updatedWith(infoHash) {
-            case Some(set) => Some(set + peerInfo)
-            case None      => Some(Set(peerInfo))
+        clock.realTime.flatMap { now =>
+          peers.update { map =>
+            // drop expired entries, then record the announce, keeping both maps bounded and most-recent last
+            val fresh = map.filter { case (_, entry) => entry.isFresh(now) }
+            val entry = fresh.get(infoHash) match
+              case Some(e) => e.copy(announcedAt = now, peers = (e.peers - peerInfo) + (peerInfo -> ()))
+              case None    => PeerEntry(now, ListMap(peerInfo -> ()))
+            val boundedPeers =
+              if entry.peers.size > MaxPeersPerInfoHash
+              then entry.peers.drop(entry.peers.size - MaxPeersPerInfoHash)
+              else entry.peers
+            val updated = (fresh - infoHash) + (infoHash -> entry.copy(peers = boundedPeers))
+            if updated.size > MaxTrackedInfoHashes
+            then updated.drop(updated.size - MaxTrackedInfoHashes)
+            else updated
           }
         }
 
+      // expired entries are pruned lazily on addPeer, so reads stay a plain lookup without touching the clock
       def findPeers(infoHash: InfoHash): IO[Option[Iterable[PeerInfo]]] =
-        peers.get.map(_.get(infoHash))
+        peers.get.map(_.get(infoHash).map(_.peers.keys))
 
       def allNodes: IO[Iterable[Node]] =
         treeNodeRef.get.map(_.findNodes(selfId))

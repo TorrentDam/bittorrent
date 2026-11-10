@@ -10,8 +10,8 @@ import cats.effect.Sync
 import cats.implicits.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
-import fs2.Stream
 import fs2.io.net.Network
+import fs2.Stream
 import java.net.InetSocketAddress
 import org.legogroup.woof.given
 import org.legogroup.woof.Logger
@@ -21,6 +21,9 @@ import scodec.bits.ByteVector
 class Node(val id: NodeId, val client: Client, val routingTable: RoutingTable, val discovery: PeerDiscovery)
 
 object Node {
+
+  /** Cap on buffered ping candidates so query bursts cannot exhaust the heap; excess candidates are dropped. */
+  private val MaxCandidateQueueSize = 1024
 
   def apply(
     port: Option[Port] = None,
@@ -34,7 +37,7 @@ object Node {
       selfId <- Resource.eval(NodeId.random)
       messageSocket <- MessageSocket(port)
       routingTable <- RoutingTable(selfId).toResource
-      queryingNodes <- Queue.unbounded[IO, NodeInfo].toResource
+      queryingNodes <- Queue.bounded[IO, NodeInfo](MaxCandidateQueueSize).toResource
       queryHandler = reportingQueryHandler(queryingNodes, QueryHandler.simple(selfId, routingTable))
       client <- Client(selfId, messageSocket, queryHandler)
       insertingClient = new InsertingClient(client, routingTable)
@@ -117,5 +120,6 @@ object Node {
       case Query.GetPeers(id, _)         => NodeInfo(id, address)
       case Query.AnnouncePeer(id, _, _)  => NodeInfo(id, address)
       case Query.SampleInfoHashes(id, _) => NodeInfo(id, address)
-    queue.offer(nodeInfo) *> next(address, query)
+    // tryOffer: when the queue is full, drop the candidate instead of blocking query handling
+    queue.tryOffer(nodeInfo) *> next(address, query)
 }
