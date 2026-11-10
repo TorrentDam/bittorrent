@@ -106,7 +106,7 @@ class TransmissionIntegrationSuite extends CatsEffectSuite:
       case Some(bin) => IO.pure(Path(new File(bin).getAbsolutePath))
       case None =>
         val repoRoot = findRepoRoot(Path(System.getProperty("user.dir")))
-        val mill = repoRoot / "mill"
+        val mill = "mill"
         val assembly = repoRoot / "out" / "cmd" / "jvm" / "assembly.dest" / "out.jar"
         val nativeBin = repoRoot / "out" / "cmd" / "native" / "nativeLink.dest" / "out"
         val target = sys.env.getOrElse("TORRENT_TEST_TARGET", "jvm")
