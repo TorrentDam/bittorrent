@@ -72,7 +72,7 @@ set.
 nix develop
 mill cmd.assembly
 export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
-mill e2e.jvm.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
+mill e2e.jvm.test
 ```
 
 ## License
