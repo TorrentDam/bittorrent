@@ -14,6 +14,7 @@ import fs2.Chunk
 import fs2.Pipe
 import fs2.Stream
 import java.net.UnknownHostException
+import scala.scalanative.libc.string.memcpy
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.sys.socket.{
   bind => sbind,
@@ -90,12 +91,15 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO](
     handle
       .pollReadRec(()) { _ =>
         IO {
-          val buffer = new Array[Byte](MaxDatagramSize)
+          // Stack-allocated per call (no heap/GC pressure); received bytes are memcpy'd to a right-sized heap array.
+          val buffer = stackalloc[Byte](MaxDatagramSize)
           SocketHelpers.allocateSockaddr(domain) { (addr, addrLen) =>
-            val received = guardSSize(srecvfrom(fd, buffer.atUnsafe(0), MaxDatagramSize.toUSize, 0, addr, addrLen))
+            val received = guardSSize(srecvfrom(fd, buffer, MaxDatagramSize.toUSize, 0, addr, addrLen))
             if (received >= 0) {
               val remote = SocketHelpers.toSocketAddress(addr, domain).asInstanceOf[SocketAddress[IpAddress]]
-              Right(Datagram(remote, Chunk.array(buffer, 0, received.toInt)))
+              val arr = new Array[Byte](received.toInt)
+              memcpy(arr.atUnsafe(0), buffer, received.toUSize)
+              Right(Datagram(remote, Chunk.array(arr)))
             } else Left(())
           }
         }
