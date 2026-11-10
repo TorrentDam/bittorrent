@@ -13,16 +13,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install mill
+        run: |
+          curl -fsSL -o /tmp/mill.jar "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/1.3.1/mill-dist-1.3.1.jar"
+          echo '#!/bin/sh' | sudo tee /usr/local/bin/mill > /dev/null
+          echo 'exec java -jar /tmp/mill.jar "$@"' | sudo tee -a /usr/local/bin/mill > /dev/null
+          sudo chmod +x /usr/local/bin/mill
       - name: Compile
-        run: ./mill __.${{ matrix.platform }}.compile
+        run: mill __.${{ matrix.platform }}.compile
       - name: Test
-        run: ./mill __.${{ matrix.platform }}.test
+        run: mill __.${{ matrix.platform }}.test
       - name: Build distributable
         if: matrix.platform == 'jvm'
-        run: ./mill cmd.jvm.assembly
+        run: mill cmd.jvm.assembly
       - name: Build native binary
         if: matrix.platform == 'native'
-        run: ./mill cmd.native.nativeLink
+        run: mill cmd.native.nativeLink
       - name: Set up Docker Buildx
         id: buildx
         if: matrix.platform == 'jvm' || matrix.platform == 'native'
@@ -69,6 +75,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install mill
+        run: |
+          curl -fsSL -o /tmp/mill.jar "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/1.3.1/mill-dist-1.3.1.jar"
+          echo '#!/bin/sh' | sudo tee /usr/local/bin/mill > /dev/null
+          echo 'exec java -jar /tmp/mill.jar "$@"' | sudo tee -a /usr/local/bin/mill > /dev/null
+          sudo chmod +x /usr/local/bin/mill
       - name: Release
         env:
           MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
@@ -78,4 +90,4 @@ jobs:
         run: |
           export VERSION=${GITHUB_REF#*/v}
           echo Publishing $VERSION
-          ./mill mill.javalib.SonatypeCentralPublishModule/
+          mill mill.javalib.SonatypeCentralPublishModule/

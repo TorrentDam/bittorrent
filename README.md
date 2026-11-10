@@ -65,14 +65,14 @@ and needs no internet access.
 
 The test needs `transmission-daemon`, `transmission-create`, and
 `transmission-remote` on the `PATH` (all provided by `nix develop`). It builds
-the CLI assembly jar via `./mill cmd.assembly` if `TORRENT_TEST_CMD_JAR` is not
+the CLI assembly jar via `mill cmd.assembly` if `TORRENT_TEST_CMD_JAR` is not
 set.
 
 ```bash
 nix develop
-./mill cmd.assembly
+mill cmd.assembly
 export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
-./mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
+mill cmd.test.testOnly com.github.torrentdam.bittorrent.TransmissionIntegrationSuite
 ```
 
 ## License
