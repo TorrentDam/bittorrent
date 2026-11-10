@@ -31,7 +31,9 @@ jobs:
         run: mill cmd.jvm.assembly
       - name: Build native binary
         if: matrix.platform == 'native'
-        run: mill cmd.native.nativeLink
+        run: |
+          # Scala 3.8.4 compiler has a flaky "tail of empty list" crash; retry once on failure
+          mill cmd.native.nativeLink || { mill clean; mill cmd.native.nativeLink; }
       - name: Set up Docker Buildx
         id: buildx
         if: matrix.platform == 'jvm' || matrix.platform == 'native'
