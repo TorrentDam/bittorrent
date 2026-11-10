@@ -20,6 +20,12 @@ object Versions {
   val `munit-cats-effect` = "2.2.0"
 }
 
+// Use the compacting Commix GC for all native binaries instead of the default Immix,
+// so the heap is compacted rather than fragmenting under sustained DHT traffic.
+trait CommixGC extends ScalaNativeModule {
+  override def nativeGC: T[String] = Task { "commix" }
+}
+
 object Deps {
   val `cats-core` = mvn"org.typelevel::cats-core::${Versions.cats}"
   val `cats-effect` = mvn"org.typelevel::cats-effect::${Versions.`cats-effect`}"
@@ -72,7 +78,7 @@ object common extends Module {
     object test extends ScalaTests, SharedTests
   }
 
-  object native extends Shared, ScalaNativeModule {
+  object native extends Shared, CommixGC {
     def scalaNativeVersion = Versions.scalaNative
     object test extends ScalaNativeTests, SharedTests {
       override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
@@ -120,7 +126,7 @@ object dht extends Module {
     object test extends ScalaTests, SharedTests
   }
 
-  object native extends Shared, ScalaNativeModule {
+  object native extends Shared, CommixGC {
     def scalaNativeVersion = Versions.scalaNative
     def moduleDeps = Seq(common.native)
     object test extends ScalaNativeTests, SharedTests {
@@ -169,7 +175,7 @@ object bittorrent extends Module {
     object test extends ScalaTests, SharedTests
   }
 
-  object native extends Shared, ScalaNativeModule {
+  object native extends Shared, CommixGC {
     def scalaNativeVersion = Versions.scalaNative
     def moduleDeps = Seq(common.native)
     object test extends ScalaNativeTests, SharedTests {
@@ -217,7 +223,7 @@ object files extends Module {
     object test extends ScalaTests, SharedTests
   }
 
-  object native extends Shared, ScalaNativeModule {
+  object native extends Shared, CommixGC {
     def scalaNativeVersion = Versions.scalaNative
     def moduleDeps = Seq(common.native, bittorrent.native)
     object test extends ScalaNativeTests, SharedTests {
@@ -249,7 +255,7 @@ object cmd extends Module {
     object test extends ScalaTests, SharedTests
   }
 
-  object native extends Shared, ScalaNativeModule {
+  object native extends Shared, CommixGC {
     def scalaNativeVersion = Versions.scalaNative
     def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
     object test extends ScalaNativeTests, SharedTests {
