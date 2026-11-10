@@ -34,19 +34,24 @@ jobs:
         run: |
           # Scala 3.8.4 compiler has a flaky "tail of empty list" crash; retry once on failure
           mill cmd.native.nativeLink || { mill clean; mill cmd.native.nativeLink; }
+      - name: Verify native binary
+        if: matrix.platform == 'native'
+        run: |
+          test -x out/cmd/native/nativeLink.dest/out
+          out/cmd/native/nativeLink.dest/out --help > /dev/null
       - name: Set up Docker Buildx
         id: buildx
-        if: matrix.platform == 'jvm' || matrix.platform == 'native'
+        if: success() && (matrix.platform == 'jvm' || matrix.platform == 'native')
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Container Registry
-        if: matrix.platform == 'jvm' || matrix.platform == 'native'
+        if: success() && (matrix.platform == 'jvm' || matrix.platform == 'native')
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push cmd images
-        if: matrix.platform == 'jvm'
+        if: success() && matrix.platform == 'jvm'
         uses: docker/build-push-action@v2
         with:
           context: .
@@ -56,7 +61,7 @@ jobs:
           tags: ghcr.io/torrentdam/cmd:latest
       - name: Extract metadata for cmd-native image
         id: meta-native
-        if: matrix.platform == 'native'
+        if: success() && matrix.platform == 'native'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/torrentdam/cmd-native
@@ -64,7 +69,7 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
       - name: Push cmd-native image
-        if: matrix.platform == 'native'
+        if: success() && matrix.platform == 'native'
         uses: docker/build-push-action@v6
         with:
           context: .
