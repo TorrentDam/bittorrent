@@ -20,7 +20,12 @@ jobs:
       - name: Compile
         run: mill __.${{ matrix.platform }}.compile
       - name: Test
-        run: mill {common,dht,bittorrent,files}.${{ matrix.platform }}.test
+        run: |
+          if [ "${{ matrix.platform }}" = "native" ]; then
+            mill __.native.test
+          else
+            mill {common,dht,bittorrent,files}.jvm.test
+          fi
       - name: Build distributable
         if: matrix.platform == 'jvm'
         run: mill cmd.jvm.assembly
