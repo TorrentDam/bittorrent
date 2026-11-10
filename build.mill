@@ -242,6 +242,23 @@ object cmd extends Module {
     )
   }
 
+  object jvm extends Shared {
+    def moduleDeps = Seq(bittorrent.jvm, dht.jvm, files.jvm)
+  }
+
+  object native extends Shared, CommixGC {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
+  }
+}
+
+object e2e extends Module {
+
+  trait Shared extends PlatformScalaModule {
+    def scalaVersion = Versions.scala
+    def repositories = Seq("https://central.sonatype.com/repository/maven-snapshots/")
+  }
+
   trait SharedTests extends TestModule.Munit {
     def munitVersion = "1.3.5"
     def repositories = Seq("https://central.sonatype.com/repository/maven-snapshots/")
@@ -250,16 +267,8 @@ object cmd extends Module {
   }
 
   object jvm extends Shared {
-    def moduleDeps = Seq(bittorrent.jvm, dht.jvm, files.jvm)
+    def moduleDeps = Seq(cmd.jvm)
     object test extends ScalaTests, SharedTests
-  }
-
-  object native extends Shared, CommixGC {
-    def scalaNativeVersion = Versions.scalaNative
-    def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
-    object test extends ScalaNativeTests, SharedTests {
-      override def mvnDeps: T[Seq[Dep]] = Task { super.mvnDeps() ++ Seq(Deps.`sn-test-interface`) }
-    }
   }
 }
 

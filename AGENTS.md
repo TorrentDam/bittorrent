@@ -32,6 +32,7 @@ mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
 - **bittorrent/**: Core BitTorrent protocol (shared + platform sources)
 - **files/**: File I/O utilities
 - **cmd/**: CLI application entry point
+- **e2e/**: End-to-end integration tests (JVM only, runs the CLI binary against transmission)
 
 Each module uses the standard Mill cross-platform layout:
 `<module>/src` (shared), `<module>/src-jvm`, `<module>/src-native`,
