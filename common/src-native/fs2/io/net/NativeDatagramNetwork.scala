@@ -8,11 +8,11 @@ import cats.effect.LiftIO
 import cats.effect.Resource
 import cats.syntax.all.*
 import com.comcast.ip4s.*
+import fs2.io.internal.NativeUtil.*
+import fs2.io.internal.SocketHelpers
 import fs2.Chunk
 import fs2.Pipe
 import fs2.Stream
-import fs2.io.internal.NativeUtil.*
-import fs2.io.internal.SocketHelpers
 import java.net.UnknownHostException
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.sys.socket.{
@@ -38,8 +38,8 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
     delegate.bind(address, options)
 
   override def bindDatagramSocket(
-      address: GenSocketAddress,
-      options: List[SocketOption]
+    address: GenSocketAddress,
+    options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] =
     Resource
       .eval(resolveIp(address))
@@ -68,10 +68,10 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
 }
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO](
-    fd: CInt,
-    handle: FileDescriptorPollHandle,
-    domain: CInt,
-    val address: GenSocketAddress
+  fd: CInt,
+  handle: FileDescriptorPollHandle,
+  domain: CInt,
+  val address: GenSocketAddress
 )(implicit F: Async[F])
     extends DatagramSocket[F] {
 
