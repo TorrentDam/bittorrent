@@ -19,19 +19,14 @@ jobs:
         run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Compile
         run: mill __.${{ matrix.platform }}.compile
-      - name: Build CLI (jvm)
-        if: matrix.platform == 'jvm'
-        run: |
-          mill cmd.jvm.assembly
-          echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/jvm/assembly.dest/out.jar" >> "$GITHUB_ENV"
-      - name: Build CLI (native)
-        if: matrix.platform == 'native'
-        run: |
-          mill cmd.native.nativeLink
-          echo "TORRENT_TEST_TARGET=native" >> "$GITHUB_ENV"
-          echo "TORRENT_TEST_CMD_BIN=$PWD/out/cmd/native/nativeLink.dest/out" >> "$GITHUB_ENV"
       - name: Test
-        run: mill __.${{ matrix.platform }}.test
+        run: mill {common,dht,bittorrent,files}.${{ matrix.platform }}.test
+      - name: Build distributable
+        if: matrix.platform == 'jvm'
+        run: mill cmd.jvm.assembly
+      - name: Build native binary
+        if: matrix.platform == 'native'
+        run: mill cmd.native.nativeLink
       - name: Set up Docker Buildx
         id: buildx
         if: matrix.platform == 'jvm' || matrix.platform == 'native'
