@@ -16,7 +16,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v13
       - name: Setup dev environment
-        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"; echo "MUSL_CLANG=$MUSL_CLANG" >> "$GITHUB_ENV"; echo "MUSL_CLANGPP=$MUSL_CLANGPP" >> "$GITHUB_ENV"'
       - name: Compile
         run: mill __.${{ matrix.platform }}.compile
       - name: Test
@@ -29,22 +29,20 @@ jobs:
       - name: Build distributable
         if: matrix.platform == 'jvm'
         run: mill cmd.jvm.assembly
-      - name: Build native binary
+      - name: Build static native binary (musl)
         if: matrix.platform == 'native'
         run: |
           # Scala 3.8.4 compiler has a flaky "tail of empty list" crash; retry once on failure
-          mill cmd.native.nativeLink || { mill clean; mill cmd.native.nativeLink; }
-      - name: Patch native binary interpreter for Docker
+          mill cmd.nativeStatic.nativeLink || { mill clean; mill cmd.nativeStatic.nativeLink; }
+      - name: Verify static native binary
         if: matrix.platform == 'native'
         run: |
-          # Binary is linked on NixOS with a /nix/store interpreter path that doesn't
-          # exist in ubuntu:24.04. Point it at the standard glibc dynamic linker.
-          patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 out/cmd/native/nativeLink.dest/out
-      - name: Verify native binary
+          test -x out/cmd/nativeStatic/nativeLink.dest/out
+          file out/cmd/nativeStatic/nativeLink.dest/out | grep -q "statically linked"
+          out/cmd/nativeStatic/nativeLink.dest/out --help > /dev/null
+      - name: Smoke-test static binary in ubuntu:24.04 container
         if: matrix.platform == 'native'
-        run: |
-          test -x out/cmd/native/nativeLink.dest/out
-          out/cmd/native/nativeLink.dest/out --help > /dev/null
+        run: docker run --rm -v "$PWD/out/cmd/nativeStatic/nativeLink.dest/out:/usr/local/bin/torrentdam:ro" ubuntu:24.04 /usr/local/bin/torrentdam --help
       - name: Set up Docker Buildx
         id: buildx
         if: success() && (matrix.platform == 'jvm' || matrix.platform == 'native')
