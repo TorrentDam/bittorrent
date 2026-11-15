@@ -29,12 +29,14 @@ mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
 
 ## Docker Images
 
-Pushed by `.github/workflows/build.yml` to GHCR: `ghcr.io/torrentdam/cmd:latest` (JVM, every push, amd64+arm64)
-and `ghcr.io/torrentdam/cmd-native:<short-sha>` / `:latest` (native, master and `v*` tags only, amd64).
+Pushed by `.github/workflows/build.yml` to GHCR (master and `v*` tags only):
+`ghcr.io/torrentdam/cmd:sha-<short-sha>` / `:latest` (JVM, amd64+arm64) and
+`ghcr.io/torrentdam/cmd-native:sha-<short-sha>` / `:latest` (native, amd64).
 Pull the image for a commit with:
 
 ```bash
-docker pull ghcr.io/torrentdam/cmd-native:$(git rev-parse --short HEAD)
+docker pull ghcr.io/torrentdam/cmd:sha-$(git rev-parse --short HEAD)
+docker pull ghcr.io/torrentdam/cmd-native:sha-$(git rev-parse --short HEAD)
 ```
 
 ## Project Structure
