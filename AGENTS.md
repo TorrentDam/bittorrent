@@ -20,6 +20,9 @@ mill cmd.jvm.assembly
 # Build CLI native binary (requires clang)
 mill cmd.native.nativeLink
 
+# Build fully static (musl) CLI binary for the Docker image (requires nix develop for MUSL_CLANG/MUSL_CLANGPP)
+mill cmd.nativeStatic.nativeLink
+
 # Format code with Scalafmt
 mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
 ```

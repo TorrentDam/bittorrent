@@ -250,6 +250,26 @@ object cmd extends Module {
     def scalaNativeVersion = Versions.scalaNative
     def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
   }
+
+  object nativeStatic extends Shared, CommixGC {
+    def scalaNativeVersion = Versions.scalaNative
+    def moduleDeps = Seq(bittorrent.native, dht.native, files.native)
+    override def nativeClang: T[PathRef] = Task {
+      sys.env.get("MUSL_CLANG") match {
+        case Some(p) => PathRef(os.Path(p))
+        case None    => super.nativeClang()
+      }
+    }
+    override def nativeClangPP: T[PathRef] = Task {
+      sys.env.get("MUSL_CLANGPP") match {
+        case Some(p) => PathRef(os.Path(p))
+        case None    => super.nativeClangPP()
+      }
+    }
+    override def nativeLinkingOptions: T[Seq[String]] = Task {
+      super.nativeLinkingOptions() ++ Seq("-static")
+    }
+  }
 }
 
 object e2e extends Module {
