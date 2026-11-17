@@ -6,7 +6,7 @@ import mill.*, mill.api.Result, scalalib.*, scalanativelib.*, scalanativelib.api
 
 object Versions {
   val scala = "3.8.4"
-  val scalaNative = "0.5.12"
+  val scalaNative = "0.5.13-20261114-143517b-SNAPSHOT"
   val cats = "2.13.0"
   val `cats-effect` = "3.7.1"
   val ip4s = "3.8.0"
