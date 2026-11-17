@@ -2,7 +2,7 @@
 
 package build
 
-import mill.*, mill.api.Result, scalalib.*, scalanativelib.*, publish.*
+import mill.*, mill.api.Result, scalalib.*, scalanativelib.*, scalanativelib.api.*, publish.*
 
 object Versions {
   val scala = "3.8.4"
@@ -23,6 +23,10 @@ object Versions {
 // so the heap is compacted rather than fragmenting under sustained DHT traffic.
 trait CommixGC extends ScalaNativeModule {
   override def nativeGC: T[String] = Task { "commix" }
+  // Build native modules optimized: in Debug mode zig cc (MUSL_CLANG) adds
+  // -fsanitize=undefined -fsanitize-trap=undefined, and the first throw hits a
+  // UBSan alignment trap in scalanative_throw -> SIGSEGV in the static binary.
+  override def releaseMode: T[ReleaseMode] = Task { ReleaseMode.ReleaseFast }
 }
 
 object Deps {
@@ -268,6 +272,11 @@ object cmd extends Module {
     }
     override def nativeLinkingOptions: T[Seq[String]] = Task {
       super.nativeLinkingOptions() ++ Seq("-static")
+    }
+    // Belt-and-braces: never let zig cc inject UBSan into the static binary,
+    // even if the release mode is overridden back to debug somewhere.
+    override def nativeCompileOptions: T[Seq[String]] = Task {
+      super.nativeCompileOptions() ++ Seq("-fno-sanitize=undefined")
     }
   }
 }

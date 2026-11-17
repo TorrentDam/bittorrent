@@ -40,6 +40,17 @@ jobs:
           test -x out/cmd/nativeStatic/nativeLink.dest/out
           file out/cmd/nativeStatic/nativeLink.dest/out | grep -q "statically linked"
           out/cmd/nativeStatic/nativeLink.dest/out --help > /dev/null
+          # Regression test: this binary used to SIGSEGV (exit 139) within ~2s of `dht start`
+          # (debug-mode zig cc UBSan alignment trap on the first throw). It must instead log
+          # "Bootstrapping" and stay alive until the timeout kills it (exit code 124).
+          log=$(mktemp)
+          set +e
+          timeout 10 out/cmd/nativeStatic/nativeLink.dest/out dht start --port 16881 >"$log" 2>&1
+          rc=$?
+          set -e
+          cat "$log"
+          grep -q "Bootstrapping" "$log"
+          [ "$rc" -eq 124 ]
       - name: Smoke-test static binary in ubuntu:24.04 container
         if: matrix.platform == 'native'
         run: docker run --rm -v "$PWD/out/cmd/nativeStatic/nativeLink.dest/out:/usr/local/bin/torrentdam:ro" ubuntu:24.04 /usr/local/bin/torrentdam --help
