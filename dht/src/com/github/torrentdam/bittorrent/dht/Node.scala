@@ -1,5 +1,6 @@
 package com.github.torrentdam.bittorrent.dht
 
+import cats.effect.direct.*
 import cats.effect.implicits.*
 import cats.effect.std.Queue
 import cats.effect.std.Random
@@ -53,54 +54,55 @@ object Node {
     def id: NodeId = client.id
 
     def getPeers(address: SocketAddress[IpAddress], infoHash: InfoHash): IO[Either[Response.Nodes, Response.Peers]] =
-      client.getPeers(address, infoHash).flatTap { response =>
-        routingTable.insert(
-          NodeInfo(
-            response match
-              case Left(response)  => response.id
-              case Right(response) => response.id
-            ,
-            address
-          )
-        )
+      async[IO] {
+        val response = client.getPeers(address, infoHash).await
+        val responderId = response match
+          case Left(nodes)  => nodes.id
+          case Right(peers) => peers.id
+        routingTable.insert(NodeInfo(responderId, address)).await
+        response
       }
 
     def findNodes(address: SocketAddress[IpAddress], target: NodeId): IO[Response.Nodes] =
-      client.findNodes(address, target).flatTap { response =>
-        routingTable.insert(NodeInfo(response.id, address))
+      async[IO] {
+        val response = client.findNodes(address, target).await
+        routingTable.insert(NodeInfo(response.id, address)).await
+        response
       }
 
     def ping(address: SocketAddress[IpAddress]): IO[Response.Ping] =
-      client.ping(address).flatTap { response =>
-        routingTable.insert(NodeInfo(response.id, address))
+      async[IO] {
+        val response = client.ping(address).await
+        routingTable.insert(NodeInfo(response.id, address)).await
+        response
       }
 
     def sampleInfoHashes(
       address: SocketAddress[IpAddress],
       target: NodeId
     ): IO[Either[Response.Nodes, Response.SampleInfoHashes]] =
-      client.sampleInfoHashes(address, target).flatTap { response =>
-        routingTable.insert(
-          response match
-            case Left(response)  => NodeInfo(response.id, address)
-            case Right(response) => NodeInfo(response.id, address)
-        )
+      async[IO] {
+        val response = client.sampleInfoHashes(address, target).await
+        val responderId = response match
+          case Left(nodes)   => nodes.id
+          case Right(sample) => sample.id
+        routingTable.insert(NodeInfo(responderId, address)).await
+        response
       }
 
     override def toString: String = s"InsertingClient($client)"
   }
 
   private def pingCandidate(node: NodeInfo, client: Client, routingTable: RoutingTable)(using Logger[IO]) =
-    routingTable.lookup(node.id).flatMap {
-      case Some(_) => IO.unit
-      case None =>
-        Logger[IO].info(s"Pinging $node") *>
-        client.ping(node.address).timeout(5.seconds).attempt.flatMap {
+    async[IO] {
+      val alreadyKnown = routingTable.lookup(node.id).await
+      if alreadyKnown.isEmpty then
+        Logger[IO].info(s"Pinging $node").await
+        client.ping(node.address).timeout(5.seconds).attempt.await match
           case Right(_) =>
-            Logger[IO].info(s"Got pong from $node -- insert as good") *>
-            routingTable.insert(node)
-          case Left(_) => IO.unit
-        }
+            Logger[IO].info(s"Got pong from $node -- insert as good").await
+            routingTable.insert(node).await
+          case Left(_) => ()
     }
 
   private def pingCandidates(nodes: Queue[IO, NodeInfo], client: Client, routingTable: RoutingTable)(using Logger[IO]) =

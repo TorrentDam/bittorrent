@@ -3,6 +3,7 @@ package com.github.torrentdam.bittorrent.dht
 import cats.effect.kernel.Temporal
 import cats.effect.std.{Queue, Random}
 import cats.effect.{Concurrent, IO, Resource, Sync}
+import cats.effect.direct.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
@@ -46,21 +47,22 @@ object Client {
         responses.take
       )
       _ <-
-        messageSocket.readMessage
-          .flatMap {
-            case (a, m: Message.QueryMessage) =>
-              Logger[IO].debug(s"Received $m") >>
-                queryHandler(a, m.query).flatMap {
-                  case Some(response) =>
-                    val responseMessage = Message.ResponseMessage(m.transactionId, response)
-                    Logger[IO].debug(s"Responding with $responseMessage") >>
-                      messageSocket.writeMessage(a, responseMessage)
-                  case None =>
-                    Logger[IO].debug(s"No response for $m")
-                }
-            case (_, m: Message.ResponseMessage) => responses.offer(m)
-            case (_, m: Message.ErrorMessage)    => responses.offer(m)
-          }
+        def handleMessage: IO[Unit] = async[IO] {
+          val (address, message) = messageSocket.readMessage.await
+          message match
+            case m: Message.QueryMessage =>
+              Logger[IO].debug(s"Received $m").await
+              queryHandler(address, m.query).await match
+                case Some(response) =>
+                  val responseMessage = Message.ResponseMessage(m.transactionId, response)
+                  Logger[IO].debug(s"Responding with $responseMessage").await
+                  messageSocket.writeMessage(address, responseMessage).await
+                case None =>
+                  Logger[IO].debug(s"No response for $m").await
+            case m: Message.ResponseMessage => responses.offer(m).await
+            case m: Message.ErrorMessage    => responses.offer(m).await
+        }
+        handleMessage
           .recoverWith { case e: Throwable =>
             Logger[IO].debug(s"Failed to read message: $e")
           }

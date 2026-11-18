@@ -1,6 +1,7 @@
 package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.*
+import cats.effect.direct.*
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
@@ -29,16 +30,16 @@ object RpcClient:
     sendQueryMessage: (SocketAddress[IpAddress], Message.QueryMessage) => IO[Unit],
     pending: java.util.concurrent.ConcurrentHashMap[ByteVector, Either[Throwable, Response] => Unit]
   ) extends RpcClient:
-    def call(address: SocketAddress[IpAddress], query: Query): IO[Response] =
-      generateTransactionId.flatMap { transactionId =>
-        sendQueryMessage(address, Message.QueryMessage(transactionId, query)) *>
-        IO.async[Response] { cb =>
-          IO.delay {
-            pending.put(transactionId, cb)
-            Some(IO.delay(pending.remove(transactionId)).void)
-          }
+    def call(address: SocketAddress[IpAddress], query: Query): IO[Response] = async[IO] {
+      val transactionId = generateTransactionId.await
+      sendQueryMessage(address, Message.QueryMessage(transactionId, query)).await
+      IO.async[Response] { cb =>
+        IO.delay {
+          pending.put(transactionId, cb)
+          Some(IO.delay(pending.remove(transactionId)).void)
         }
-      }
+      }.await
+    }
   end Impl
 
   private def receiveLoop(

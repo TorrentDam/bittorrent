@@ -1,6 +1,7 @@
 package com.github.torrentdam.bittorrent.dht
 
 import cats.effect.IO
+import cats.effect.direct.*
 import cats.implicits.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.PeerInfo
@@ -22,15 +23,13 @@ object QueryHandler {
           Some(Response.Nodes(selfId, nodes.take(8).toList))
         }
       case Query.GetPeers(_, infoHash) =>
-        routingTable.findPeers(infoHash).flatMap {
-          case Some(peers) =>
-            IO.pure(Some(Response.Peers(selfId, peers.toList)))
-          case None =>
-            routingTable
-              .goodNodes(NodeId(infoHash.bytes))
-              .map { nodes =>
-                Some(Response.Nodes(selfId, nodes.take(8).toList))
-              }
+        async[IO] {
+          routingTable.findPeers(infoHash).await match
+            case Some(peers) =>
+              Some(Response.Peers(selfId, peers.toList))
+            case None =>
+              val nodes = routingTable.goodNodes(NodeId(infoHash.bytes)).await
+              Some(Response.Nodes(selfId, nodes.take(8).toList))
         }
       case Query.AnnouncePeer(_, infoHash, port) =>
         routingTable

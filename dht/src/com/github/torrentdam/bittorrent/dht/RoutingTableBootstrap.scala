@@ -5,6 +5,7 @@ import cats.implicits.*
 import cats.MonadError
 import cats.effect.IO
 import cats.effect.implicits.*
+import cats.effect.direct.*
 import com.comcast.ip4s.*
 import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.given
@@ -23,15 +24,13 @@ object RoutingTableBootstrap {
   )(using
     dns: Dns[IO],
     logger: Logger[IO]
-  ): IO[Unit] =
-    for
-      _ <- logger.info("Bootstrapping")
-      count <- resolveNodes(client, bootstrapNodeAddress).compile.count.iterateUntil(_ > 0)
-      _ <- logger.info(s"Communicated with $count bootstrap nodes")
-      _ <- selfDiscovery(table, client, discovery)
-      nodeCount <- table.allNodes.map(_.size)
-      _ <- logger.info(s"Bootstrapping finished with $nodeCount nodes")
-    yield {}
+  ): IO[Unit] = async[IO]:
+    logger.info("Bootstrapping").await
+    val count = resolveNodes(client, bootstrapNodeAddress).compile.count.iterateUntil(_ > 0).await
+    logger.info(s"Communicated with $count bootstrap nodes").await
+    selfDiscovery(table, client, discovery).await
+    val nodeCount = table.allNodes.map(_.size).await
+    logger.info(s"Bootstrapping finished with $nodeCount nodes").await
 
   private def resolveNodes(
     client: Client,
@@ -73,14 +72,12 @@ object RoutingTableBootstrap {
     client: Client,
     discovery: PeerDiscovery
   )(using Logger[IO]) =
-    def attempt(number: Int): IO[Unit] =
-      Logger[IO].info(s"Discover self to fill up routing table (attempt $number)") >>
-        discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.flatMap { count =>
-          Logger[IO].info(s"Communicated with $count nodes during self discovery") >>
-            table.allNodes.map(_.size).flatMap { nodeCount =>
-              if nodeCount < 20 then attempt(number + 1) else IO.unit
-            }
-        }
+    def attempt(number: Int): IO[Unit] = async[IO]:
+      Logger[IO].info(s"Discover self to fill up routing table (attempt $number)").await
+      val count = discovery.findNodes(client.id).take(30).interruptAfter(30.seconds).compile.count.await
+      Logger[IO].info(s"Communicated with $count nodes during self discovery").await
+      val nodeCount = table.allNodes.map(_.size).await
+      if nodeCount < 20 then attempt(number + 1).await
     attempt(1)
 
   val PublicBootstrapNodes: List[SocketAddress[Host]] = List(

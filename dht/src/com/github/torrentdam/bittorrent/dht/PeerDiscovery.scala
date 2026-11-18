@@ -5,6 +5,7 @@ import cats.effect.kernel.Ref
 import cats.effect.Concurrent
 import cats.effect.IO
 import cats.effect.Resource
+import cats.effect.direct.*
 import cats.instances.all.*
 import cats.syntax.all.*
 import cats.Show.Shown
@@ -83,11 +84,11 @@ object PeerDiscovery {
                                usedNodes: Set[NodeInfo] = Set.empty,
                                respondedCount: Int = 0
                              ):
-      def next: IO[Option[(List[NodeInfo], FindNodesState)]] =
+      def next: IO[Option[(List[NodeInfo], FindNodesState)]] = async[IO]:
         if nodesToQuery.isEmpty then
-          IO.pure(none)
+          none
         else
-          nodesToQuery
+          val responses = nodesToQuery
             .parTraverse(nodeInfo =>
               dhtClient
                 .findNodes(nodeInfo.address, targetId)
@@ -96,27 +97,26 @@ object PeerDiscovery {
                 .orElse(none.pure[IO])
                 .tupleLeft(nodeInfo)
             )
-            .map { responses =>
-              val respondedNodes = responses.collect { case (nodeInfo, Some(_)) => nodeInfo }
-              val foundNodes = responses.collect { case (_, Some(nodes)) => nodes }.flatten
-              val threshold =
-                if respondedCount > 10
-                then NodeId.distance(nodesToQuery.head.id, targetId)
-                else NodeId.MaxValue
-              val closeNodes = foundNodes
-                .filterNot(usedNodes)
-                .distinct
-                .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
-                .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
-                .take(10)
-              (
-                respondedNodes,
-                copy(
-                  nodesToQuery = closeNodes,
-                  usedNodes = usedNodes ++ respondedNodes,
-                  respondedCount = respondedCount + respondedNodes.size)
-              ).some
-            }
+            .await
+          val respondedNodes = responses.collect { case (nodeInfo, Some(_)) => nodeInfo }
+          val foundNodes = responses.collect { case (_, Some(nodes)) => nodes }.flatten
+          val threshold =
+            if respondedCount > 10
+            then NodeId.distance(nodesToQuery.head.id, targetId)
+            else NodeId.MaxValue
+          val closeNodes = foundNodes
+            .filterNot(usedNodes)
+            .distinct
+            .filter(nodeInfo => NodeId.distance(nodeInfo.id, targetId) < threshold)
+            .sortBy(nodeInfo => NodeId.distance(nodeInfo.id, targetId))
+            .take(10)
+          (
+            respondedNodes,
+            copy(
+              nodesToQuery = closeNodes,
+              usedNodes = usedNodes ++ respondedNodes,
+              respondedCount = respondedCount + respondedNodes.size)
+          ).some
   }
 
   private[dht] def start(
@@ -151,17 +151,15 @@ object PeerDiscovery {
 
   class DiscoveryState(ref: Ref[IO, DiscoveryState.Data], infoHash: InfoHash) {
 
-    def next: IO[NodeInfo] =
-      IO.deferred[NodeInfo]
-        .flatMap { deferred =>
-          ref.modify { state =>
-            state.nodesToTry match {
-              case x :: xs => (state.copy(nodesToTry = xs), x.pure[IO])
-              case _ =>
-                (state.copy(waiters = deferred :: state.waiters), deferred.get)
-            }
-          }.flatten
+    def next: IO[NodeInfo] = async[IO]:
+      val deferred = IO.deferred[NodeInfo].await
+      ref.modify { state =>
+        state.nodesToTry match {
+          case x :: xs => (state.copy(nodesToTry = xs), x.pure[IO])
+          case _ =>
+            (state.copy(waiters = deferred :: state.waiters), deferred.get)
         }
+      }.flatten.await
 
     def addNodes(nodes: List[NodeInfo]): IO[Unit] = {
       ref.modify { state =>
