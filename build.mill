@@ -2,7 +2,7 @@
 
 package build
 
-import mill.*, mill.api.Result, scalalib.*, scalanativelib.*, scalanativelib.api.*, publish.*
+import mill.*, mill.api.Result, androidlib.*, scalalib.*, scalanativelib.*, scalanativelib.api.*, publish.*
 
 object Versions {
   val scala = "3.8.4"
@@ -298,6 +298,41 @@ object e2e extends Module {
   object jvm extends Shared {
     def moduleDeps = Seq(cmd.jvm)
     object test extends ScalaTests, SharedTests
+  }
+}
+
+// Android SDK location, provided by Nix (see flake.nix). Mill finds every component
+// preinstalled under ANDROID_HOME and never downloads anything.
+object androidSdk extends AndroidSdkModule {
+  // keep in sync with sdkComponents in flake.nix
+  // 36.1.0: its d8 handles the Scala 3 lambda bytecode that ART's verifier rejects when
+  // produced by older d8 ("check-cast on unexpected class Integer" VerifyError)
+  def buildToolsVersion = "36.1.0" // build-tools-36-1-0
+  override def cmdlineToolsVersion = Task { "19.0" } // cmdline-tools-19-0
+  // never write into the read-only Nix-provided SDK (e.g. zipping platform sources next to android.jar)
+  override def installPlatformSources: T[Boolean] = Task.Input { false }
+  override def autoAcceptLicenses: T[Boolean] = Task.Input { true }
+}
+
+/**
+ * Android app: dexes the JVM modules (common/bittorrent/dht/files) into an APK via d8,
+ * so the BitTorrent library runs on Android/ART as-is.
+ */
+object android extends AndroidAppScalaModule {
+  def scalaVersion = Versions.scala
+  def androidSdkModule = mill.api.ModuleRef(androidSdk)
+  def androidMinSdk = 26
+  def androidCompileSdk = 36
+  def androidApplicationId = "com.github.torrentdam.bittorrent.android"
+  def androidApplicationNamespace = "com.github.torrentdam.bittorrent.android"
+
+  // use the google_apis system image shipped by the Nix `emulator` dev shell (see flake.nix)
+  override def androidVirtualDevice = super.androidVirtualDevice().copy(systemImageSource = "google_apis")
+
+  def moduleDeps = Seq(bittorrent.jvm, dht.jvm, files.jvm)
+
+  object test extends AndroidAppScalaTests, TestModule.Munit {
+    def munitVersion = "1.3.5"
   }
 }
 
