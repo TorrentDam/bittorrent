@@ -52,11 +52,11 @@ class NativeDatagramNetwork[F[_]](using F: Async[F], liftIO: LiftIO[F]) extends 
           fd <- SocketHelpers.openNonBlocking[F](domain, SOCK_DGRAM)
           _ <- Resource.eval {
             options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)) *>
-              (if LinktimeInfo.isMac then
-                F.whenA(options.exists(so =>
-                  so.key == StandardSocketOptions.SO_REUSEADDR && so.value == true
-                ))(SocketHelpers.setOption(fd, SO_REUSEPORT, true))
-              else F.unit)
+            (if LinktimeInfo.isMac then
+               F.whenA(options.exists(so => so.key == StandardSocketOptions.SO_REUSEADDR && so.value == true))(
+                 SocketHelpers.setOption(fd, SO_REUSEPORT, true)
+               )
+             else F.unit)
           }
           _ <- Resource.eval(F.delay(SocketHelpers.toSockaddr(socketAddress) { (addr, len) =>
             guard_(sbind(fd, addr, len))

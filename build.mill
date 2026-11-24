@@ -246,6 +246,7 @@ object cmd extends Module {
     def mvnDeps = Seq(
       Deps.decline,
       Deps.`woof-core`,
+      Deps.`cats-effect-direct`,
     )
   }
 
