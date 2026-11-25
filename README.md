@@ -75,6 +75,31 @@ export TORRENT_TEST_CMD_JAR="$PWD/out/cmd/assembly.dest/out.jar"
 mill e2e.jvm.test
 ```
 
+### Android app
+
+The `android` module builds an APK from the JVM modules (`common`, `bittorrent`, `dht`,
+`files`) via Mill's `AndroidAppScalaModule`: the Scala code is compiled to JVM bytecode
+and dexed by `d8`, so **the BitTorrent library runs on Android/ART as-is** — no separate
+engine needed. The Android SDK (cmdline-tools, build-tools 36, platform-tools,
+platform android-36) is provided by Nix through `android-nixpkgs`; `nix develop` points
+`ANDROID_HOME` at a symlink farm under `~/.cache/torrentdam-bittorrent/.android-sdk`.
+
+```bash
+nix develop
+mill android.test          # unit tests (run on the JVM)
+mill android.androidApk    # signed APK -> out/android/androidApk.dest/app.apk
+```
+
+Run on an emulator (extra dev shell with the emulator + a system image):
+
+```bash
+nix develop .#emulator --command mill android.createAndroidVirtualDevice
+nix develop .#emulator --command mill android.startAndroidEmulator
+nix develop .#emulator --command mill android.androidInstall
+nix develop .#emulator --command mill android.androidRun
+nix develop .#emulator --command mill android.stopAndroidEmulator
+```
+
 ## License
 
 [Unlicense](LICENSE) - Public Domain

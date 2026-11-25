@@ -23,6 +23,11 @@ mill cmd.native.nativeLink
 # Build fully static (musl) CLI binary for the Docker image (requires nix develop for MUSL_CLANG/MUSL_CLANGPP)
 mill cmd.nativeStatic.nativeLink
 
+# Android app (SDK provided by nix develop via android-nixpkgs, see flake.nix)
+mill android.test          # unit tests (JVM)
+mill android.androidApk    # signed APK -> out/android/androidApk.dest/app.apk
+# run on an emulator: nix develop .#emulator --command mill android.startAndroidEmulator
+
 # Format code with Scalafmt
 mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
 ```
@@ -48,6 +53,7 @@ docker pull ghcr.io/torrentdam/cmd-native:sha-$(git rev-parse --short HEAD)
 - **files/**: File I/O utilities
 - **cmd/**: CLI application entry point
 - **e2e/**: End-to-end integration tests (JVM only, runs the CLI binary against transmission)
+- **android/**: Android app (APK) built from the JVM modules with Mill's AndroidAppScalaModule (d8 dex); SDK from Nix
 
 Each module uses the standard Mill cross-platform layout:
 `<module>/src` (shared), `<module>/src-jvm`, `<module>/src-native`,
